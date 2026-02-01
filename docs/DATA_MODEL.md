@@ -604,7 +604,6 @@ class HealthCheck:
     expected_status: int = 200       # Expected HTTP status code
     timeout_seconds: float = 5.0     # Request timeout
     interval_seconds: float = 10.0   # How often to check (0 = manual only)
-    service: str | None = None       # Which script/service this checks
 
     # Runtime state (not persisted)
     _last_check: datetime | None = None
@@ -623,13 +622,11 @@ health_checks = [
     HealthCheck(
         name="API Health",
         url="http://localhost:{env.API_PORT}/health",
-        service="start_api"
     ),
     HealthCheck(
         name="Web App",
         url="http://localhost:3000",
         expected_status=200,
-        service="start_web"
     ),
 ]
 ```

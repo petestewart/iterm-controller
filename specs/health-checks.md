@@ -18,7 +18,6 @@ class HealthCheck:
     expected_status: int = 200       # Expected response code
     timeout_seconds: float = 5.0     # Request timeout
     interval_seconds: float = 10.0   # Polling interval (0 = manual only)
-    service: str | None = None       # Links to script name for context
 
 class HealthStatus(Enum):
     """Health check result status."""

@@ -63,7 +63,6 @@ class SessionTemplate:
     command: str                         # Initial command to run
     working_dir: str | None = None       # Working directory (default: project root)
     env: dict[str, str] = field(default_factory=dict)  # Additional env vars
-    health_check: str | None = None      # Associated health check ID
 
 @dataclass
 class ManagedSession:
@@ -311,7 +310,6 @@ class HealthCheck:
     expected_status: int = 200           # Expected response code
     timeout_seconds: float = 5.0         # Request timeout
     interval_seconds: float = 10.0       # Polling interval (0 = manual only)
-    service: str | None = None           # Links to script name for context
 
 class HealthStatus(Enum):
     """Health check result status."""

@@ -762,10 +762,11 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Acceptance: No magic numbers in widget rendering code
   - Result: Added PHASE_HEADER_WIDTH, SESSION_NAME_WIDTH, SESSION_TASK_ID_WIDTH, SESSION_TASK_PLACEHOLDER_WIDTH to status_display.py and updated both widgets to use them
 
-- [ ] **Remove unused model fields** `[pending]`
+- [x] **Remove unused model fields** `[complete]`
   - Scope: Remove fields that are tracked but never meaningfully used
-  - Fields: SessionTemplate.health_check, ManagedSession.metadata, TestStep.line_number, HealthCheck.service
+  - Fields: SessionTemplate.health_check, HealthCheck.service (ManagedSession.metadata and TestStep.line_number are actively used)
   - Acceptance: All model fields have actual usage
+  - Result: Removed SessionTemplate.health_check and HealthCheck.service; kept ManagedSession.metadata (used for task linking) and TestStep.line_number (used for file updates)
 
 - [ ] **Fix import organization** `[pending]`
   - Scope: Consolidate split imports into single lines

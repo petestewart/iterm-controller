@@ -322,7 +322,6 @@ class SessionTemplate:
     command: str                         # Initial command to run
     working_dir: str | None = None       # Working directory (default: project root)
     env: dict[str, str] = field(default_factory=dict)  # Additional env vars
-    health_check: str | None = None      # Associated health check ID
 ```
 
 ## Window Layout Configuration

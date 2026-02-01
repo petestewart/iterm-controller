@@ -179,7 +179,6 @@ class TestSessionModels:
             command="npm run dev",
             working_dir="./frontend",
             env={"NODE_ENV": "development"},
-            health_check="frontend-health",
         )
         assert template.id == "server"
         assert template.command == "npm run dev"
@@ -985,7 +984,6 @@ class TestConfigModels:
             expected_status=200,
             timeout_seconds=5.0,
             interval_seconds=10.0,
-            service="api-server",
         )
         assert check.name == "API Health"
         assert check.method == "GET"
