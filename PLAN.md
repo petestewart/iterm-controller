@@ -273,7 +273,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Graceful error handling, structured logging for debugging
   - Acceptance: Errors don't crash app, can diagnose issues from logs
 
-- [ ] **Write integration tests** `[pending]`
+- [x] **Write integration tests** `[complete]`
   - Scope: Test full workflows with mocked iTerm2 API
   - Acceptance: CI passes, core paths covered
 
