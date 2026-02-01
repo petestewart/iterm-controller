@@ -23,6 +23,7 @@ from iterm_controller.models import (
     PullRequest,
     Task,
     TaskStatus,
+    WorkflowMode,
     WorkflowStage,
 )
 
@@ -698,11 +699,14 @@ class TestAutoAdvanceHandler:
             stage_commands={"execute": "claude /plan"},
         )
 
-        # Mock app that returns False from modal
         mock_app = MagicMock()
-        mock_app.push_screen_wait = AsyncMock(return_value=False)
-
         handler = AutoAdvanceHandler(config=config, app=mock_app)
+
+        # Mock the _show_confirmation_modal method to return False
+        async def mock_show_modal(stage, command):
+            return False
+
+        handler._show_confirmation_modal = mock_show_modal
 
         transition = StageTransition(
             old_stage=WorkflowStage.PLANNING,
@@ -744,11 +748,14 @@ class TestAutoAdvanceHandler:
         mock_iterm.is_connected = True
         mock_iterm.app = mock_iterm_app
 
-        # Mock textual app that returns True from modal
         mock_app = MagicMock()
-        mock_app.push_screen_wait = AsyncMock(return_value=True)
-
         handler = AutoAdvanceHandler(config=config, iterm=mock_iterm, app=mock_app)
+
+        # Mock the _show_confirmation_modal method to return True
+        async def mock_show_modal(stage, command):
+            return True
+
+        handler._show_confirmation_modal = mock_show_modal
 
         transition = StageTransition(
             old_stage=WorkflowStage.PLANNING,
@@ -770,6 +777,157 @@ class TestAutoAdvanceHandler:
 
         # Should be the same as handle_stage_change
         assert transition_handler == handler.handle_stage_change
+
+    @pytest.mark.asyncio
+    async def test_handle_mode_enter_disabled(self):
+        """Test that mode enter does nothing when auto mode is disabled."""
+        config = AutoModeConfig(enabled=False)
+        handler = AutoAdvanceHandler(config=config)
+
+        result = await handler.handle_mode_enter(WorkflowMode.PLAN)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_handle_mode_enter_no_command(self):
+        """Test that mode enter does nothing when no command configured."""
+        config = AutoModeConfig(
+            enabled=True,
+            mode_commands={},  # No mode commands
+        )
+        handler = AutoAdvanceHandler(config=config)
+
+        result = await handler.handle_mode_enter(WorkflowMode.PLAN)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_handle_mode_enter_no_iterm(self):
+        """Test that mode enter returns error when iTerm not available."""
+        config = AutoModeConfig(
+            enabled=True,
+            require_confirmation=False,
+            mode_commands={"plan": "claude /prd"},
+        )
+        handler = AutoAdvanceHandler(config=config, iterm=None)
+
+        result = await handler.handle_mode_enter(WorkflowMode.PLAN)
+        assert result is not None
+        assert result.success is False
+        assert "not connected" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_handle_mode_enter_executes_command(self):
+        """Test that mode enter executes command when properly configured."""
+        config = AutoModeConfig(
+            enabled=True,
+            require_confirmation=False,
+            mode_commands={"plan": "claude /prd"},
+        )
+
+        # Mock iTerm controller and session
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_tab = MagicMock()
+        mock_tab.current_session = mock_session
+
+        mock_window = MagicMock()
+        mock_window.current_tab = mock_tab
+
+        mock_app = MagicMock()
+        mock_app.current_terminal_window = mock_window
+
+        mock_iterm = MagicMock()
+        mock_iterm.is_connected = True
+        mock_iterm.app = mock_app
+
+        handler = AutoAdvanceHandler(config=config, iterm=mock_iterm)
+
+        result = await handler.handle_mode_enter(WorkflowMode.PLAN)
+
+        assert result is not None
+        assert result.success is True
+        assert result.command == "claude /prd"
+        assert result.session_id == "session-123"
+        mock_session.async_send_text.assert_called_once_with("claude /prd\n")
+
+    @pytest.mark.asyncio
+    async def test_handle_mode_enter_confirmation_declined(self):
+        """Test that mode enter respects declined confirmation."""
+        config = AutoModeConfig(
+            enabled=True,
+            require_confirmation=True,
+            mode_commands={"plan": "claude /prd"},
+        )
+
+        # Mock app that returns False from modal
+        mock_app = MagicMock()
+
+        handler = AutoAdvanceHandler(config=config, app=mock_app)
+
+        # Mock the _show_mode_command_modal method to return False
+        async def mock_show_modal(mode, command):
+            return False
+
+        handler._show_mode_command_modal = mock_show_modal
+
+        result = await handler.handle_mode_enter(WorkflowMode.PLAN)
+
+        assert result is not None
+        assert result.success is False
+        assert "declined" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_handle_mode_enter_different_modes(self):
+        """Test mode commands for different workflow modes."""
+        config = AutoModeConfig(
+            enabled=True,
+            require_confirmation=False,
+            mode_commands={
+                "plan": "claude /prd",
+                "work": "claude /plan",
+                "test": "claude /qa",
+            },
+        )
+
+        # Mock iTerm controller and session
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_tab = MagicMock()
+        mock_tab.current_session = mock_session
+
+        mock_window = MagicMock()
+        mock_window.current_tab = mock_tab
+
+        mock_app = MagicMock()
+        mock_app.current_terminal_window = mock_window
+
+        mock_iterm = MagicMock()
+        mock_iterm.is_connected = True
+        mock_iterm.app = mock_app
+
+        handler = AutoAdvanceHandler(config=config, iterm=mock_iterm)
+
+        # Test PLAN mode
+        result = await handler.handle_mode_enter(WorkflowMode.PLAN)
+        assert result.command == "claude /prd"
+
+        # Test WORK mode
+        mock_session.async_send_text.reset_mock()
+        result = await handler.handle_mode_enter(WorkflowMode.WORK)
+        assert result.command == "claude /plan"
+
+        # Test TEST mode
+        mock_session.async_send_text.reset_mock()
+        result = await handler.handle_mode_enter(WorkflowMode.TEST)
+        assert result.command == "claude /qa"
+
+        # Test DOCS mode (no command configured)
+        mock_session.async_send_text.reset_mock()
+        result = await handler.handle_mode_enter(WorkflowMode.DOCS)
+        assert result is None
 
 
 class TestAutoModeIntegration:

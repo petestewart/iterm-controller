@@ -380,7 +380,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Enter key shows markdown preview modal
   - Acceptance: Can preview PRD.md content inline
 
-- [ ] **Integrate with Auto Mode planning commands**
+- [x] **Integrate with Auto Mode planning commands** `[complete]`
   - Spec: specs/auto-mode.md#mode-specific-automation
   - Scope: Trigger mode_commands.plan when entering Plan Mode
   - Acceptance: Configured command runs on mode entry

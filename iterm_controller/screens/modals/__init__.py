@@ -5,6 +5,7 @@ from .auto_mode_config import AutoModeConfigModal
 from .docs_picker import DocsPickerModal
 from .github_actions import GitHubActionsModal
 from .help_modal import HelpModal
+from .mode_command import ModeCommandModal
 from .plan_conflict import PlanConflictModal
 from .quit_confirm import QuitAction, QuitConfirmModal
 from .script_picker import ScriptPickerModal
@@ -17,6 +18,7 @@ __all__ = [
     "DocsPickerModal",
     "GitHubActionsModal",
     "HelpModal",
+    "ModeCommandModal",
     "PlanConflictModal",
     "QuitAction",
     "QuitConfirmModal",

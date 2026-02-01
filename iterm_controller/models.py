@@ -310,9 +310,12 @@ class AutoModeConfig:
 
     enabled: bool = False
     stage_commands: dict[str, str] = field(default_factory=dict)
+    # e.g., {"planning": "claude /prd", "execute": "claude /plan"}
     auto_advance: bool = True
     require_confirmation: bool = True
     designated_session: str | None = None  # Session to run commands in
+    mode_commands: dict[str, str] = field(default_factory=dict)
+    # e.g., {"plan": "claude /prd", "test": "claude /qa", "work": "claude /plan"}
 
 
 @dataclass

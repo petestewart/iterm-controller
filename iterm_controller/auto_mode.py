@@ -17,6 +17,7 @@ from .models import (
     AutoModeConfig,
     GitHubStatus,
     Plan,
+    WorkflowMode,
     WorkflowStage,
     WorkflowState,
 )
@@ -418,6 +419,81 @@ class AutoAdvanceHandler:
 
         # Execute the command
         return await self._execute_command(command)
+
+    async def handle_mode_enter(
+        self,
+        mode: WorkflowMode,
+    ) -> CommandExecutionResult | None:
+        """Handle entering a workflow mode.
+
+        If auto mode is enabled and there's a command configured for the mode,
+        this method will:
+        1. Show confirmation modal (if required)
+        2. Execute the mode command in the designated session
+
+        Args:
+            mode: The workflow mode being entered.
+
+        Returns:
+            CommandExecutionResult if a command was executed, None otherwise.
+        """
+        if not self.config.enabled:
+            logger.debug("Auto mode disabled, skipping mode command")
+            return None
+
+        command = self.config.mode_commands.get(mode.value)
+        if not command:
+            logger.debug(f"No command configured for mode {mode.value}")
+            return None
+
+        # Check for confirmation
+        if self.config.require_confirmation:
+            confirmed = await self._show_mode_command_modal(mode, command)
+            if not confirmed:
+                logger.info(f"User declined mode command for {mode.value}")
+                return CommandExecutionResult(
+                    success=False,
+                    command=command,
+                    error="User declined confirmation",
+                )
+
+        # Execute the command
+        return await self._execute_command(command)
+
+    async def _show_mode_command_modal(
+        self,
+        mode: WorkflowMode,
+        command: str,
+    ) -> bool:
+        """Show confirmation modal for mode command execution.
+
+        Args:
+            mode: The workflow mode being entered.
+            command: The command that will be executed.
+
+        Returns:
+            True if user confirmed, False otherwise.
+        """
+        if self.app is None:
+            logger.warning("No app available for confirmation modal, skipping")
+            return True  # Proceed without confirmation
+
+        # Import here to avoid circular imports
+        from .screens.modals import ModeCommandModal
+
+        # Use Future + callback pattern to avoid NoActiveWorker error
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[bool] = loop.create_future()
+
+        def on_modal_dismiss(result: bool | None) -> None:
+            """Handle modal dismiss and set the future result."""
+            if not future.done():
+                future.set_result(bool(result))
+
+        modal = ModeCommandModal(mode, command)
+        self.app.push_screen(modal, on_modal_dismiss)
+
+        return await future
 
     async def _show_confirmation_modal(
         self,

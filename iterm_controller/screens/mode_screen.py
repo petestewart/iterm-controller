@@ -9,6 +9,7 @@ See specs/workflow-modes.md for full specification.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from textual.binding import Binding
@@ -19,6 +20,8 @@ from iterm_controller.models import WorkflowMode
 if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
     from iterm_controller.models import Project
+
+logger = logging.getLogger(__name__)
 
 
 class ModeScreen(Screen):
@@ -48,6 +51,9 @@ class ModeScreen(Screen):
     # Subclasses should override this to indicate their mode
     CURRENT_MODE: WorkflowMode | None = None
 
+    # Track whether mode command has been triggered for this screen instance
+    _mode_command_triggered: bool = False
+
     def __init__(self, project: Project) -> None:
         """Initialize with project.
 
@@ -56,12 +62,21 @@ class ModeScreen(Screen):
         """
         super().__init__()
         self.project = project
+        self._mode_command_triggered = False
 
     async def on_mount(self) -> None:
-        """Set subtitle to project name when screen mounts."""
+        """Set subtitle to project name when screen mounts.
+
+        Also triggers mode-specific auto mode commands if configured.
+        """
         self.sub_title = f"{self.project.name}"
         if self.CURRENT_MODE:
             self.sub_title = f"{self.project.name} - {self.CURRENT_MODE.value.title()} Mode"
+
+        # Trigger mode command if configured (only once per screen instance)
+        if self.CURRENT_MODE and not self._mode_command_triggered:
+            self._mode_command_triggered = True
+            await self._trigger_mode_command()
 
     def action_switch_mode(self, mode: str) -> None:
         """Switch to another workflow mode.
@@ -130,3 +145,51 @@ class ModeScreen(Screen):
     def action_back_to_dashboard(self) -> None:
         """Return to the project dashboard."""
         self.app.pop_screen()
+
+    async def _trigger_mode_command(self) -> None:
+        """Trigger mode-specific auto mode command if configured.
+
+        Checks if auto mode is enabled and a command is configured for
+        the current mode. If so, shows confirmation (if required) and
+        executes the command.
+
+        See specs/auto-mode.md#mode-specific-automation for specification.
+        """
+        if not self.CURRENT_MODE:
+            return
+
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        # Check if auto mode is configured
+        if not app.state.config or not app.state.config.auto_mode:
+            return
+
+        auto_mode_config = app.state.config.auto_mode
+        if not auto_mode_config.enabled:
+            logger.debug("Auto mode disabled, skipping mode command trigger")
+            return
+
+        # Check if a command is configured for this mode
+        command = auto_mode_config.mode_commands.get(self.CURRENT_MODE.value)
+        if not command:
+            logger.debug(f"No mode command configured for {self.CURRENT_MODE.value}")
+            return
+
+        logger.info(f"Triggering mode command for {self.CURRENT_MODE.value}: {command}")
+
+        # Use the AutoAdvanceHandler to handle the mode entry
+        from iterm_controller.auto_mode import AutoAdvanceHandler
+
+        handler = AutoAdvanceHandler(
+            config=auto_mode_config,
+            iterm=app.iterm,
+            app=app,
+        )
+
+        result = await handler.handle_mode_enter(self.CURRENT_MODE)
+
+        if result:
+            if result.success:
+                self.notify(f"Running: {command}")
+            elif result.error and result.error != "User declined confirmation":
+                self.notify(f"Failed to run command: {result.error}", severity="error")
