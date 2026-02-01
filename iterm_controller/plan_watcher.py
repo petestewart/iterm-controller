@@ -14,8 +14,8 @@ from typing import Callable, TYPE_CHECKING
 
 from watchfiles import awatch, Change
 
-from .models import Plan, TaskStatus
-from .plan_parser import PlanParser
+from .models import Plan, Project, TaskStatus
+from .plan_parser import PlanParser, PlanUpdater
 
 if TYPE_CHECKING:
     from .screens.modals import PlanConflictModal
@@ -348,3 +348,155 @@ class PlanWatcher:
         elif result == "keep":
             self.keep_current()
         # "later" means do nothing - the modal was dismissed without action
+
+
+@dataclass
+class PlanWrite:
+    """A pending write operation for PLAN.md."""
+
+    task_id: str
+    new_status: TaskStatus
+
+
+class PlanWriteQueue:
+    """Manages pending writes to PLAN.md with conflict handling.
+
+    This class queues write operations to PLAN.md and processes them
+    in order, coordinating with the PlanWatcher to avoid treating
+    our own writes as external changes. It also handles conflicts
+    that may arise if external changes occur during write processing.
+
+    Usage:
+        watcher = PlanWatcher(...)
+        queue = PlanWriteQueue(watcher, project)
+
+        # Queue a status update
+        await queue.enqueue("2.1", TaskStatus.COMPLETE)
+    """
+
+    def __init__(self, watcher: PlanWatcher, project: Project) -> None:
+        """Initialize the write queue.
+
+        Args:
+            watcher: The PlanWatcher to coordinate with
+            project: The project whose PLAN.md we're updating
+        """
+        self.watcher = watcher
+        self.project = project
+        self._queue: asyncio.Queue[PlanWrite] = asyncio.Queue()
+        self._processing = False
+        self._process_task: asyncio.Task | None = None
+
+    async def enqueue(self, task_id: str, new_status: TaskStatus) -> None:
+        """Add a write operation to the queue.
+
+        If no processing is in progress, starts processing immediately.
+        Otherwise, the write is queued for later processing.
+
+        Args:
+            task_id: The task ID to update (e.g., "2.1")
+            new_status: The new status to set
+        """
+        await self._queue.put(PlanWrite(task_id=task_id, new_status=new_status))
+        if not self._processing:
+            self._process_task = asyncio.create_task(self._process_queue())
+
+    async def _process_queue(self) -> None:
+        """Process all queued write operations.
+
+        Marks pending writes on the watcher before starting, and
+        clears the flag after all writes are complete. Handles
+        any queued reloads after processing finishes.
+        """
+        self._processing = True
+        self.watcher.mark_write_started()
+
+        try:
+            while not self._queue.empty():
+                write = await self._queue.get()
+                await self._apply_write(write)
+                self._queue.task_done()
+
+            # Check for queued reload after writes complete
+            await self.watcher.process_queued_reload()
+        finally:
+            self.watcher.mark_write_completed()
+            self._processing = False
+            self._process_task = None
+
+    async def _apply_write(self, write: PlanWrite) -> None:
+        """Apply a single write operation to PLAN.md.
+
+        Updates both the file on disk and the in-memory plan state.
+
+        Args:
+            write: The write operation to apply
+        """
+        plan_path = self.project.full_plan_path
+        if not plan_path.exists():
+            return
+
+        # Read current content
+        content = plan_path.read_text()
+
+        # Apply the update
+        updater = PlanUpdater()
+        try:
+            new_content = updater.update_task_status(
+                content, write.task_id, write.new_status
+            )
+        except ValueError:
+            # Task or phase not found - skip this write
+            return
+
+        # Write to disk
+        plan_path.write_text(new_content)
+
+        # Update mtime tracking to avoid detecting our own write
+        self.watcher.last_mtime = plan_path.stat().st_mtime
+
+        # Update in-memory plan if watcher has one
+        if self.watcher.plan:
+            for task in self.watcher.plan.all_tasks:
+                if task.id == write.task_id:
+                    task.status = write.new_status
+                    break
+
+    @property
+    def is_processing(self) -> bool:
+        """Check if the queue is currently processing writes."""
+        return self._processing
+
+    @property
+    def pending_count(self) -> int:
+        """Get the number of pending writes in the queue."""
+        return self._queue.qsize()
+
+    async def wait_until_complete(self) -> None:
+        """Wait until all pending writes have been processed.
+
+        This is useful for testing or when you need to ensure
+        all writes are complete before proceeding.
+        """
+        if self._process_task is not None:
+            await self._process_task
+
+    def cancel(self) -> None:
+        """Cancel any pending processing.
+
+        Clears the queue without processing remaining writes.
+        Does not affect writes already in progress.
+        """
+        if self._process_task is not None and not self._process_task.done():
+            self._process_task.cancel()
+
+        # Clear the queue
+        while not self._queue.empty():
+            try:
+                self._queue.get_nowait()
+                self._queue.task_done()
+            except asyncio.QueueEmpty:
+                break
+
+        self._processing = False
+        self.watcher.mark_write_completed()

@@ -7,9 +7,9 @@ from unittest.mock import Mock
 
 import pytest
 
-from iterm_controller.models import Plan, TaskStatus
+from iterm_controller.models import Plan, Project, TaskStatus
 from iterm_controller.plan_parser import PlanParser
-from iterm_controller.plan_watcher import PlanChange, PlanWatcher
+from iterm_controller.plan_watcher import PlanChange, PlanWatcher, PlanWrite, PlanWriteQueue
 
 
 # Sample PLAN.md content for testing
@@ -665,3 +665,330 @@ class TestPlanWatcherEdgeCases:
 
         watcher = PlanWatcher(plan=None)
         assert watcher.conflicts_with_current(new_plan) is False
+
+
+class TestPlanWrite:
+    """Test PlanWrite data class."""
+
+    def test_create_plan_write(self):
+        write = PlanWrite(task_id="1.1", new_status=TaskStatus.COMPLETE)
+        assert write.task_id == "1.1"
+        assert write.new_status == TaskStatus.COMPLETE
+
+
+class TestPlanWriteQueueBasics:
+    """Test basic PlanWriteQueue functionality."""
+
+    def test_initial_state(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Project(
+                id="test",
+                name="Test",
+                path=tmpdir,
+                plan_path="PLAN.md",
+            )
+            watcher = PlanWatcher()
+            queue = PlanWriteQueue(watcher, project)
+
+            assert queue.is_processing is False
+            assert queue.pending_count == 0
+
+    @pytest.mark.asyncio
+    async def test_enqueue_and_process(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(SAMPLE_PLAN_MD)
+
+            parser = PlanParser()
+            initial_plan = parser.parse(SAMPLE_PLAN_MD)
+
+            project = Project(
+                id="test",
+                name="Test",
+                path=tmpdir,
+                plan_path="PLAN.md",
+            )
+            watcher = PlanWatcher(plan=initial_plan, plan_path=plan_path)
+            queue = PlanWriteQueue(watcher, project)
+
+            # Enqueue a status update
+            await queue.enqueue("1.2", TaskStatus.COMPLETE)
+
+            # Wait for processing to complete
+            await queue.wait_until_complete()
+
+            # Verify the file was updated
+            content = plan_path.read_text()
+            assert "- [x] **Task B** `[complete]`" in content
+
+            # Verify in-memory plan was updated
+            assert watcher.plan is not None
+            task = next(t for t in watcher.plan.all_tasks if t.id == "1.2")
+            assert task.status == TaskStatus.COMPLETE
+
+    @pytest.mark.asyncio
+    async def test_enqueue_multiple_writes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(SAMPLE_PLAN_MD)
+
+            parser = PlanParser()
+            initial_plan = parser.parse(SAMPLE_PLAN_MD)
+
+            project = Project(
+                id="test",
+                name="Test",
+                path=tmpdir,
+                plan_path="PLAN.md",
+            )
+            watcher = PlanWatcher(plan=initial_plan, plan_path=plan_path)
+            queue = PlanWriteQueue(watcher, project)
+
+            # Enqueue multiple status updates
+            await queue.enqueue("1.2", TaskStatus.IN_PROGRESS)
+            await queue.enqueue("2.1", TaskStatus.COMPLETE)
+
+            # Wait for processing to complete
+            await queue.wait_until_complete()
+
+            # Verify both updates were applied
+            content = plan_path.read_text()
+            assert "- [ ] **Task B** `[in_progress]`" in content
+            assert "- [x] **Task C** `[complete]`" in content
+
+
+class TestPlanWriteQueueCoordination:
+    """Test PlanWriteQueue coordination with PlanWatcher."""
+
+    @pytest.mark.asyncio
+    async def test_marks_pending_writes_during_processing(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(SAMPLE_PLAN_MD)
+
+            parser = PlanParser()
+            initial_plan = parser.parse(SAMPLE_PLAN_MD)
+
+            project = Project(
+                id="test",
+                name="Test",
+                path=tmpdir,
+                plan_path="PLAN.md",
+            )
+            watcher = PlanWatcher(plan=initial_plan, plan_path=plan_path)
+            queue = PlanWriteQueue(watcher, project)
+
+            # Capture pending_writes state during processing
+            pending_during_process = []
+
+            # Replace _apply_write to capture state
+            original_apply = queue._apply_write
+
+            async def capturing_apply(write):
+                pending_during_process.append(watcher.has_pending_writes)
+                await original_apply(write)
+
+            queue._apply_write = capturing_apply
+
+            await queue.enqueue("1.2", TaskStatus.COMPLETE)
+            await queue.wait_until_complete()
+
+            # Should have been marked as pending during processing
+            assert pending_during_process == [True]
+
+            # Should be cleared after processing
+            assert watcher.has_pending_writes is False
+
+    @pytest.mark.asyncio
+    async def test_updates_mtime_after_write(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(SAMPLE_PLAN_MD)
+
+            parser = PlanParser()
+            initial_plan = parser.parse(SAMPLE_PLAN_MD)
+
+            project = Project(
+                id="test",
+                name="Test",
+                path=tmpdir,
+                plan_path="PLAN.md",
+            )
+            watcher = PlanWatcher(
+                plan=initial_plan,
+                plan_path=plan_path,
+                last_mtime=0,  # Start with stale mtime
+            )
+            queue = PlanWriteQueue(watcher, project)
+
+            await queue.enqueue("1.2", TaskStatus.COMPLETE)
+            await queue.wait_until_complete()
+
+            # mtime should have been updated to match file
+            assert watcher.last_mtime == plan_path.stat().st_mtime
+
+    @pytest.mark.asyncio
+    async def test_processes_queued_reload_after_writes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(SAMPLE_PLAN_MD)
+
+            parser = PlanParser()
+            initial_plan = parser.parse(SAMPLE_PLAN_MD)
+
+            # Create a modified plan to simulate queued reload
+            modified_md = SAMPLE_PLAN_MD.replace(
+                "- [x] **Task A** `[complete]`",
+                "- [ ] **Task A** `[in_progress]`",
+            )
+            queued_plan = parser.parse(modified_md)
+
+            conflict_detected = []
+
+            def on_conflict(new_plan: Plan, changes: list[PlanChange]):
+                conflict_detected.append((new_plan, changes))
+
+            project = Project(
+                id="test",
+                name="Test",
+                path=tmpdir,
+                plan_path="PLAN.md",
+            )
+            watcher = PlanWatcher(
+                plan=initial_plan,
+                plan_path=plan_path,
+                queued_reload=queued_plan,  # Simulate queued reload
+                on_conflict_detected=on_conflict,
+            )
+            queue = PlanWriteQueue(watcher, project)
+
+            await queue.enqueue("1.2", TaskStatus.COMPLETE)
+            await queue.wait_until_complete()
+
+            # Queued reload should have been processed
+            assert len(conflict_detected) == 1
+            assert watcher.queued_reload is None
+
+
+class TestPlanWriteQueueEdgeCases:
+    """Test edge cases and error handling."""
+
+    @pytest.mark.asyncio
+    async def test_handles_missing_task(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(SAMPLE_PLAN_MD)
+
+            parser = PlanParser()
+            initial_plan = parser.parse(SAMPLE_PLAN_MD)
+
+            project = Project(
+                id="test",
+                name="Test",
+                path=tmpdir,
+                plan_path="PLAN.md",
+            )
+            watcher = PlanWatcher(plan=initial_plan, plan_path=plan_path)
+            queue = PlanWriteQueue(watcher, project)
+
+            # Try to update a non-existent task - should not raise
+            await queue.enqueue("99.99", TaskStatus.COMPLETE)
+            await queue.wait_until_complete()
+
+            # Original file should be unchanged
+            content = plan_path.read_text()
+            assert content == SAMPLE_PLAN_MD
+
+    @pytest.mark.asyncio
+    async def test_handles_missing_file(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            # Don't create the file
+
+            project = Project(
+                id="test",
+                name="Test",
+                path=tmpdir,
+                plan_path="PLAN.md",
+            )
+            watcher = PlanWatcher()
+            queue = PlanWriteQueue(watcher, project)
+
+            # Should not raise
+            await queue.enqueue("1.1", TaskStatus.COMPLETE)
+            await queue.wait_until_complete()
+
+    @pytest.mark.asyncio
+    async def test_cancel_clears_queue(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project = Project(
+                id="test",
+                name="Test",
+                path=tmpdir,
+                plan_path="PLAN.md",
+            )
+            watcher = PlanWatcher()
+            queue = PlanWriteQueue(watcher, project)
+
+            # Add items directly to queue without starting processing
+            queue._queue.put_nowait(PlanWrite("1.1", TaskStatus.COMPLETE))
+            queue._queue.put_nowait(PlanWrite("1.2", TaskStatus.COMPLETE))
+
+            assert queue.pending_count == 2
+
+            queue.cancel()
+
+            assert queue.pending_count == 0
+            assert queue.is_processing is False
+
+    @pytest.mark.asyncio
+    async def test_updates_in_memory_plan(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(SAMPLE_PLAN_MD)
+
+            parser = PlanParser()
+            initial_plan = parser.parse(SAMPLE_PLAN_MD)
+
+            project = Project(
+                id="test",
+                name="Test",
+                path=tmpdir,
+                plan_path="PLAN.md",
+            )
+            watcher = PlanWatcher(plan=initial_plan, plan_path=plan_path)
+            queue = PlanWriteQueue(watcher, project)
+
+            # Get initial status
+            task_b = next(t for t in watcher.plan.all_tasks if t.id == "1.2")
+            assert task_b.status == TaskStatus.PENDING
+
+            await queue.enqueue("1.2", TaskStatus.IN_PROGRESS)
+            await queue.wait_until_complete()
+
+            # In-memory plan should be updated
+            task_b = next(t for t in watcher.plan.all_tasks if t.id == "1.2")
+            assert task_b.status == TaskStatus.IN_PROGRESS
+
+    @pytest.mark.asyncio
+    async def test_handles_no_in_memory_plan(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(SAMPLE_PLAN_MD)
+
+            project = Project(
+                id="test",
+                name="Test",
+                path=tmpdir,
+                plan_path="PLAN.md",
+            )
+            # No plan set on watcher
+            watcher = PlanWatcher(plan=None, plan_path=plan_path)
+            queue = PlanWriteQueue(watcher, project)
+
+            # Should still update the file
+            await queue.enqueue("1.2", TaskStatus.COMPLETE)
+            await queue.wait_until_complete()
+
+            content = plan_path.read_text()
+            assert "- [x] **Task B** `[complete]`" in content

@@ -123,7 +123,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Show diff and prompt for reload/keep decision
   - Acceptance: Modal displays changes, user can choose action
 
-- [ ] **Add write queue for PLAN.md** `[pending]`
+- [x] **Add write queue for PLAN.md** `[complete]`
   - Spec: specs/plan-parser.md#write-queue-management
   - Scope: Queue pending writes, handle external changes during write operations
   - Acceptance: Writes don't conflict with external edits, queue processes correctly
