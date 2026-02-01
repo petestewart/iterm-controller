@@ -189,7 +189,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 6: Modals & Dialogs
 
-- [ ] **Implement quit confirmation modal** `[pending]`
+- [x] **Implement quit confirmation modal** `[complete]`
   - Spec: specs/app.md#lifecycle-management
   - Scope: Offer Close All / Close Managed / Leave Running options
   - Acceptance: Each option behaves correctly per spec
