@@ -108,7 +108,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Parse markdown task lists with metadata (Status, Spec, Session, Depends)
   - Acceptance: Extracts phases, tasks, statuses, and dependencies
 
-- [ ] **Implement PLAN.md updater** `[pending]`
+- [x] **Implement PLAN.md updater** `[complete]`
   - Spec: specs/plan-parser.md#updating
   - Scope: Update task status in PLAN.md while preserving formatting
   - Acceptance: Status changes written back correctly without corrupting file

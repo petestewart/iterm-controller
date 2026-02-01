@@ -2,6 +2,8 @@
 
 Parses markdown task lists with metadata (Status, Spec, Session, Depends)
 and extracts phases, tasks, statuses, and dependencies.
+
+Also provides PlanUpdater for updating PLAN.md files while preserving formatting.
 """
 
 from __future__ import annotations
@@ -161,3 +163,205 @@ class PlanParser:
                     ):
                         task.status = TaskStatus.BLOCKED
                         break
+
+
+class PlanUpdater:
+    """Updates PLAN.md files while preserving formatting."""
+
+    # Pattern to match a task line and capture its components
+    # Group 1: checkbox prefix "- ["
+    # Group 2: checkbox state " " or "x"
+    # Group 3: rest before status "**Title** `["
+    # Group 4: status word
+    # Group 5: closing "]`"
+    TASK_LINE_PATTERN = re.compile(
+        r"^(-\s+\[)([ x])(\]\s+\*\*.+?\*\*\s+`\[)(\w+)(\]`)",
+        re.MULTILINE,
+    )
+
+    def update_task_status(
+        self,
+        content: str,
+        task_id: str,
+        new_status: TaskStatus,
+    ) -> str:
+        """Update a task's status in PLAN.md content.
+
+        Args:
+            content: The PLAN.md file content
+            task_id: The task ID to update (e.g., "2.1")
+            new_status: The new status to set
+
+        Returns:
+            Updated content with the task status changed
+        """
+        phase_id, task_num = task_id.split(".")
+        target_phase = int(phase_id)
+        target_task = int(task_num)
+
+        # Parse to find phase boundaries
+        phase_pattern = re.compile(r"^###\s+Phase\s+(\d+):", re.MULTILINE)
+        phase_starts: dict[int, int] = {}  # phase_num -> content position
+
+        for match in phase_pattern.finditer(content):
+            phase_num = int(match.group(1))
+            phase_starts[phase_num] = match.start()
+
+        # Sort phases by position
+        sorted_phases = sorted(phase_starts.items(), key=lambda x: x[1])
+
+        # Find the start and end positions for our target phase
+        phase_start = None
+        phase_end = None
+
+        for i, (phase_num, pos) in enumerate(sorted_phases):
+            if phase_num == target_phase:
+                phase_start = pos
+                # End is start of next phase or end of content
+                if i + 1 < len(sorted_phases):
+                    phase_end = sorted_phases[i + 1][1]
+                else:
+                    phase_end = len(content)
+                break
+
+        if phase_start is None:
+            raise ValueError(f"Phase {phase_id} not found")
+
+        # Extract phase content
+        phase_content = content[phase_start:phase_end]
+
+        # Create a replacer function that tracks task count
+        def make_replacer() -> callable:
+            count = [0]  # Use list for mutable closure
+
+            def replacer(match: re.Match[str]) -> str:
+                count[0] += 1
+                if count[0] == target_task:
+                    checkbox = "x" if new_status == TaskStatus.COMPLETE else " "
+                    return (
+                        f"{match.group(1)}{checkbox}{match.group(3)}"
+                        f"{new_status.value}{match.group(5)}"
+                    )
+                return match.group(0)
+
+            return replacer
+
+        updated_phase = self.TASK_LINE_PATTERN.sub(make_replacer(), phase_content)
+
+        return content[:phase_start] + updated_phase + content[phase_end:]
+
+    def add_task(
+        self,
+        content: str,
+        phase_id: str,
+        task: Task,
+    ) -> str:
+        """Add a new task to a phase.
+
+        Args:
+            content: The PLAN.md file content
+            phase_id: The phase to add the task to (e.g., "2")
+            task: The task to add
+
+        Returns:
+            Updated content with the new task added
+        """
+        # Find the phase header
+        phase_pattern = re.compile(
+            rf"^###\s+Phase\s+{phase_id}:\s+.+$",
+            re.MULTILINE,
+        )
+
+        match = phase_pattern.search(content)
+        if not match:
+            raise ValueError(f"Phase {phase_id} not found")
+
+        # Find the end of this phase (start of next phase or end of content)
+        next_phase_pattern = re.compile(r"^###\s+Phase\s+\d+:", re.MULTILINE)
+        next_phase_match = next_phase_pattern.search(content, match.end())
+
+        if next_phase_match:
+            insert_pos = next_phase_match.start()
+            # Insert before the blank lines preceding next phase
+            # Walk backwards to find where content ends
+            while insert_pos > 0 and content[insert_pos - 1] in "\n\r":
+                insert_pos -= 1
+            insert_pos += 1  # Keep one newline
+        else:
+            insert_pos = len(content)
+            # Ensure we end with a newline
+            if not content.endswith("\n"):
+                insert_pos = len(content)
+
+        # Format the new task
+        task_md = self._format_task(task)
+
+        # Add appropriate spacing
+        if not content[:insert_pos].endswith("\n\n"):
+            if content[:insert_pos].endswith("\n"):
+                prefix = "\n"
+            else:
+                prefix = "\n\n"
+        else:
+            prefix = ""
+
+        return content[:insert_pos] + prefix + task_md + "\n" + content[insert_pos:]
+
+    def _format_task(self, task: Task) -> str:
+        """Format a task as markdown.
+
+        Args:
+            task: The task to format
+
+        Returns:
+            Markdown representation of the task
+        """
+        checkbox = "x" if task.status == TaskStatus.COMPLETE else " "
+        lines = [f"- [{checkbox}] **{task.title}** `[{task.status.value}]`"]
+
+        if task.spec_ref:
+            lines.append(f"  - Spec: {task.spec_ref}")
+        if task.depends:
+            lines.append(f"  - Depends: {', '.join(task.depends)}")
+        if task.session_id:
+            lines.append(f"  - Session: {task.session_id}")
+        if task.scope:
+            lines.append(f"  - Scope: {task.scope}")
+        if task.acceptance:
+            lines.append(f"  - Acceptance: {task.acceptance}")
+
+        return "\n".join(lines)
+
+    def update_task_status_in_file(
+        self,
+        path: Path,
+        task_id: str,
+        new_status: TaskStatus,
+    ) -> None:
+        """Update a task's status in a PLAN.md file.
+
+        Args:
+            path: Path to the PLAN.md file
+            task_id: The task ID to update (e.g., "2.1")
+            new_status: The new status to set
+        """
+        content = path.read_text()
+        updated_content = self.update_task_status(content, task_id, new_status)
+        path.write_text(updated_content)
+
+    def add_task_to_file(
+        self,
+        path: Path,
+        phase_id: str,
+        task: Task,
+    ) -> None:
+        """Add a new task to a phase in a PLAN.md file.
+
+        Args:
+            path: Path to the PLAN.md file
+            phase_id: The phase to add the task to (e.g., "2")
+            task: The task to add
+        """
+        content = path.read_text()
+        updated_content = self.add_task(content, phase_id, task)
+        path.write_text(updated_content)

@@ -1,4 +1,4 @@
-"""Tests for PLAN.md parser."""
+"""Tests for PLAN.md parser and updater."""
 
 import tempfile
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from iterm_controller.models import Phase, Plan, Task, TaskStatus
-from iterm_controller.plan_parser import PlanParser
+from iterm_controller.plan_parser import PlanParser, PlanUpdater
 
 
 # Sample PLAN.md content for testing
@@ -392,3 +392,393 @@ class TestPlanProperties:
         # Phase 2 has 0/2 complete
         assert plan.phases[1].completion_count == (0, 2)
         assert plan.phases[1].completion_percent == 0.0
+
+
+# =============================================================================
+# PlanUpdater Tests
+# =============================================================================
+
+
+class TestPlanUpdaterTaskStatus:
+    """Test PlanUpdater.update_task_status method."""
+
+    def test_update_pending_to_complete(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+  - Scope: Do A
+
+- [ ] **Task B** `[pending]`
+  - Scope: Do B
+"""
+        updater = PlanUpdater()
+        result = updater.update_task_status(plan_md, "1.1", TaskStatus.COMPLETE)
+
+        assert "- [x] **Task A** `[complete]`" in result
+        # Task B should be unchanged
+        assert "- [ ] **Task B** `[pending]`" in result
+
+    def test_update_complete_to_pending(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [x] **Task A** `[complete]`
+  - Scope: Do A
+"""
+        updater = PlanUpdater()
+        result = updater.update_task_status(plan_md, "1.1", TaskStatus.PENDING)
+
+        assert "- [ ] **Task A** `[pending]`" in result
+
+    def test_update_to_in_progress(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+  - Scope: Do A
+"""
+        updater = PlanUpdater()
+        result = updater.update_task_status(plan_md, "1.1", TaskStatus.IN_PROGRESS)
+
+        assert "- [ ] **Task A** `[in_progress]`" in result
+
+    def test_update_specific_task_in_phase(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+- [ ] **Task B** `[pending]`
+- [ ] **Task C** `[pending]`
+"""
+        updater = PlanUpdater()
+        result = updater.update_task_status(plan_md, "1.2", TaskStatus.COMPLETE)
+
+        assert "- [ ] **Task A** `[pending]`" in result
+        assert "- [x] **Task B** `[complete]`" in result
+        assert "- [ ] **Task C** `[pending]`" in result
+
+    def test_update_task_in_second_phase(self):
+        plan_md = """# Plan
+
+### Phase 1: Foundation
+
+- [x] **Task 1A** `[complete]`
+
+### Phase 2: Features
+
+- [ ] **Task 2A** `[pending]`
+- [ ] **Task 2B** `[pending]`
+"""
+        updater = PlanUpdater()
+        result = updater.update_task_status(plan_md, "2.1", TaskStatus.IN_PROGRESS)
+
+        # Phase 1 task unchanged
+        assert "- [x] **Task 1A** `[complete]`" in result
+        # Phase 2 first task updated
+        assert "- [ ] **Task 2A** `[in_progress]`" in result
+        # Phase 2 second task unchanged
+        assert "- [ ] **Task 2B** `[pending]`" in result
+
+    def test_update_preserves_metadata(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+  - Spec: specs/test.md
+  - Scope: Do something
+  - Acceptance: It works
+"""
+        updater = PlanUpdater()
+        result = updater.update_task_status(plan_md, "1.1", TaskStatus.COMPLETE)
+
+        assert "- [x] **Task A** `[complete]`" in result
+        assert "  - Spec: specs/test.md" in result
+        assert "  - Scope: Do something" in result
+        assert "  - Acceptance: It works" in result
+
+    def test_update_nonexistent_phase_raises(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+"""
+        updater = PlanUpdater()
+        with pytest.raises(ValueError, match="Phase 99 not found"):
+            updater.update_task_status(plan_md, "99.1", TaskStatus.COMPLETE)
+
+    def test_update_to_skipped(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+"""
+        updater = PlanUpdater()
+        result = updater.update_task_status(plan_md, "1.1", TaskStatus.SKIPPED)
+
+        assert "- [ ] **Task A** `[skipped]`" in result
+
+    def test_update_to_blocked(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+"""
+        updater = PlanUpdater()
+        result = updater.update_task_status(plan_md, "1.1", TaskStatus.BLOCKED)
+
+        assert "- [ ] **Task A** `[blocked]`" in result
+
+
+class TestPlanUpdaterAddTask:
+    """Test PlanUpdater.add_task method."""
+
+    def test_add_simple_task(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Existing Task** `[pending]`
+"""
+        task = Task(id="1.2", title="New Task", status=TaskStatus.PENDING)
+
+        updater = PlanUpdater()
+        result = updater.add_task(plan_md, "1", task)
+
+        assert "- [ ] **Existing Task** `[pending]`" in result
+        assert "- [ ] **New Task** `[pending]`" in result
+
+    def test_add_task_with_metadata(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Existing Task** `[pending]`
+"""
+        task = Task(
+            id="1.2",
+            title="New Task",
+            status=TaskStatus.PENDING,
+            spec_ref="specs/new.md",
+            scope="Do new things",
+            acceptance="New things done",
+        )
+
+        updater = PlanUpdater()
+        result = updater.add_task(plan_md, "1", task)
+
+        assert "- [ ] **New Task** `[pending]`" in result
+        assert "  - Spec: specs/new.md" in result
+        assert "  - Scope: Do new things" in result
+        assert "  - Acceptance: New things done" in result
+
+    def test_add_task_with_dependencies(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Existing Task** `[pending]`
+"""
+        task = Task(
+            id="1.2",
+            title="Dependent Task",
+            status=TaskStatus.PENDING,
+            depends=["1.1", "1.0"],
+        )
+
+        updater = PlanUpdater()
+        result = updater.add_task(plan_md, "1", task)
+
+        assert "- [ ] **Dependent Task** `[pending]`" in result
+        assert "  - Depends: 1.1, 1.0" in result
+
+    def test_add_task_with_session(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Existing Task** `[pending]`
+"""
+        task = Task(
+            id="1.2",
+            title="Session Task",
+            status=TaskStatus.IN_PROGRESS,
+            session_id="claude",
+        )
+
+        updater = PlanUpdater()
+        result = updater.add_task(plan_md, "1", task)
+
+        assert "- [ ] **Session Task** `[in_progress]`" in result
+        assert "  - Session: claude" in result
+
+    def test_add_complete_task(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Existing Task** `[pending]`
+"""
+        task = Task(id="1.2", title="Done Task", status=TaskStatus.COMPLETE)
+
+        updater = PlanUpdater()
+        result = updater.add_task(plan_md, "1", task)
+
+        assert "- [x] **Done Task** `[complete]`" in result
+
+    def test_add_task_to_second_phase(self):
+        plan_md = """# Plan
+
+### Phase 1: Foundation
+
+- [x] **Phase 1 Task** `[complete]`
+
+### Phase 2: Features
+
+- [ ] **Phase 2 Task** `[pending]`
+"""
+        task = Task(id="2.2", title="New Feature Task", status=TaskStatus.PENDING)
+
+        updater = PlanUpdater()
+        result = updater.add_task(plan_md, "2", task)
+
+        # Phase 1 unchanged
+        assert "- [x] **Phase 1 Task** `[complete]`" in result
+        # Phase 2 has both tasks
+        assert "- [ ] **Phase 2 Task** `[pending]`" in result
+        assert "- [ ] **New Feature Task** `[pending]`" in result
+
+    def test_add_task_nonexistent_phase_raises(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task** `[pending]`
+"""
+        task = Task(id="99.1", title="New Task", status=TaskStatus.PENDING)
+
+        updater = PlanUpdater()
+        with pytest.raises(ValueError, match="Phase 99 not found"):
+            updater.add_task(plan_md, "99", task)
+
+
+class TestPlanUpdaterFileOperations:
+    """Test PlanUpdater file operations."""
+
+    def test_update_task_status_in_file(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+"""
+        updater = PlanUpdater()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(plan_md)
+
+            updater.update_task_status_in_file(plan_path, "1.1", TaskStatus.COMPLETE)
+
+            result = plan_path.read_text()
+            assert "- [x] **Task A** `[complete]`" in result
+
+    def test_add_task_to_file(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+"""
+        task = Task(id="1.2", title="Task B", status=TaskStatus.PENDING)
+        updater = PlanUpdater()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(plan_md)
+
+            updater.add_task_to_file(plan_path, "1", task)
+
+            result = plan_path.read_text()
+            assert "- [ ] **Task A** `[pending]`" in result
+            assert "- [ ] **Task B** `[pending]`" in result
+
+
+class TestPlanUpdaterRoundTrip:
+    """Test that updates can be parsed back correctly."""
+
+    def test_update_and_parse_roundtrip(self):
+        plan_md = """# Plan
+
+## Overview
+
+Test plan for roundtrip testing.
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+  - Scope: Do A
+
+- [ ] **Task B** `[pending]`
+  - Scope: Do B
+"""
+        updater = PlanUpdater()
+        parser = PlanParser()
+
+        # Update task 1.1 to complete
+        updated = updater.update_task_status(plan_md, "1.1", TaskStatus.COMPLETE)
+
+        # Parse the result
+        plan = parser.parse(updated)
+
+        # Verify the update was parsed correctly
+        assert plan.phases[0].tasks[0].status == TaskStatus.COMPLETE
+        assert plan.phases[0].tasks[1].status == TaskStatus.PENDING
+
+    def test_add_and_parse_roundtrip(self):
+        plan_md = """# Plan
+
+## Overview
+
+Test plan for roundtrip testing.
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+  - Scope: Do A
+"""
+        task = Task(
+            id="1.2",
+            title="Task B",
+            status=TaskStatus.IN_PROGRESS,
+            spec_ref="specs/b.md",
+            scope="Do B",
+            acceptance="B works",
+        )
+
+        updater = PlanUpdater()
+        parser = PlanParser()
+
+        # Add the task
+        updated = updater.add_task(plan_md, "1", task)
+
+        # Parse the result
+        plan = parser.parse(updated)
+
+        # Verify both tasks exist with correct data
+        assert len(plan.phases[0].tasks) == 2
+        assert plan.phases[0].tasks[0].title == "Task A"
+        assert plan.phases[0].tasks[0].status == TaskStatus.PENDING
+        assert plan.phases[0].tasks[1].title == "Task B"
+        assert plan.phases[0].tasks[1].status == TaskStatus.IN_PROGRESS
+        assert plan.phases[0].tasks[1].spec_ref == "specs/b.md"
+        assert plan.phases[0].tasks[1].scope == "Do B"
+        assert plan.phases[0].tasks[1].acceptance == "B works"
