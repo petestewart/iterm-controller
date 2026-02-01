@@ -12,7 +12,6 @@ from iterm_controller.models import Project
 from iterm_controller.state.events import (
     ProjectClosed,
     ProjectOpened,
-    StateEvent,
 )
 
 if TYPE_CHECKING:
@@ -34,7 +33,6 @@ class ProjectStateManager:
         self.projects: dict[str, Project] = {}
         self.active_project_id: str | None = None
         self._app: App | None = None
-        self._emit_callback: Callable[[StateEvent, dict[str, Any]], None] | None = None
 
     def connect_app(self, app: App) -> None:
         """Connect to a Textual App for message posting.
@@ -44,25 +42,10 @@ class ProjectStateManager:
         """
         self._app = app
 
-    def set_emit_callback(
-        self, callback: Callable[[StateEvent, dict[str, Any]], None]
-    ) -> None:
-        """Set callback for emitting events to legacy subscribers.
-
-        Args:
-            callback: Function to call with (event, kwargs) when emitting.
-        """
-        self._emit_callback = callback
-
     def _post_message(self, message: Any) -> None:
         """Post a message to the connected Textual app."""
         if self._app is not None:
             self._app.post_message(message)
-
-    def _emit(self, event: StateEvent, **kwargs: Any) -> None:
-        """Emit event to legacy subscribers."""
-        if self._emit_callback:
-            self._emit_callback(event, kwargs)
 
     def load_projects(self, projects: list[Project]) -> None:
         """Load projects from config.
@@ -91,7 +74,6 @@ class ProjectStateManager:
         project = self.projects[project_id]
         project.is_open = True
         self.active_project_id = project_id
-        self._emit(StateEvent.PROJECT_OPENED, project=project)
         self._post_message(ProjectOpened(project))
 
     async def close_project(self, project_id: str) -> None:
@@ -103,7 +85,6 @@ class ProjectStateManager:
         if project_id in self.projects:
             self.projects[project_id].is_open = False
 
-        self._emit(StateEvent.PROJECT_CLOSED, project_id=project_id)
         self._post_message(ProjectClosed(project_id))
 
         if self.active_project_id == project_id:

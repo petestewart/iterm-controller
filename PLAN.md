@@ -660,7 +660,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Components: ProjectStateManager, SessionStateManager, PlanStateManager
   - Acceptance: Each manager has single responsibility
 
-- [ ] **Remove dual event system (callbacks)** `[pending]`
+- [x] **Remove dual event system (callbacks)** `[complete]`
   - Scope: Remove unused callback event system, keep only Textual Messages
   - Location: iterm_controller/state.py:221-224, 245-281
   - Fix: Remove subscribe(), unsubscribe(), emit() and _listeners

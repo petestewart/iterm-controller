@@ -5,13 +5,10 @@ Handles health check status tracking and notifications.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from iterm_controller.models import HealthStatus
-from iterm_controller.state.events import (
-    HealthStatusChanged,
-    StateEvent,
-)
+from iterm_controller.state.events import HealthStatusChanged
 
 if TYPE_CHECKING:
     from textual.app import App
@@ -31,7 +28,6 @@ class HealthStateManager:
         # project_id -> {check_name -> HealthStatus}
         self._health_statuses: dict[str, dict[str, HealthStatus]] = {}
         self._app: App | None = None
-        self._emit_callback: Callable[[StateEvent, dict[str, Any]], None] | None = None
 
     def connect_app(self, app: App) -> None:
         """Connect to a Textual App for message posting.
@@ -41,25 +37,10 @@ class HealthStateManager:
         """
         self._app = app
 
-    def set_emit_callback(
-        self, callback: Callable[[StateEvent, dict[str, Any]], None]
-    ) -> None:
-        """Set callback for emitting events to legacy subscribers.
-
-        Args:
-            callback: Function to call with (event, kwargs) when emitting.
-        """
-        self._emit_callback = callback
-
     def _post_message(self, message: Any) -> None:
         """Post a message to the connected Textual app."""
         if self._app is not None:
             self._app.post_message(message)
-
-    def _emit(self, event: StateEvent, **kwargs: Any) -> None:
-        """Emit event to legacy subscribers."""
-        if self._emit_callback:
-            self._emit_callback(event, kwargs)
 
     def update_health_status(
         self, project_id: str, check_name: str, status: HealthStatus
@@ -75,12 +56,6 @@ class HealthStateManager:
             self._health_statuses[project_id] = {}
         self._health_statuses[project_id][check_name] = status
 
-        self._emit(
-            StateEvent.HEALTH_STATUS_CHANGED,
-            project_id=project_id,
-            check_name=check_name,
-            status=status.value,
-        )
         self._post_message(HealthStatusChanged(project_id, check_name, status.value))
 
     def get_health_statuses(self, project_id: str) -> dict[str, HealthStatus]:

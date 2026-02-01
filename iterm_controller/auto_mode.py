@@ -125,7 +125,7 @@ class AutoModeController:
     """Controls automatic workflow stage monitoring and advancement.
 
     This controller:
-    1. Monitors PLAN.md changes via the state event system
+    1. Monitors PLAN.md changes via Textual messages
     2. Re-evaluates the workflow stage when changes occur
     3. Tracks stage transitions for UI updates
     4. Optionally triggers stage commands when advancing
@@ -137,8 +137,9 @@ class AutoModeController:
             project_path="/path/to/project",
         )
 
-        # Connect to state for event handling
-        state.subscribe(StateEvent.PLAN_RELOADED, controller.on_plan_reloaded)
+        # Handle plan reload messages in a Screen or Widget
+        def on_plan_reloaded(self, event: PlanReloaded) -> None:
+            controller.on_plan_reloaded(plan=event.plan)
 
         # Check current stage
         stage = controller.current_stage

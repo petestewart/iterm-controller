@@ -6,14 +6,13 @@ and updating session status.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from iterm_controller.models import ManagedSession
 from iterm_controller.state.events import (
     SessionClosed,
     SessionSpawned,
     SessionStatusChanged,
-    StateEvent,
 )
 
 if TYPE_CHECKING:
@@ -34,7 +33,6 @@ class SessionStateManager:
         """Initialize the session state manager."""
         self.sessions: dict[str, ManagedSession] = {}
         self._app: App | None = None
-        self._emit_callback: Callable[[StateEvent, dict[str, Any]], None] | None = None
 
     def connect_app(self, app: App) -> None:
         """Connect to a Textual App for message posting.
@@ -44,25 +42,10 @@ class SessionStateManager:
         """
         self._app = app
 
-    def set_emit_callback(
-        self, callback: Callable[[StateEvent, dict[str, Any]], None]
-    ) -> None:
-        """Set callback for emitting events to legacy subscribers.
-
-        Args:
-            callback: Function to call with (event, kwargs) when emitting.
-        """
-        self._emit_callback = callback
-
     def _post_message(self, message: Any) -> None:
         """Post a message to the connected Textual app."""
         if self._app is not None:
             self._app.post_message(message)
-
-    def _emit(self, event: StateEvent, **kwargs: Any) -> None:
-        """Emit event to legacy subscribers."""
-        if self._emit_callback:
-            self._emit_callback(event, kwargs)
 
     @property
     def has_active_sessions(self) -> bool:
@@ -76,7 +59,6 @@ class SessionStateManager:
             session: The managed session to add.
         """
         self.sessions[session.id] = session
-        self._emit(StateEvent.SESSION_SPAWNED, session=session)
         self._post_message(SessionSpawned(session))
 
     def remove_session(self, session_id: str) -> None:
@@ -87,7 +69,6 @@ class SessionStateManager:
         """
         if session_id in self.sessions:
             session = self.sessions.pop(session_id)
-            self._emit(StateEvent.SESSION_CLOSED, session=session)
             self._post_message(SessionClosed(session))
 
     def update_session_status(self, session_id: str, **kwargs: Any) -> None:
@@ -102,7 +83,6 @@ class SessionStateManager:
             for key, value in kwargs.items():
                 if hasattr(session, key):
                     setattr(session, key, value)
-            self._emit(StateEvent.SESSION_STATUS_CHANGED, session=session)
             self._post_message(SessionStatusChanged(session))
 
     def get_sessions_for_project(self, project_id: str) -> list[ManagedSession]:

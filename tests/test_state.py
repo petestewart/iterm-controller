@@ -22,7 +22,6 @@ from iterm_controller.state import (
     SessionClosed,
     SessionSpawned,
     SessionStatusChanged,
-    StateEvent,
     TaskStatusChanged,
     WorkflowStageChanged,
 )
@@ -165,83 +164,6 @@ class TestAppState:
         assert session1 in p1_sessions
         assert session2 in p1_sessions
         assert session3 not in p1_sessions
-
-
-class TestStateEventSubscription:
-    """Tests for state event subscription system."""
-
-    def test_subscribe_and_emit(self) -> None:
-        """Test subscribing and emitting events."""
-        state = AppState()
-        received_kwargs = {}
-
-        def callback(**kwargs):
-            received_kwargs.update(kwargs)
-
-        state.subscribe(StateEvent.CONFIG_CHANGED, callback)
-        state.emit(StateEvent.CONFIG_CHANGED, test_value="hello")
-
-        assert received_kwargs.get("test_value") == "hello"
-
-    def test_multiple_subscribers(self) -> None:
-        """Test multiple subscribers receive events."""
-        state = AppState()
-        calls = []
-
-        def callback1(**kwargs):
-            calls.append("callback1")
-
-        def callback2(**kwargs):
-            calls.append("callback2")
-
-        state.subscribe(StateEvent.SESSION_SPAWNED, callback1)
-        state.subscribe(StateEvent.SESSION_SPAWNED, callback2)
-        state.emit(StateEvent.SESSION_SPAWNED)
-
-        assert "callback1" in calls
-        assert "callback2" in calls
-
-    def test_unsubscribe(self) -> None:
-        """Test unsubscribing from events."""
-        state = AppState()
-        calls = []
-
-        def callback(**kwargs):
-            calls.append("called")
-
-        state.subscribe(StateEvent.SESSION_CLOSED, callback)
-        state.unsubscribe(StateEvent.SESSION_CLOSED, callback)
-        state.emit(StateEvent.SESSION_CLOSED)
-
-        assert len(calls) == 0
-
-    def test_unsubscribe_nonexistent_no_error(self) -> None:
-        """Test unsubscribing non-subscribed callback doesn't raise."""
-        state = AppState()
-
-        def callback(**kwargs):
-            pass
-
-        # Should not raise
-        state.unsubscribe(StateEvent.PROJECT_OPENED, callback)
-
-    def test_emit_with_subscriber_error_continues(self) -> None:
-        """Test that emit continues even if subscriber raises."""
-        state = AppState()
-        calls = []
-
-        def error_callback(**kwargs):
-            raise RuntimeError("Test error")
-
-        def good_callback(**kwargs):
-            calls.append("good")
-
-        state.subscribe(StateEvent.PLAN_RELOADED, error_callback)
-        state.subscribe(StateEvent.PLAN_RELOADED, good_callback)
-        state.emit(StateEvent.PLAN_RELOADED)
-
-        # Good callback should still be called despite error in first
-        assert "good" in calls
 
 
 @pytest.mark.asyncio
@@ -818,21 +740,3 @@ class TestStateManagers:
         assert snapshot.sessions["s1"] == session
         assert snapshot.plans["p1"] is plan
         assert snapshot.health_statuses["p1"]["api"] == HealthStatus.HEALTHY
-
-    def test_manager_emit_callback_integration(self) -> None:
-        """Test that manager emit callbacks properly dispatch to subscribers."""
-        state = AppState()
-        received_events = []
-
-        def callback(**kwargs):
-            received_events.append(kwargs)
-
-        state.subscribe(StateEvent.SESSION_SPAWNED, callback)
-
-        session = ManagedSession(
-            id="s1", template_id="t1", project_id="p1", tab_id="tab1"
-        )
-        state.add_session(session)
-
-        assert len(received_events) == 1
-        assert received_events[0]["session"] is session

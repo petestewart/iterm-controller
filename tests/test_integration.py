@@ -55,10 +55,13 @@ from iterm_controller.plan_watcher import PlanWatcher
 from iterm_controller.session_monitor import AttentionDetector, SessionMonitor
 from iterm_controller.state import (
     AppState,
+    HealthStatusChanged,
     PlanReloaded,
+    ProjectClosed,
+    ProjectOpened,
     SessionSpawned,
     SessionStatusChanged,
-    StateEvent,
+    TaskStatusChanged,
 )
 
 
@@ -198,33 +201,27 @@ class TestProjectLifecycleWorkflow:
         temp_project: Project,
         connected_controller: ItermController,
     ) -> None:
-        """Test that project lifecycle events are properly emitted."""
+        """Test that project lifecycle events are properly emitted as Textual messages."""
         state = AppState()
         state.projects[temp_project.id] = temp_project
 
-        # Track events
-        events_received: list[str] = []
-
-        def on_project_opened(project: Project) -> None:
-            events_received.append(f"opened:{project.id}")
-
-        def on_project_closed(project_id: str) -> None:
-            events_received.append(f"closed:{project_id}")
-
-        state.subscribe(StateEvent.PROJECT_OPENED, on_project_opened)
-        state.subscribe(StateEvent.PROJECT_CLOSED, on_project_closed)
+        # Track messages via mock app
+        mock_app = MagicMock()
+        messages: list = []
+        mock_app.post_message = lambda msg: messages.append(msg)
+        state.connect_app(mock_app)
 
         # Open project
         await state.open_project(temp_project.id)
-        assert "opened:test-project" in events_received
         assert state.active_project_id == temp_project.id
         assert temp_project.is_open is True
+        assert any(isinstance(m, ProjectOpened) and m.project.id == temp_project.id for m in messages)
 
         # Close project
         await state.close_project(temp_project.id)
-        assert "closed:test-project" in events_received
         assert state.active_project_id is None
         assert temp_project.is_open is False
+        assert any(isinstance(m, ProjectClosed) and m.project_id == temp_project.id for m in messages)
 
     @pytest.mark.asyncio
     async def test_session_spawn_and_close_lifecycle(
@@ -338,26 +335,26 @@ class TestPlanWorkflowIntegration:
         assert stored_plan.all_tasks == plan.all_tasks
 
     def test_plan_reload_emits_event(self, temp_project: Project) -> None:
-        """Test that plan reload emits proper event."""
+        """Test that plan reload emits proper Textual message."""
         state = AppState()
         state.projects[temp_project.id] = temp_project
 
-        events_received: list[tuple[str, Plan]] = []
-
-        def on_plan_reloaded(project_id: str, plan: Plan) -> None:
-            events_received.append((project_id, plan))
-
-        state.subscribe(StateEvent.PLAN_RELOADED, on_plan_reloaded)
+        # Track messages via mock app
+        mock_app = MagicMock()
+        messages: list = []
+        mock_app.post_message = lambda msg: messages.append(msg)
+        state.connect_app(mock_app)
 
         # Parse and set plan
         parser = PlanParser()
         plan = parser.parse_file(temp_project.full_plan_path)
         state.set_plan(temp_project.id, plan)
 
-        # Verify event emitted
-        assert len(events_received) == 1
-        assert events_received[0][0] == temp_project.id
-        assert events_received[0][1] == plan
+        # Verify message posted
+        plan_messages = [m for m in messages if isinstance(m, PlanReloaded)]
+        assert len(plan_messages) == 1
+        assert plan_messages[0].project_id == temp_project.id
+        assert plan_messages[0].plan == plan
 
     @pytest.mark.asyncio
     async def test_plan_watcher_detects_changes(self, temp_project: Project) -> None:
@@ -414,22 +411,24 @@ class TestPlanWorkflowIntegration:
         assert changes_detected[0].all_tasks[0].status == TaskStatus.COMPLETE
 
     def test_task_status_change_updates_state(self, temp_project: Project) -> None:
-        """Test that task status changes update state and emit events."""
+        """Test that task status changes post Textual messages."""
         state = AppState()
         state.projects[temp_project.id] = temp_project
 
-        task_changes: list[tuple[str, str]] = []
-
-        def on_task_changed(project_id: str, task_id: str) -> None:
-            task_changes.append((project_id, task_id))
-
-        state.subscribe(StateEvent.TASK_STATUS_CHANGED, on_task_changed)
+        # Track messages via mock app
+        mock_app = MagicMock()
+        messages: list = []
+        mock_app.post_message = lambda msg: messages.append(msg)
+        state.connect_app(mock_app)
 
         # Update task status
         state.update_task_status(temp_project.id, "1.1")
 
-        assert len(task_changes) == 1
-        assert task_changes[0] == (temp_project.id, "1.1")
+        # Verify message posted
+        task_messages = [m for m in messages if isinstance(m, TaskStatusChanged)]
+        assert len(task_messages) == 1
+        assert task_messages[0].project_id == temp_project.id
+        assert task_messages[0].task_id == "1.1"
 
 
 # =============================================================================
@@ -577,22 +576,25 @@ class TestHealthCheckIntegration:
     async def test_health_check_updates_state(
         self, temp_project: Project
     ) -> None:
-        """Test that health checks update application state."""
+        """Test that health checks update application state and post messages."""
         state = AppState()
         state.projects[temp_project.id] = temp_project
 
-        health_changes: list[tuple[str, str, str]] = []
-
-        def on_health_change(project_id: str, check_name: str, status: str) -> None:
-            health_changes.append((project_id, check_name, status))
-
-        state.subscribe(StateEvent.HEALTH_STATUS_CHANGED, on_health_change)
+        # Track messages via mock app
+        mock_app = MagicMock()
+        messages: list = []
+        mock_app.post_message = lambda msg: messages.append(msg)
+        state.connect_app(mock_app)
 
         # Update health status
         state.update_health_status(temp_project.id, "API Health", HealthStatus.HEALTHY)
 
-        assert len(health_changes) == 1
-        assert health_changes[0] == (temp_project.id, "API Health", "healthy")
+        # Verify message posted
+        health_messages = [m for m in messages if isinstance(m, HealthStatusChanged)]
+        assert len(health_messages) == 1
+        assert health_messages[0].project_id == temp_project.id
+        assert health_messages[0].check_name == "API Health"
+        assert health_messages[0].status == "healthy"
 
         # Verify stored status
         statuses = state.get_health_statuses(temp_project.id)
@@ -700,15 +702,14 @@ class TestSessionMonitoringIntegration:
             assert state == AttentionState.WORKING, f"Failed for: {output}"
 
     def test_session_status_events(self) -> None:
-        """Test that session status changes emit proper events."""
+        """Test that session status changes post Textual messages."""
         state = AppState()
 
-        status_changes: list[ManagedSession] = []
-
-        def on_status_change(session: ManagedSession) -> None:
-            status_changes.append(session)
-
-        state.subscribe(StateEvent.SESSION_STATUS_CHANGED, on_status_change)
+        # Track messages via mock app
+        mock_app = MagicMock()
+        messages: list = []
+        mock_app.post_message = lambda msg: messages.append(msg)
+        state.connect_app(mock_app)
 
         # Add a session
         session = ManagedSession(
@@ -726,8 +727,10 @@ class TestSessionMonitoringIntegration:
             last_output="What should I do?",
         )
 
-        assert len(status_changes) == 1
-        assert status_changes[0].attention_state == AttentionState.WAITING
+        # Verify message posted
+        status_messages = [m for m in messages if isinstance(m, SessionStatusChanged)]
+        assert len(status_messages) == 1
+        assert status_messages[0].session.attention_state == AttentionState.WAITING
 
 
 # =============================================================================
@@ -745,28 +748,19 @@ class TestEndToEndWorkflows:
         connected_controller: ItermController,
     ) -> None:
         """Test complete workflow: open project -> spawn sessions -> monitor -> update plan -> close."""
-        # 1. Set up state with events tracking
+        # 1. Set up state with message tracking
         state = AppState()
         state.projects[temp_project.id] = temp_project
 
-        events: list[str] = []
-
-        state.subscribe(
-            StateEvent.PROJECT_OPENED,
-            lambda project: events.append(f"project_opened:{project.id}"),
-        )
-        state.subscribe(
-            StateEvent.SESSION_SPAWNED,
-            lambda session: events.append(f"session_spawned:{session.id}"),
-        )
-        state.subscribe(
-            StateEvent.PLAN_RELOADED,
-            lambda project_id, plan: events.append(f"plan_reloaded:{project_id}"),
-        )
+        # Track messages via mock app
+        mock_app = MagicMock()
+        messages: list = []
+        mock_app.post_message = lambda msg: messages.append(msg)
+        state.connect_app(mock_app)
 
         # 2. Open project
         await state.open_project(temp_project.id)
-        assert "project_opened:test-project" in events
+        assert any(isinstance(m, ProjectOpened) and m.project.id == temp_project.id for m in messages)
 
         # 3. Spawn session
         spawner = SessionSpawner(connected_controller)
@@ -778,13 +772,13 @@ class TestEndToEndWorkflows:
         # Add to state
         managed = spawner.managed_sessions[result.session_id]
         state.add_session(managed)
-        assert "session_spawned:mock-session-1" in events
+        assert any(isinstance(m, SessionSpawned) and m.session.id == "mock-session-1" for m in messages)
 
         # 4. Parse and update plan
         parser = PlanParser()
         plan = parser.parse_file(temp_project.full_plan_path)
         state.set_plan(temp_project.id, plan)
-        assert "plan_reloaded:test-project" in events
+        assert any(isinstance(m, PlanReloaded) and m.project_id == temp_project.id for m in messages)
 
         # 5. Verify state consistency
         assert state.active_project_id == temp_project.id

@@ -7,7 +7,7 @@ to focused state managers for better organization.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from iterm_controller.models import (
     AppConfig,
@@ -17,10 +17,7 @@ from iterm_controller.models import (
     Project,
     TestPlan,
 )
-from iterm_controller.state.events import (
-    ConfigChanged,
-    StateEvent,
-)
+from iterm_controller.state.events import ConfigChanged
 from iterm_controller.state.health_manager import HealthStateManager
 from iterm_controller.state.plan_manager import PlanStateManager
 from iterm_controller.state.project_manager import ProjectStateManager
@@ -38,15 +35,8 @@ class AppState:
     This class composes focused state managers for better organization while
     maintaining a unified public API for backwards compatibility.
 
-    The class provides two mechanisms for notifying about state changes:
-
-    1. **Callback-based subscriptions**: Use `subscribe()` and `unsubscribe()`
-       for components that need to react to specific events without being
-       part of the Textual widget tree.
-
-    2. **Textual Message posting**: When connected to a Textual App via
-       `connect_app()`, state changes automatically post Messages that
-       widgets can handle with `on_*` methods.
+    When connected to a Textual App via `connect_app()`, state changes
+    automatically post Messages that widgets can handle with `on_*` methods.
 
     Example:
         # In a Screen or Widget
@@ -71,24 +61,8 @@ class AppState:
         default_factory=HealthStateManager, repr=False
     )
 
-    # Event subscribers (legacy callback mechanism)
-    _listeners: dict[StateEvent, list[Callable[..., Any]]] = field(
-        default_factory=lambda: {e: [] for e in StateEvent}
-    )
-
     # Textual app reference for posting messages
     _app: App | None = field(default=None, repr=False)
-
-    def __post_init__(self) -> None:
-        """Set up manager emit callbacks after initialization."""
-        self._project_manager.set_emit_callback(self._emit_from_manager)
-        self._session_manager.set_emit_callback(self._emit_from_manager)
-        self._plan_manager.set_emit_callback(self._emit_from_manager)
-        self._health_manager.set_emit_callback(self._emit_from_manager)
-
-    def _emit_from_manager(self, event: StateEvent, kwargs: dict[str, Any]) -> None:
-        """Handle emit calls from state managers."""
-        self.emit(event, **kwargs)
 
     # =========================================================================
     # Properties delegating to state managers (backwards compatibility)
@@ -180,44 +154,6 @@ class AppState:
         if self._app is not None:
             self._app.post_message(message)
 
-    def subscribe(self, event: StateEvent, callback: Callable[..., Any]) -> None:
-        """Register callback for state event.
-
-        Args:
-            event: The event type to subscribe to.
-            callback: Function to call when event occurs.
-        """
-        if event not in self._listeners:
-            self._listeners[event] = []
-        self._listeners[event].append(callback)
-
-    def unsubscribe(self, event: StateEvent, callback: Callable[..., Any]) -> None:
-        """Remove callback from event.
-
-        Args:
-            event: The event type to unsubscribe from.
-            callback: The callback function to remove.
-        """
-        if event in self._listeners:
-            try:
-                self._listeners[event].remove(callback)
-            except ValueError:
-                pass
-
-    def emit(self, event: StateEvent, **kwargs: Any) -> None:
-        """Dispatch event to all subscribers.
-
-        Args:
-            event: The event type to dispatch.
-            **kwargs: Additional arguments to pass to callbacks.
-        """
-        for callback in self._listeners.get(event, []):
-            try:
-                callback(**kwargs)
-            except Exception:
-                # Log but don't crash on subscriber errors
-                pass
-
     # =========================================================================
     # Config Loading
     # =========================================================================
@@ -232,7 +168,6 @@ class AppState:
         if self.config.projects:
             self._project_manager.load_projects(self.config.projects)
 
-        self.emit(StateEvent.CONFIG_CHANGED, config=self.config)
         self._post_message(ConfigChanged(self.config))
 
     # =========================================================================
