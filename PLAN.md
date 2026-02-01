@@ -768,11 +768,12 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Acceptance: All model fields have actual usage
   - Result: Removed SessionTemplate.health_check and HealthCheck.service; kept ManagedSession.metadata (used for task linking) and TestStep.line_number (used for file updates)
 
-- [ ] **Fix import organization** `[pending]`
+- [x] **Fix import organization** `[complete]`
   - Scope: Consolidate split imports into single lines
   - Location: iterm_controller/screens/project_list.py:15-16
   - Fix: `from textual.widgets import DataTable, Footer, Header, Static`
   - Acceptance: Consistent import style across codebase
+  - Result: Merged two `from textual.widgets import` lines into single line with all imports
 
 - [ ] **Use singleton parsers in MakeTestParser** `[pending]`
   - Scope: Avoid creating parser instances on every parse call

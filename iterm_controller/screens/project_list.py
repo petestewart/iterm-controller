@@ -12,8 +12,7 @@ from textual.binding import Binding
 from textual.containers import Container
 from textual.events import ScreenResume
 from textual.screen import Screen
-from textual.widgets import DataTable
-from textual.widgets import Footer, Header, Static
+from textual.widgets import DataTable, Footer, Header, Static
 
 if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
