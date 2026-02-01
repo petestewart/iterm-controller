@@ -407,7 +407,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Display task with assigned session, started time, attention state
   - Acceptance: Active tasks show linked session status
 
-- [ ] **Add blocked task visualization**
+- [x] **Add blocked task visualization** `[complete]`
   - Spec: specs/work-mode.md#blocked-task-view
   - Scope: Show dependency chain, `v` key for detailed view
   - Acceptance: Blocked tasks dimmed with "blocked by" suffix

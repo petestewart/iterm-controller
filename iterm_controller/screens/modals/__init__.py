@@ -2,6 +2,7 @@
 
 from .artifact_preview import ArtifactPreviewModal, ArtifactPreviewResult
 from .auto_mode_config import AutoModeConfigModal
+from .dependency_chain import DependencyChainModal
 from .docs_picker import DocsPickerModal
 from .github_actions import GitHubActionsModal
 from .help_modal import HelpModal
@@ -15,6 +16,7 @@ __all__ = [
     "ArtifactPreviewModal",
     "ArtifactPreviewResult",
     "AutoModeConfigModal",
+    "DependencyChainModal",
     "DocsPickerModal",
     "GitHubActionsModal",
     "HelpModal",

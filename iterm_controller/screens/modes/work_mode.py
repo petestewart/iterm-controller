@@ -30,6 +30,7 @@ from iterm_controller.state import (
     SessionStatusChanged,
 )
 from iterm_controller.widgets.active_work import ActiveWorkWidget
+from iterm_controller.widgets.blocked_tasks import BlockedTasksWidget
 from iterm_controller.widgets.session_list import SessionListWidget
 from iterm_controller.widgets.task_queue import TaskQueueWidget
 
@@ -74,6 +75,7 @@ class WorkModeScreen(ModeScreen):
         Binding("u", "unclaim_task", "Unclaim"),
         Binding("d", "mark_done", "Done"),
         Binding("f", "focus_session", "Focus"),
+        Binding("v", "view_dependencies", "View Deps"),
         Binding("r", "refresh", "Refresh"),
     ]
 
@@ -103,7 +105,13 @@ class WorkModeScreen(ModeScreen):
     }
 
     WorkModeScreen #task-queue {
-        height: 1fr;
+        height: 2fr;
+    }
+
+    WorkModeScreen #blocked-summary {
+        height: auto;
+        min-height: 3;
+        max-height: 8;
     }
 
     WorkModeScreen #active-work {
@@ -156,6 +164,7 @@ class WorkModeScreen(ModeScreen):
             Horizontal(
                 Vertical(
                     TaskQueueWidget(id="task-queue"),
+                    BlockedTasksWidget(id="blocked-summary"),
                     id="left-panel",
                 ),
                 Vertical(
@@ -220,6 +229,10 @@ class WorkModeScreen(ModeScreen):
             queue = self.query_one("#task-queue", TaskQueueWidget)
             queue.refresh_plan(self._plan)
 
+            # Update blocked tasks summary
+            blocked = self.query_one("#blocked-summary", BlockedTasksWidget)
+            blocked.refresh_plan(self._plan)
+
             # Update active work
             active = self.query_one("#active-work", ActiveWorkWidget)
             active.refresh_plan(self._plan)
@@ -251,9 +264,9 @@ class WorkModeScreen(ModeScreen):
             if t.status == TaskStatus.IN_PROGRESS
         )
 
-        # Count blocked tasks
-        queue = self.query_one("#task-queue", TaskQueueWidget)
-        blocked = len(queue.get_blocked_tasks())
+        # Count blocked tasks from the blocked summary widget
+        blocked_widget = self.query_one("#blocked-summary", BlockedTasksWidget)
+        blocked = len(blocked_widget.get_blocked_tasks())
 
         percent = (complete / total) * 100
 
@@ -662,3 +675,34 @@ class WorkModeScreen(ModeScreen):
 
         # Update widgets
         self._refresh_widgets(project_sessions)
+
+    # =========================================================================
+    # Dependency View
+    # =========================================================================
+
+    def action_view_dependencies(self) -> None:
+        """Show dependency chain for the selected task.
+
+        Opens the DependencyChainModal showing the full dependency chain
+        for the currently selected task (if it's blocked).
+        """
+        task = self._get_selected_task()
+
+        if not task:
+            self.notify("No task selected", severity="warning")
+            return
+
+        if not self._plan:
+            self.notify("No plan loaded", severity="warning")
+            return
+
+        # Check if task is blocked - show modal for blocked tasks
+        queue = self.query_one("#task-queue", TaskQueueWidget)
+        if not queue.is_task_blocked(task):
+            self.notify(f"Task {task.id} is not blocked", severity="information")
+            return
+
+        # Show dependency chain modal
+        from iterm_controller.screens.modals import DependencyChainModal
+
+        self.app.push_screen(DependencyChainModal(task, self._plan))
