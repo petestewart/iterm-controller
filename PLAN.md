@@ -44,7 +44,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Load global config from ~/.config/iterm-controller/config.json, merge with project-local overrides
   - Acceptance: Config merging works per spec (scalars override, lists replace, dicts merge, null removes)
 
-- [ ] **Add environment file parser** `[pending]`
+- [x] **Add environment file parser** `[complete]`
   - Spec: specs/config.md#environment-file-parsing
   - Scope: Parse .env files for session environment variables and placeholder resolution
   - Acceptance: Parses KEY=value, handles quotes, expands ${VAR} references
