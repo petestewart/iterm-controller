@@ -362,28 +362,25 @@ class TestModeScreen(ModeScreen):
     def _detect_test_command(self) -> str:
         """Detect the test command for this project.
 
+        Uses content-aware detection to check if project files actually
+        indicate test support (e.g., [tool.pytest] in pyproject.toml,
+        "test" script in package.json, test target in Makefile).
+
+        Respects project config override via test_command in
+        .iterm-controller.json.
+
         Returns:
             The detected test command, or empty string if none found.
         """
-        from pathlib import Path
+        from iterm_controller.config import load_project_config
+        from iterm_controller.test_command_detector import TestCommandDetector
 
-        project_path = Path(self.project.path)
+        # Load project-local config for potential overrides
+        project_config = load_project_config(self.project.path)
 
-        # Detection order from spec
-        detection_order = [
-            ("pytest.ini", "pytest"),
-            ("pyproject.toml", "pytest"),  # Check for [tool.pytest]
-            ("package.json", "npm test"),  # Check for "test" script
-            ("Makefile", "make test"),  # Check for test target
-            ("Cargo.toml", "cargo test"),
-            ("go.mod", "go test ./..."),
-        ]
-
-        for filename, command in detection_order:
-            if (project_path / filename).exists():
-                return command
-
-        return ""
+        detector = TestCommandDetector(self.project.path)
+        result = detector.detect(project_config)
+        return result.test_command
 
     # =========================================================================
     # Panel Navigation
@@ -553,16 +550,21 @@ class TestModeScreen(ModeScreen):
     def _detect_watch_command(self) -> str:
         """Detect the test watch command.
 
+        Uses content-aware detection and respects project config override
+        via test_watch_command in .iterm-controller.json.
+
         Returns:
             Watch command, or empty string if none detected.
         """
-        if "pytest" in self._test_command:
-            return "pytest-watch"
-        elif "npm" in self._test_command:
-            return "npm test -- --watch"
-        elif "cargo" in self._test_command:
-            return "cargo watch -x test"
-        return ""
+        from iterm_controller.config import load_project_config
+        from iterm_controller.test_command_detector import TestCommandDetector
+
+        # Load project-local config for potential overrides
+        project_config = load_project_config(self.project.path)
+
+        detector = TestCommandDetector(self.project.path)
+        result = detector.detect(project_config)
+        return result.watch_command
 
     def _run_test_command(self, command: str) -> None:
         """Run a test command in a new session.

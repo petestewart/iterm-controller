@@ -439,7 +439,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Detect test command, `r` runs tests, display results
   - Acceptance: Can run pytest/npm test and see results
 
-- [ ] **Implement test command detection**
+- [x] **Implement test command detection** `[complete]`
   - Spec: specs/test-mode.md#test-command-detection
   - Scope: Auto-detect from pytest.ini, package.json, Makefile, etc.
   - Acceptance: Correct test command detected for project type
