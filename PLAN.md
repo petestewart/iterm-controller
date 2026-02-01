@@ -532,7 +532,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Import `Any` from typing, add annotation
   - Acceptance: All widget constructors have complete type hints
 
-- [ ] **Remove duplicate exception classes from iterm_api.py** `[pending]`
+- [x] **Remove duplicate exception classes from iterm_api.py** `[complete]`
   - Scope: Remove local exception definitions, import from exceptions.py instead
   - Location: iterm_controller/iterm_api.py:40-55
   - Fix: Delete duplicate classes, add imports from `exceptions`

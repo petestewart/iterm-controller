@@ -21,6 +21,11 @@ import iterm2
 # followed by letters, digits, or underscores
 _ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+from iterm_controller.exceptions import (
+    ItermConnectionError,
+    ItermNotConnectedError,
+    ItermSessionError,
+)
 from iterm_controller.models import (
     ManagedSession,
     Project,
@@ -36,29 +41,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
-
-
-# =============================================================================
-# Exceptions
-# =============================================================================
-
-
-class ItermConnectionError(Exception):
-    """Raised when iTerm2 connection fails."""
-
-    pass
-
-
-class ItermSessionError(Exception):
-    """Raised when session operations fail."""
-
-    pass
-
-
-class ItermNotConnectedError(Exception):
-    """Raised when operation requires connection but not connected."""
-
-    pass
 
 
 # =============================================================================
