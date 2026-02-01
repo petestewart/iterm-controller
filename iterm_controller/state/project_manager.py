@@ -136,3 +136,39 @@ class ProjectStateManager:
             The project if found, None otherwise.
         """
         return self.projects.get(project_id)
+
+    def remove_project(
+        self,
+        project_id: str,
+        config: Any = None,
+        save_callback: Callable[[Any], None] | None = None,
+    ) -> bool:
+        """Remove a project from the state.
+
+        Args:
+            project_id: The ID of the project to remove.
+            config: The app config object (needed for persistence).
+            save_callback: Function to save the config to disk.
+
+        Returns:
+            True if project was removed, False if not found.
+        """
+        if project_id not in self.projects:
+            return False
+
+        # Remove from in-memory state
+        del self.projects[project_id]
+
+        # Clear active if this was the active project
+        if self.active_project_id == project_id:
+            self.active_project_id = None
+
+        # Remove from config and persist
+        if config and save_callback:
+            config.projects = [p for p in config.projects if p.id != project_id]
+            try:
+                save_callback(config)
+            except Exception as e:
+                logger.warning("Failed to save config after project removal: %s", e)
+
+        return True

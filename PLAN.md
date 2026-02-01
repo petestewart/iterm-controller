@@ -782,10 +782,11 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Acceptance: Reduced object allocation overhead
   - Result: Added class-level singleton parsers to MakeTestParser and OutputParserRegistry; parsers are now initialized once and reused across all parse calls
 
-- [ ] **Address TODO comments** `[pending]`
+- [x] **Address TODO comments** `[complete]`
   - Scope: Implement or remove 2 remaining TODO comments
   - Locations: project_list.py:232 (delete confirmation), test_mode.py:309 (conflict modal)
   - Acceptance: No TODO comments in production code
+  - Result: Implemented delete confirmation modal in project_list.py and created TestPlanConflictModal for test_mode.py; added tests for both
 
 ## Open Questions
 

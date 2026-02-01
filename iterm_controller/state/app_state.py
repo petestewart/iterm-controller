@@ -206,6 +206,23 @@ class AppState:
             save_callback=save_global_config if persist else None,
         )
 
+    def remove_project(self, project_id: str) -> bool:
+        """Remove a project from the state.
+
+        Args:
+            project_id: The ID of the project to remove.
+
+        Returns:
+            True if project was removed, False if not found.
+        """
+        from iterm_controller.config import save_global_config
+
+        return self._project_manager.remove_project(
+            project_id,
+            config=self.config,
+            save_callback=save_global_config,
+        )
+
     # =========================================================================
     # Session Operations (delegated to SessionStateManager)
     # =========================================================================

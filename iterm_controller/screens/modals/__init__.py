@@ -14,6 +14,7 @@ from .quit_confirm import QuitAction, QuitConfirmModal
 from .rename_document import RenameDocumentModal
 from .script_picker import ScriptPickerModal
 from .stage_advance import StageAdvanceModal
+from .test_plan_conflict import TestPlanConflictModal
 
 __all__ = [
     "AddDocumentModal",
@@ -32,4 +33,5 @@ __all__ = [
     "RenameDocumentModal",
     "ScriptPickerModal",
     "StageAdvanceModal",
+    "TestPlanConflictModal",
 ]

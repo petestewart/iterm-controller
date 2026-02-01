@@ -186,7 +186,7 @@ class TestProjectListScreenAsync:
                 # Should be on NewProjectScreen
                 assert isinstance(app.screen, NewProjectScreen)
 
-    async def test_delete_requires_project_to_be_closed(self) -> None:
+    async def test_delete_shows_error_for_open_project(self) -> None:
         """Test that delete shows error for open projects."""
         with patch(
             "iterm_controller.config.load_global_config",
@@ -194,7 +194,31 @@ class TestProjectListScreenAsync:
         ):
             app = ItermControllerApp()
 
-            # Add a closed project (delete should work differently for open ones)
+            # Add an open project
+            project = make_project(is_open=True)
+            app.state.projects[project.id] = project
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+
+                # Try to delete - should show error notification for open project
+                await pilot.press("d")
+
+                # Project should still exist (can't delete open projects)
+                assert project.id in app.state.projects
+
+    async def test_delete_shows_confirmation_modal(self) -> None:
+        """Test that delete shows confirmation modal for closed projects."""
+        from iterm_controller.screens.modals import DeleteConfirmModal
+
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add a closed project
             project = make_project(is_open=False)
             app.state.projects[project.id] = project
 
@@ -202,10 +226,61 @@ class TestProjectListScreenAsync:
                 # Navigate to project list
                 await pilot.press("p")
 
-                # Try to delete - should show notification (not implemented yet)
+                # Try to delete - should show confirmation modal
                 await pilot.press("d")
 
-                # Project should still exist (delete not implemented yet)
+                # Should be on DeleteConfirmModal
+                assert isinstance(app.screen, DeleteConfirmModal)
+
+    async def test_delete_removes_project_after_confirmation(self) -> None:
+        """Test that project is removed after confirming deletion."""
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add a closed project
+            project = make_project(is_open=False)
+            app.state.projects[project.id] = project
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+
+                # Start delete
+                await pilot.press("d")
+
+                # Press Enter to confirm deletion (Delete button)
+                await pilot.press("tab")  # Move to Delete button
+                await pilot.press("enter")
+
+                # Project should be removed
+                assert project.id not in app.state.projects
+
+    async def test_delete_cancellation_keeps_project(self) -> None:
+        """Test that cancelling deletion keeps the project."""
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add a closed project
+            project = make_project(is_open=False)
+            app.state.projects[project.id] = project
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+
+                # Start delete
+                await pilot.press("d")
+
+                # Press Escape to cancel
+                await pilot.press("escape")
+
+                # Project should still exist
                 assert project.id in app.state.projects
 
     async def test_refresh_updates_table(self) -> None:

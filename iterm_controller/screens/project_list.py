@@ -211,8 +211,36 @@ class ProjectListScreen(Screen):
             )
             return
 
-        # TODO: Add confirmation modal before deleting
-        self.notify(f"Delete project '{project.name}': Not implemented yet")
+        # Show confirmation modal before deleting
+        from iterm_controller.screens.modals import DeleteConfirmModal
+
+        def on_confirm(confirmed: bool) -> None:
+            if confirmed:
+                self._do_delete_project(project_id)
+
+        self.app.push_screen(
+            DeleteConfirmModal(project.name, "project"),
+            on_confirm,
+        )
+
+    def _do_delete_project(self, project_id: str) -> None:
+        """Actually delete the project after confirmation.
+
+        Args:
+            project_id: ID of the project to delete.
+        """
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+        project = app.state.projects.get(project_id)
+
+        if not project:
+            return
+
+        # Remove from state
+        app.state.remove_project(project_id)
+
+        # Refresh the table
+        self.call_later(self._populate_table)
+        self.notify(f"Project '{project.name}' deleted")
 
     async def action_refresh(self) -> None:
         """Refresh the project list."""

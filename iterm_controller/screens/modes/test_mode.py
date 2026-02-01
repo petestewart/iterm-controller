@@ -305,12 +305,28 @@ class TestModeScreen(ModeScreen):
             new_plan: The new test plan from disk.
             changes: List of detected changes.
         """
-        # For now, auto-accept external changes
-        # TODO: Show conflict resolution modal
-        self._test_plan = new_plan
-        self._refresh_widgets()
-        self._update_progress_bar()
-        self.notify("TEST_PLAN.md updated externally")
+        from iterm_controller.screens.modals import TestPlanConflictModal
+
+        def on_resolve(action: str) -> None:
+            if action == "reload":
+                # Accept external changes
+                self._test_plan = new_plan
+                self._refresh_widgets()
+                self._update_progress_bar()
+                self.notify("TEST_PLAN.md reloaded from disk")
+            elif action == "keep":
+                # Keep current version, discard external changes
+                self.notify("Kept current TEST_PLAN.md (external changes discarded)")
+            # "later" action: do nothing, let user decide later
+
+        self.app.push_screen(
+            TestPlanConflictModal(
+                current_plan=self._test_plan or TestPlan(),
+                new_plan=new_plan,
+                changes=changes,
+            ),
+            on_resolve,
+        )
 
     def _on_plan_deleted(self) -> None:
         """Handle test plan deletion."""
