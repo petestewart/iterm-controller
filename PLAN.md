@@ -113,7 +113,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Update task status in PLAN.md while preserving formatting
   - Acceptance: Status changes written back correctly without corrupting file
 
-- [ ] **Add file watcher for PLAN.md** `[pending]`
+- [x] **Add file watcher for PLAN.md** `[complete]`
   - Spec: specs/plan-parser.md#file-watching
   - Scope: Use watchfiles to detect external changes, trigger reload/conflict resolution
   - Acceptance: External edits detected within 1 second
