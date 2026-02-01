@@ -140,7 +140,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Reactive state for projects, sessions, settings with event dispatch
   - Acceptance: State changes trigger UI updates automatically
 
-- [ ] **Build session list widget** `[pending]`
+- [x] **Build session list widget** `[complete]`
   - Spec: specs/ui.md#session-list-widget
   - Scope: Display sessions with status indicators (Working/Waiting/Idle icons)
   - Acceptance: Session status updates reflected in real-time
