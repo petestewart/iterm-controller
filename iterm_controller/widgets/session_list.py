@@ -58,6 +58,7 @@ class SessionListWidget(Static):
         super().__init__(**kwargs)
         self._sessions: list[ManagedSession] = list(sessions) if sessions else []
         self._show_project = show_project
+        self._sorted_cache: list[ManagedSession] | None = None
 
     @property
     def sessions(self) -> list[ManagedSession]:
@@ -71,7 +72,35 @@ class SessionListWidget(Static):
             sessions: New list of sessions to display.
         """
         self._sessions = list(sessions)
+        self._invalidate_cache()
         self.update(self._render_sessions())
+
+    def _invalidate_cache(self) -> None:
+        """Invalidate the sorted session cache."""
+        self._sorted_cache = None
+
+    def _get_sorted_sessions(self) -> list[ManagedSession]:
+        """Get sessions sorted by attention state priority.
+
+        Caches the sorted list and returns cached value on subsequent calls
+        until cache is invalidated.
+
+        Returns:
+            Sessions sorted with WAITING first, then WORKING, then IDLE.
+        """
+        if self._sorted_cache is not None:
+            return self._sorted_cache
+
+        # Sort sessions: WAITING first, then WORKING, then IDLE
+        priority = {
+            AttentionState.WAITING: 0,
+            AttentionState.WORKING: 1,
+            AttentionState.IDLE: 2,
+        }
+        self._sorted_cache = sorted(
+            self._sessions, key=lambda s: priority.get(s.attention_state, 3)
+        )
+        return self._sorted_cache
 
     def _get_status_icon(self, state: AttentionState) -> str:
         """Get the icon for a given attention state.
@@ -146,15 +175,7 @@ class SessionListWidget(Static):
         if not self._sessions:
             return Text("No active sessions", style="dim italic")
 
-        # Sort sessions: WAITING first, then WORKING, then IDLE
-        priority = {
-            AttentionState.WAITING: 0,
-            AttentionState.WORKING: 1,
-            AttentionState.IDLE: 2,
-        }
-        sorted_sessions = sorted(
-            self._sessions, key=lambda s: priority.get(s.attention_state, 3)
-        )
+        sorted_sessions = self._get_sorted_sessions()
 
         lines = []
         for session in sorted_sessions:
@@ -186,6 +207,7 @@ class SessionListWidget(Static):
         existing_ids = {s.id for s in self._sessions}
         if message.session.id not in existing_ids:
             self._sessions.append(message.session)
+            self._invalidate_cache()
             self.update(self._render_sessions())
 
     def on_session_closed(self, message: SessionClosed) -> None:
@@ -195,6 +217,7 @@ class SessionListWidget(Static):
             message: The session closed message.
         """
         self._sessions = [s for s in self._sessions if s.id != message.session.id]
+        self._invalidate_cache()
         self.update(self._render_sessions())
 
     def on_session_status_changed(self, message: SessionStatusChanged) -> None:
@@ -207,6 +230,7 @@ class SessionListWidget(Static):
             if session.id == message.session.id:
                 self._sessions[i] = message.session
                 break
+        self._invalidate_cache()
         self.update(self._render_sessions())
 
     def get_waiting_sessions(self) -> list[ManagedSession]:

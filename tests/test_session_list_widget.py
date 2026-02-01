@@ -362,3 +362,145 @@ class TestHelperMethods:
         found = widget.get_session_by_id("s1")
 
         assert found is None
+
+
+class TestSortedSessionCache:
+    """Tests for sorted session list caching."""
+
+    def test_cache_starts_empty(self) -> None:
+        """Test cache is initially None."""
+        widget = SessionListWidget()
+        assert widget._sorted_cache is None
+
+    def test_get_sorted_sessions_populates_cache(self) -> None:
+        """Test _get_sorted_sessions populates the cache."""
+        session = make_session()
+        widget = SessionListWidget(sessions=[session])
+
+        # Cache should be empty
+        assert widget._sorted_cache is None
+
+        # Call _get_sorted_sessions
+        result = widget._get_sorted_sessions()
+
+        # Cache should now be populated
+        assert widget._sorted_cache is not None
+        assert widget._sorted_cache == result
+
+    def test_get_sorted_sessions_returns_cached_value(self) -> None:
+        """Test _get_sorted_sessions returns cached value on subsequent calls."""
+        idle = make_session(session_id="idle", attention_state=AttentionState.IDLE)
+        waiting = make_session(
+            session_id="waiting", attention_state=AttentionState.WAITING
+        )
+        widget = SessionListWidget(sessions=[idle, waiting])
+
+        # First call populates cache
+        first_result = widget._get_sorted_sessions()
+        cached = widget._sorted_cache
+
+        # Second call should return same cached list object
+        second_result = widget._get_sorted_sessions()
+        assert second_result is cached
+        assert second_result is first_result
+
+    def test_on_session_spawned_invalidates_cache(self) -> None:
+        """Test on_session_spawned invalidates and repopulates the cache."""
+        session1 = make_session(session_id="s1")
+        widget = SessionListWidget(sessions=[session1])
+
+        # Populate cache
+        old_cache = widget._get_sorted_sessions()
+        assert widget._sorted_cache is old_cache
+
+        # Spawn a new session
+        session2 = make_session(session_id="s2")
+        message = SessionSpawned(session2)
+
+        with patch.object(widget, "update"):
+            widget.on_session_spawned(message)
+
+        # Cache should be repopulated with new session included
+        # (rendering calls _get_sorted_sessions which repopulates)
+        assert widget._sorted_cache is not old_cache
+        assert len(widget._sorted_cache) == 2
+
+    def test_on_session_closed_invalidates_cache(self) -> None:
+        """Test on_session_closed invalidates and repopulates the cache."""
+        session1 = make_session(session_id="s1")
+        session2 = make_session(session_id="s2")
+        widget = SessionListWidget(sessions=[session1, session2])
+
+        # Populate cache
+        old_cache = widget._get_sorted_sessions()
+        assert len(old_cache) == 2
+
+        # Close a session
+        message = SessionClosed(session1)
+
+        with patch.object(widget, "update"):
+            widget.on_session_closed(message)
+
+        # Cache should be repopulated without the closed session
+        assert widget._sorted_cache is not old_cache
+        assert len(widget._sorted_cache) == 1
+        assert widget._sorted_cache[0].id == "s2"
+
+    def test_on_session_status_changed_invalidates_cache(self) -> None:
+        """Test on_session_status_changed invalidates and repopulates the cache."""
+        session = make_session(session_id="s1", attention_state=AttentionState.IDLE)
+        widget = SessionListWidget(sessions=[session])
+
+        # Populate cache
+        old_cache = widget._get_sorted_sessions()
+        assert old_cache[0].attention_state == AttentionState.IDLE
+
+        # Change session status
+        updated = make_session(session_id="s1", attention_state=AttentionState.WAITING)
+        message = SessionStatusChanged(updated)
+
+        with patch.object(widget, "update"):
+            widget.on_session_status_changed(message)
+
+        # Cache should be repopulated with updated status
+        assert widget._sorted_cache is not old_cache
+        assert widget._sorted_cache[0].attention_state == AttentionState.WAITING
+
+    def test_refresh_sessions_invalidates_cache(self) -> None:
+        """Test refresh_sessions invalidates and repopulates the cache."""
+        session1 = make_session(session_id="s1")
+        widget = SessionListWidget(sessions=[session1])
+
+        # Populate cache
+        old_cache = widget._get_sorted_sessions()
+        assert old_cache[0].id == "s1"
+
+        # Refresh with new sessions
+        session2 = make_session(session_id="s2")
+
+        with patch.object(widget, "update"):
+            widget.refresh_sessions([session2])
+
+        # Cache should be repopulated with new session list
+        assert widget._sorted_cache is not old_cache
+        assert len(widget._sorted_cache) == 1
+        assert widget._sorted_cache[0].id == "s2"
+
+    def test_cache_correctly_sorts_sessions(self) -> None:
+        """Test cached sort order is correct (WAITING > WORKING > IDLE)."""
+        idle = make_session(session_id="idle", attention_state=AttentionState.IDLE)
+        working = make_session(
+            session_id="working", attention_state=AttentionState.WORKING
+        )
+        waiting = make_session(
+            session_id="waiting", attention_state=AttentionState.WAITING
+        )
+
+        # Add in wrong order
+        widget = SessionListWidget(sessions=[idle, working, waiting])
+        sorted_sessions = widget._get_sorted_sessions()
+
+        # Should be sorted: waiting, working, idle
+        assert sorted_sessions[0].id == "waiting"
+        assert sorted_sessions[1].id == "working"
+        assert sorted_sessions[2].id == "idle"

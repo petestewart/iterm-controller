@@ -707,7 +707,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Add `_task_map_cache` property to Plan model
   - Acceptance: Task status updates are O(1)
 
-- [ ] **Cache sorted session list in widget** `[pending]`
+- [x] **Cache sorted session list in widget** `[complete]`
   - Scope: Avoid re-sorting on every render
   - Location: iterm_controller/widgets/session_list.py:160-180
   - Fix: Cache sorted list, invalidate on session changes
