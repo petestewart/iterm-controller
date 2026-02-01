@@ -177,7 +177,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Browse and select projects from config
   - Acceptance: Lists projects, can open project dashboard
 
-- [ ] **Build New Project screen** `[pending]`
+- [x] **Build New Project screen** `[complete]`
   - Spec: specs/ui.md#new-project-screen
   - Scope: Create project from template, run setup script, create branch
   - Acceptance: Template selection, form inputs, spawns initial sessions
