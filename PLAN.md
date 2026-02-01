@@ -209,7 +209,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Check availability, fetch branch sync status, PR info
   - Acceptance: Graceful degradation when gh unavailable or unauthenticated
 
-- [ ] **Build GitHub panel widget** `[pending]`
+- [x] **Build GitHub panel widget** `[complete]`
   - Spec: specs/github.md#github-status-widget
   - Scope: Display branch status, PR info, comments
   - Acceptance: Shows data when available, hides/degrades gracefully
