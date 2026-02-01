@@ -84,6 +84,10 @@ class DocsModeScreen(ModeScreen):
         Binding("k", "cursor_up", "Up", show=False),
         Binding("down", "cursor_down", "Down", show=False),
         Binding("up", "cursor_up", "Up", show=False),
+        Binding("left", "collapse_node", "Collapse", show=False),
+        Binding("right", "expand_node", "Expand", show=False),
+        Binding("h", "collapse_node", "Collapse", show=False),
+        Binding("l", "expand_node", "Expand", show=False),
         Binding("enter", "open_selected", "Open"),
         Binding("e", "edit_selected", "Edit"),
         Binding("a", "add_document", "Add"),
@@ -191,6 +195,57 @@ class DocsModeScreen(ModeScreen):
         tree = self.query_one("#doc-tree", DocTreeWidget)
         tree.action_cursor_up()
         self._update_status_bar()
+
+    def action_collapse_node(self) -> None:
+        """Collapse the selected directory or move to parent.
+
+        Behavior per spec:
+        - If on expanded directory: collapse it
+        - If on collapsed directory or file: move to parent directory
+        """
+        tree = self.query_one("#doc-tree", DocTreeWidget)
+        node = tree.cursor_node
+
+        if not node:
+            return
+
+        # If node is expanded directory, collapse it
+        if node.data and node.data.is_directory and node.is_expanded:
+            node.collapse()
+        # Otherwise, move to parent (if not at root)
+        elif node.parent and node.parent != tree.root:
+            tree.select_node(node.parent)
+            self._update_status_bar()
+        elif node.parent == tree.root:
+            # At top-level, move to root
+            tree.select_node(tree.root)
+            self._update_status_bar()
+
+    def action_expand_node(self) -> None:
+        """Expand the selected directory or enter it.
+
+        Behavior per spec:
+        - If on collapsed directory: expand it
+        - If on expanded directory: move to first child
+        - If on file: open it
+        """
+        tree = self.query_one("#doc-tree", DocTreeWidget)
+        node = tree.cursor_node
+
+        if not node or not node.data:
+            return
+
+        if node.data.is_directory:
+            if not node.is_expanded:
+                # Expand collapsed directory
+                node.expand()
+            elif node.children:
+                # Move to first child if expanded
+                tree.select_node(node.children[0])
+                self._update_status_bar()
+        else:
+            # On a file: open it
+            self.action_edit_selected()
 
     def action_open_selected(self) -> None:
         """Open the selected item (file: edit, directory: expand/collapse)."""

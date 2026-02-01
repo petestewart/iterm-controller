@@ -456,7 +456,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Tree view of docs/, specs/, README.md, CHANGELOG.md
   - Acceptance: Documentation tree displays with folders collapsible
 
-- [ ] **Implement folder/file tree navigation**
+- [x] **Implement folder/file tree navigation** `[complete]`
   - Spec: specs/docs-mode.md#actions
   - Scope: Arrow keys navigate, Enter opens/expands, Left/Right collapse/expand
   - Acceptance: Can navigate entire doc tree with keyboard

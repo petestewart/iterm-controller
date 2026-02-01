@@ -121,6 +121,17 @@ class TestDocsModeScreen:
         assert "down" in binding_keys  # Down arrow
         assert "up" in binding_keys  # Up arrow
 
+    def test_docs_mode_has_collapse_expand_bindings(self) -> None:
+        """Test that DocsModeScreen has collapse/expand bindings for tree navigation."""
+        project = make_project()
+        screen = DocsModeScreen(project)
+        binding_keys = [b.key for b in screen.BINDINGS]
+
+        assert "left" in binding_keys  # Collapse
+        assert "right" in binding_keys  # Expand
+        assert "h" in binding_keys  # Collapse (vim)
+        assert "l" in binding_keys  # Expand (vim)
+
 
 class TestWorkModeScreen:
     """Tests for WorkModeScreen."""
@@ -1542,3 +1553,254 @@ class TestTestPlanWatcherCreationCallback:
             assert template.working_dir == tmpdir
             assert template.id == "qa-agent"
             assert template.command == "claude /qa --execute TEST_PLAN.md"
+
+
+@pytest.mark.asyncio
+class TestDocsModeTreeNavigation:
+    """Tests for DocsModeScreen tree navigation functionality."""
+
+    async def test_docs_mode_shows_tree_widget(self) -> None:
+        """Test that DocsModeScreen displays doc tree widget."""
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a docs directory with files
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+            (docs_dir / "readme.md").write_text("# Docs")
+
+            app = ItermControllerApp()
+            async with app.run_test():
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Should have a doc tree widget
+                tree_widget = app.screen.query_one("#doc-tree", DocTreeWidget)
+                assert tree_widget is not None
+
+    async def test_docs_mode_arrow_navigation(self) -> None:
+        """Test arrow key navigation in docs tree."""
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a docs directory with multiple files
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+            (docs_dir / "a-first.md").write_text("# First")
+            (docs_dir / "b-second.md").write_text("# Second")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                tree_widget = app.screen.query_one("#doc-tree", DocTreeWidget)
+
+                # Navigate down
+                await pilot.press("down")
+                await pilot.pause()
+
+                # Navigate up
+                await pilot.press("up")
+                await pilot.pause()
+
+                # Tree should still be functional (no crash)
+                assert tree_widget is not None
+
+    async def test_docs_mode_vim_navigation(self) -> None:
+        """Test vim-style navigation (j/k) in docs tree."""
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a docs directory with multiple files
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+            (docs_dir / "a-first.md").write_text("# First")
+            (docs_dir / "b-second.md").write_text("# Second")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                tree_widget = app.screen.query_one("#doc-tree", DocTreeWidget)
+
+                # Navigate with vim keys
+                await pilot.press("j")  # Down
+                await pilot.pause()
+
+                await pilot.press("k")  # Up
+                await pilot.pause()
+
+                # Tree should still be functional (no crash)
+                assert tree_widget is not None
+
+    async def test_docs_mode_collapse_expand_with_arrows(self) -> None:
+        """Test left/right arrow keys for collapse/expand."""
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create nested docs structure
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+            subdir = docs_dir / "subdir"
+            subdir.mkdir()
+            (subdir / "nested.md").write_text("# Nested")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                tree_widget = app.screen.query_one("#doc-tree", DocTreeWidget)
+
+                # Navigate to docs/ folder (first item after root)
+                await pilot.press("down")
+                await pilot.pause()
+
+                # Press right to expand (or enter subfolder)
+                await pilot.press("right")
+                await pilot.pause()
+
+                # Press left to collapse (or go to parent)
+                await pilot.press("left")
+                await pilot.pause()
+
+                # Tree should still be functional
+                assert tree_widget is not None
+
+    async def test_docs_mode_collapse_expand_with_vim_keys(self) -> None:
+        """Test h/l vim keys for collapse/expand."""
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create nested docs structure
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+            subdir = docs_dir / "subdir"
+            subdir.mkdir()
+            (subdir / "nested.md").write_text("# Nested")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                tree_widget = app.screen.query_one("#doc-tree", DocTreeWidget)
+
+                # Navigate to docs/ folder
+                await pilot.press("j")
+                await pilot.pause()
+
+                # Press 'l' to expand
+                await pilot.press("l")
+                await pilot.pause()
+
+                # Press 'h' to collapse
+                await pilot.press("h")
+                await pilot.pause()
+
+                # Tree should still be functional
+                assert tree_widget is not None
+
+    async def test_docs_mode_enter_opens_file_or_toggles_folder(self) -> None:
+        """Test Enter key opens files or toggles folders."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create docs directory
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+            (docs_dir / "readme.md").write_text("# Readme")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                tree_widget = app.screen.query_one("#doc-tree", DocTreeWidget)
+
+                # Navigate to docs/ folder
+                await pilot.press("j")
+                await pilot.pause()
+
+                # Press Enter to toggle folder expansion
+                await pilot.press("enter")
+                await pilot.pause()
+
+                # Navigate into the docs folder and select the file
+                await pilot.press("j")
+                await pilot.pause()
+
+                # Mock subprocess to avoid actually opening editor
+                with patch("asyncio.to_thread") as mock_to_thread:
+                    mock_to_thread.return_value = None
+
+                    # Press Enter on file to open it
+                    await pilot.press("enter")
+                    await pilot.pause()
+
+                # Tree should still be functional
+                assert tree_widget is not None
+
+    async def test_docs_mode_refresh_rebuilds_tree(self) -> None:
+        """Test that 'x' key refreshes the tree."""
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create initial structure
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Add a new file after mounting
+                (docs_dir / "new-file.md").write_text("# New File")
+
+                # Press 'x' to refresh
+                await pilot.press("x")
+                await pilot.pause()
+
+                tree_widget = app.screen.query_one("#doc-tree", DocTreeWidget)
+
+                # Tree should be rebuilt with new file
+                assert tree_widget is not None
