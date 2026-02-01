@@ -948,3 +948,295 @@ class TestStateQueryFunctions:
 
                 # Should have loaded the plan and returned progress
                 assert isinstance(progress, dict)
+
+
+# =============================================================================
+# AppAPI Tests (TUI-integrated API)
+# =============================================================================
+
+
+class TestAppAPI:
+    """Tests for the AppAPI class that integrates with the TUI app."""
+
+    @pytest.mark.asyncio
+    async def test_app_api_created_on_app_init(self) -> None:
+        """Test that AppAPI is created when app is initialized."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.api import AppAPI
+
+        app = ItermControllerApp()
+        assert hasattr(app, "api")
+        assert isinstance(app.api, AppAPI)
+
+    @pytest.mark.asyncio
+    async def test_app_api_is_connected_false_initially(self) -> None:
+        """Test that is_connected is False before iTerm2 connection."""
+        from iterm_controller.app import ItermControllerApp
+
+        app = ItermControllerApp()
+        assert app.api.is_connected is False
+
+    @pytest.mark.asyncio
+    async def test_app_api_state_property(self) -> None:
+        """Test that AppAPI.state returns the app's state."""
+        from iterm_controller.app import ItermControllerApp
+
+        app = ItermControllerApp()
+        assert app.api.state is app.state
+
+    @pytest.mark.asyncio
+    async def test_app_api_spawn_session_not_connected(
+        self, sample_config: AppConfig
+    ) -> None:
+        """Test spawn_session when not connected to iTerm2."""
+        from iterm_controller.app import ItermControllerApp
+
+        app = ItermControllerApp()
+        app.state.config = sample_config
+        for p in sample_config.projects:
+            app.state.projects[p.id] = p
+
+        result = await app.api.spawn_session("test-project", "dev-server")
+
+        assert result.success is False
+        assert "not connected" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_app_api_kill_session_not_connected(
+        self, sample_config: AppConfig, sample_session: ManagedSession
+    ) -> None:
+        """Test kill_session when not connected to iTerm2."""
+        from iterm_controller.app import ItermControllerApp
+
+        app = ItermControllerApp()
+        app.state.config = sample_config
+        for p in sample_config.projects:
+            app.state.projects[p.id] = p
+        app.state.add_session(sample_session)
+
+        result = await app.api.kill_session("session-1")
+
+        assert result.success is False
+        assert "not connected" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_app_api_focus_session_not_connected(
+        self, sample_config: AppConfig, sample_session: ManagedSession
+    ) -> None:
+        """Test focus_session when not connected to iTerm2."""
+        from iterm_controller.app import ItermControllerApp
+
+        app = ItermControllerApp()
+        app.state.config = sample_config
+        for p in sample_config.projects:
+            app.state.projects[p.id] = p
+        app.state.add_session(sample_session)
+
+        result = await app.api.focus_session("session-1")
+
+        assert result.success is False
+        assert "not connected" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_app_api_update_task_status(
+        self, sample_config: AppConfig, sample_plan: Plan
+    ) -> None:
+        """Test updating task status through AppAPI."""
+        from iterm_controller.app import ItermControllerApp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create PLAN.md with a pending task
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Task 1** `[pending]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            # Update project path
+            sample_config.projects[0].path = tmpdir
+
+            app = ItermControllerApp()
+            app.state.config = sample_config
+            for p in sample_config.projects:
+                app.state.projects[p.id] = p
+
+            # Load the plan into state
+            from iterm_controller.plan_parser import PlanParser
+            parser = PlanParser()
+            plan = parser.parse_file(Path(tmpdir) / "PLAN.md")
+            app.state.set_plan("test-project", plan)
+
+            # Update task status
+            result = await app.api.update_task_status(
+                "test-project", "1.1", TaskStatus.IN_PROGRESS
+            )
+
+            assert result.success is True
+            assert result.task is not None
+            assert result.task.status == TaskStatus.IN_PROGRESS
+
+            # Verify file was updated
+            content = (Path(tmpdir) / "PLAN.md").read_text()
+            assert "[in_progress]" in content
+
+    @pytest.mark.asyncio
+    async def test_app_api_claim_task(
+        self, sample_config: AppConfig
+    ) -> None:
+        """Test claiming a task through AppAPI."""
+        from iterm_controller.app import ItermControllerApp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Task 1** `[pending]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+            sample_config.projects[0].path = tmpdir
+
+            app = ItermControllerApp()
+            app.state.config = sample_config
+            for p in sample_config.projects:
+                app.state.projects[p.id] = p
+
+            from iterm_controller.plan_parser import PlanParser
+            parser = PlanParser()
+            plan = parser.parse_file(Path(tmpdir) / "PLAN.md")
+            app.state.set_plan("test-project", plan)
+
+            result = await app.api.claim_task("test-project", "1.1")
+
+            assert result.success is True
+            assert result.task.status == TaskStatus.IN_PROGRESS
+
+    @pytest.mark.asyncio
+    async def test_app_api_unclaim_task(
+        self, sample_config: AppConfig
+    ) -> None:
+        """Test unclaiming a task through AppAPI."""
+        from iterm_controller.app import ItermControllerApp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Task 1** `[in_progress]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+            sample_config.projects[0].path = tmpdir
+
+            app = ItermControllerApp()
+            app.state.config = sample_config
+            for p in sample_config.projects:
+                app.state.projects[p.id] = p
+
+            from iterm_controller.plan_parser import PlanParser
+            parser = PlanParser()
+            plan = parser.parse_file(Path(tmpdir) / "PLAN.md")
+            app.state.set_plan("test-project", plan)
+
+            result = await app.api.unclaim_task("test-project", "1.1")
+
+            assert result.success is True
+            assert result.task.status == TaskStatus.PENDING
+
+    @pytest.mark.asyncio
+    async def test_app_api_complete_task(
+        self, sample_config: AppConfig
+    ) -> None:
+        """Test completing a task through AppAPI."""
+        from iterm_controller.app import ItermControllerApp
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Task 1** `[in_progress]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+            sample_config.projects[0].path = tmpdir
+
+            app = ItermControllerApp()
+            app.state.config = sample_config
+            for p in sample_config.projects:
+                app.state.projects[p.id] = p
+
+            from iterm_controller.plan_parser import PlanParser
+            parser = PlanParser()
+            plan = parser.parse_file(Path(tmpdir) / "PLAN.md")
+            app.state.set_plan("test-project", plan)
+
+            result = await app.api.complete_task("test-project", "1.1")
+
+            assert result.success is True
+            assert result.task.status == TaskStatus.COMPLETE
+
+    @pytest.mark.asyncio
+    async def test_app_api_toggle_auto_mode(
+        self, sample_config: AppConfig
+    ) -> None:
+        """Test toggling auto mode through AppAPI."""
+        from iterm_controller.app import ItermControllerApp
+
+        app = ItermControllerApp()
+        app.state.config = sample_config
+
+        initial_status = app.api.get_auto_mode_status()
+
+        with patch("iterm_controller.api.save_global_config"):
+            result = await app.api.toggle_auto_mode()
+
+        assert result.success is True
+        assert app.api.get_auto_mode_status() != initial_status
+
+    @pytest.mark.asyncio
+    async def test_app_api_get_session_templates(
+        self, sample_config: AppConfig
+    ) -> None:
+        """Test getting session templates through AppAPI."""
+        from iterm_controller.app import ItermControllerApp
+
+        app = ItermControllerApp()
+        app.state.config = sample_config
+
+        templates = app.api.get_session_templates()
+
+        assert len(templates) == 1
+        assert templates[0].id == "dev-server"
+
+    @pytest.mark.asyncio
+    async def test_app_api_update_project_mode(
+        self, sample_config: AppConfig
+    ) -> None:
+        """Test updating project mode through AppAPI."""
+        from iterm_controller.app import ItermControllerApp
+
+        app = ItermControllerApp()
+        app.state.config = sample_config
+        for p in sample_config.projects:
+            app.state.projects[p.id] = p
+
+        with patch("iterm_controller.config.save_global_config"):
+            result = await app.api.update_project_mode("test-project", WorkflowMode.TEST)
+
+        assert result.success is True
+        project = app.state.projects["test-project"]
+        assert project.last_mode == WorkflowMode.TEST

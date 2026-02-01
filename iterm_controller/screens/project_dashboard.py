@@ -267,22 +267,11 @@ class ProjectDashboardScreen(Screen):
             self.notify("Project not found", severity="error")
             return
 
-        try:
-            from iterm_controller.iterm_api import SessionSpawner
-
-            spawner = SessionSpawner(app.iterm)
-            result = await spawner.spawn_session(template, project)
-
-            if result.success:
-                # Add session to state
-                managed = spawner.get_session(result.session_id)
-                if managed:
-                    app.state.add_session(managed)
-                self.notify(f"{success_prefix}: {template.name}")
-            else:
-                self.notify(f"Failed: {result.error}", severity="error")
-        except Exception as e:
-            self.notify(f"Error: {e}", severity="error")
+        result = await app.api.spawn_session_with_template(project, template)
+        if result.success:
+            self.notify(f"{success_prefix}: {template.name}")
+        else:
+            self.notify(f"Failed: {result.error}", severity="error")
 
     def action_open_docs(self) -> None:
         """Show docs picker modal."""
@@ -361,21 +350,12 @@ class ProjectDashboardScreen(Screen):
         """Toggle auto mode enabled/disabled or open config modal."""
         app: ItermControllerApp = self.app  # type: ignore[assignment]
 
-        if not app.state.config:
-            self.notify("No configuration loaded", severity="error")
-            return
-
-        # Toggle auto mode
-        auto_mode = app.state.config.auto_mode
-        auto_mode.enabled = not auto_mode.enabled
-
-        # Save config
-        from iterm_controller.config import save_global_config
-
-        save_global_config(app.state.config)
-
-        status = "enabled" if auto_mode.enabled else "disabled"
-        self.notify(f"Auto mode {status}")
+        result = await app.api.toggle_auto_mode()
+        if result.success:
+            status = "enabled" if app.api.get_auto_mode_status() else "disabled"
+            self.notify(f"Auto mode {status}")
+        else:
+            self.notify(f"Failed to toggle auto mode: {result.error}", severity="error")
 
     async def action_focus_session(self) -> None:
         """Focus the first WAITING session (or first session if none waiting)."""
@@ -386,20 +366,11 @@ class ProjectDashboardScreen(Screen):
             self.notify("No session to focus", severity="warning")
             return
 
-        if not app.iterm.is_connected:
-            self.notify("Not connected to iTerm2", severity="error")
-            return
-
-        try:
-            iterm_session = await app.iterm.app.async_get_session_by_id(session.id)
-            if not iterm_session:
-                self.notify(f"Session not found: {session.template_id}", severity="error")
-                return
-
-            await iterm_session.async_activate()
+        result = await app.api.focus_session(session.id)
+        if result.success:
             self.notify(f"Focused session: {session.template_id}")
-        except Exception as e:
-            self.notify(f"Error focusing session: {e}", severity="error")
+        else:
+            self.notify(f"Error focusing session: {result.error}", severity="error")
 
     async def action_kill_session(self) -> None:
         """Kill the selected session."""
@@ -410,33 +381,11 @@ class ProjectDashboardScreen(Screen):
             self.notify("No session to kill", severity="warning")
             return
 
-        if not app.iterm.is_connected:
-            self.notify("Not connected to iTerm2", severity="error")
-            return
-
-        try:
-            from iterm_controller.iterm_api import SessionTerminator
-
-            terminator = SessionTerminator(app.iterm)
-
-            iterm_session = await app.iterm.app.async_get_session_by_id(session.id)
-            if not iterm_session:
-                app.state.remove_session(session.id)
-                self.notify(f"Session already closed: {session.template_id}")
-                return
-
-            result = await terminator.close_session(iterm_session)
-
-            if result.success:
-                app.state.remove_session(session.id)
-                if result.force_required:
-                    self.notify(f"Force-closed session: {session.template_id}")
-                else:
-                    self.notify(f"Closed session: {session.template_id}")
-            else:
-                self.notify(f"Failed to close session: {result.error}", severity="error")
-        except Exception as e:
-            self.notify(f"Error closing session: {e}", severity="error")
+        result = await app.api.kill_session(session.id)
+        if result.success:
+            self.notify(f"Closed session: {session.template_id}")
+        else:
+            self.notify(f"Failed to close session: {result.error}", severity="error")
 
     def _get_selected_session(self) -> ManagedSession | None:
         """Get the currently selected session.

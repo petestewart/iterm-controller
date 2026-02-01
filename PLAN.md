@@ -568,7 +568,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Functions: get_state(), get_sessions(), get_plan()
   - Acceptance: External tools can query current sessions, tasks, project state
 
-- [ ] **Extract core logic from action methods** `[pending]`
+- [x] **Extract core logic from action methods** `[complete]`
   - Scope: Separate business logic from TUI-specific code in action_* methods
   - Locations: All screen action handlers
   - Fix: Move core logic to api.py, have action methods call API

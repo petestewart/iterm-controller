@@ -5,9 +5,12 @@ This module provides the main iTerm Controller TUI application.
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from textual.app import App
 from textual.binding import Binding
 
+from iterm_controller.api import AppAPI
 from iterm_controller.github import GitHubIntegration
 from iterm_controller.iterm_api import ItermController
 from iterm_controller.notifications import Notifier
@@ -22,6 +25,9 @@ from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 from iterm_controller.screens.project_list import ProjectListScreen
 from iterm_controller.screens.settings import SettingsScreen
 from iterm_controller.state import AppState
+
+if TYPE_CHECKING:
+    from iterm_controller.screens.modals.quit_confirm import QuitAction
 
 
 class ItermControllerApp(App):
@@ -65,6 +71,7 @@ class ItermControllerApp(App):
         self.iterm = ItermController()
         self.github = GitHubIntegration()
         self.notifier = Notifier()
+        self.api = AppAPI(self)  # API for screens to call
 
     async def on_mount(self) -> None:
         """Initialize services when app starts."""
@@ -108,7 +115,6 @@ class ItermControllerApp(App):
         Args:
             action: The action chosen by the user.
         """
-        from iterm_controller.iterm_api import SessionSpawner, SessionTerminator
         from iterm_controller.screens.modals.quit_confirm import QuitAction
 
         if action == QuitAction.CANCEL:
@@ -117,66 +123,13 @@ class ItermControllerApp(App):
 
         if action == QuitAction.CLOSE_ALL:
             # Close all sessions, including unmanaged ones
-            await self._close_all_sessions()
+            await self.api.close_all_sessions()
         elif action == QuitAction.CLOSE_MANAGED:
             # Close only managed sessions
-            await self._close_managed_sessions()
+            await self.api.close_managed_sessions()
         # LEAVE_RUNNING: just exit without closing sessions
 
         await self._cleanup_and_exit()
-
-    async def _close_all_sessions(self) -> None:
-        """Close all sessions (managed and unmanaged)."""
-        from iterm_controller.iterm_api import SessionSpawner, SessionTerminator
-
-        if not self.iterm.is_connected or not self.iterm.app:
-            return
-
-        terminator = SessionTerminator(self.iterm)
-
-        # Get all sessions from all windows
-        for window in self.iterm.app.terminal_windows:
-            for tab in window.tabs:
-                try:
-                    await terminator.close_tab(tab, force=False)
-                except Exception as e:
-                    self.notify(f"Failed to close tab: {e}", severity="warning")
-
-    async def _close_managed_sessions(self) -> None:
-        """Close only sessions managed by this application."""
-        from iterm_controller.iterm_api import SessionSpawner, SessionTerminator
-
-        if not self.iterm.is_connected:
-            return
-
-        # Get all managed sessions from app state
-        managed_sessions = list(self.state.sessions.values())
-        if not managed_sessions:
-            return
-
-        terminator = SessionTerminator(self.iterm)
-        spawner = SessionSpawner(self.iterm)
-
-        # Copy managed sessions to spawner for proper untracking
-        for session in managed_sessions:
-            spawner.managed_sessions[session.id] = session
-
-        closed, results = await terminator.close_all_managed(
-            sessions=managed_sessions,
-            spawner=spawner,
-            force=False,
-        )
-
-        # Update app state
-        for result in results:
-            if result.success:
-                self.state.remove_session(result.session_id)
-
-        if closed < len(managed_sessions):
-            self.notify(
-                f"Closed {closed}/{len(managed_sessions)} sessions",
-                severity="warning",
-            )
 
     async def _cleanup_and_exit(self) -> None:
         """Clean up resources and exit the application."""

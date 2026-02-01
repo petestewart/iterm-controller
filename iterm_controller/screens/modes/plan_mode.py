@@ -375,23 +375,12 @@ class PlanModeScreen(ModeScreen):
         )
 
         async def _do_spawn() -> None:
-            try:
-                from iterm_controller.iterm_api import SessionSpawner
-
-                spawner = SessionSpawner(app.iterm)
-                result = await spawner.spawn_session(template, self.project)
-
-                if result.success:
-                    # Add session to state
-                    managed = spawner.get_session(result.session_id)
-                    if managed:
-                        app.state.add_session(managed)
-                    self.notify(f"Spawned: {session_name}")
-                    # Refresh artifacts after spawning (in case it creates files)
-                    self._refresh_artifacts()
-                else:
-                    self.notify(f"Failed to spawn session: {result.error}", severity="error")
-            except Exception as e:
-                self.notify(f"Error spawning session: {e}", severity="error")
+            result = await app.api.spawn_session_with_template(self.project, template)
+            if result.success:
+                self.notify(f"Spawned: {session_name}")
+                # Refresh artifacts after spawning (in case it creates files)
+                self._refresh_artifacts()
+            else:
+                self.notify(f"Failed to spawn session: {result.error}", severity="error")
 
         self.call_later(_do_spawn)

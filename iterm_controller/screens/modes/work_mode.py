@@ -211,6 +211,8 @@ class WorkModeScreen(ModeScreen):
             from iterm_controller.plan_parser import PlanParser
             parser = PlanParser()
             self._plan = parser.parse_file(plan_path)
+            # Also update app state for API access
+            app.state.set_plan(self.project.id, self._plan)
         else:
             self._plan = Plan()
 
@@ -371,23 +373,10 @@ class WorkModeScreen(ModeScreen):
         """
         app: ItermControllerApp = self.app  # type: ignore[assignment]
 
-        # Update in-memory task
-        task.status = new_status
-
-        # Write to PLAN.md
-        plan_path = self.project.full_plan_path
-        if plan_path.exists():
-            from iterm_controller.plan_parser import PlanUpdater
-            updater = PlanUpdater()
-            try:
-                updater.update_task_status_in_file(
-                    plan_path,
-                    task.id,
-                    new_status,
-                )
-            except Exception as e:
-                self.notify(f"Failed to update PLAN.md: {e}", severity="error")
-                return
+        result = await app.api.update_task_status(self.project.id, task.id, new_status)
+        if not result.success:
+            self.notify(f"Failed to update PLAN.md: {result.error}", severity="error")
+            return
 
         # Reload data and refresh
         await self._load_data()
@@ -411,11 +400,7 @@ class WorkModeScreen(ModeScreen):
             return
 
         # Focus session in iTerm2
-        app: ItermControllerApp = self.app  # type: ignore[assignment]
-        if app.iterm.is_connected:
-            self._focus_session(session.id)
-        else:
-            self.notify("Not connected to iTerm2", severity="error")
+        self._focus_session(session.id)
 
     def _focus_session(self, session_id: str) -> None:
         """Focus a session in iTerm2.
@@ -426,11 +411,11 @@ class WorkModeScreen(ModeScreen):
         app: ItermControllerApp = self.app  # type: ignore[assignment]
 
         async def _do_focus() -> None:
-            try:
-                await app.iterm.focus_session(session_id)
+            result = await app.api.focus_session(session_id)
+            if result.success:
                 self.notify("Focused session")
-            except Exception as e:
-                self.notify(f"Failed to focus session: {e}", severity="error")
+            else:
+                self.notify(f"Failed to focus session: {result.error}", severity="error")
 
         self.call_later(_do_focus)
 
@@ -530,46 +515,36 @@ class WorkModeScreen(ModeScreen):
         """
         app: ItermControllerApp = self.app  # type: ignore[assignment]
 
-        try:
-            from iterm_controller.iterm_api import SessionSpawner
+        result = await app.api.spawn_session_with_template(
+            self.project, template, task_id=task.id
+        )
 
-            spawner = SessionSpawner(app.iterm)
-            result = await spawner.spawn_session(template, self.project)
+        if not result.success:
+            self.notify(f"Failed to spawn session: {result.error}", severity="error")
+            return
 
-            if not result.success:
-                self.notify(f"Failed to spawn session: {result.error}", severity="error")
-                return
+        # Set additional task metadata on the session
+        if result.session:
+            result.session.metadata["task_title"] = task.title
 
-            # Get the managed session and set metadata
-            managed = spawner.get_session(result.session_id)
-            if managed:
-                # Link session to task via metadata
-                managed.metadata["task_id"] = task.id
-                managed.metadata["task_title"] = task.title
+        # Update task with session assignment
+        task.session_id = result.spawn_result.session_id if result.spawn_result else ""
 
-                # Add session to app state
-                app.state.add_session(managed)
+        # Set task status to IN_PROGRESS if it was PENDING
+        if task.status == TaskStatus.PENDING:
+            await self._update_task_status(task, TaskStatus.IN_PROGRESS)
+        else:
+            # Just update the session_id in PLAN.md
+            await self._update_task_session_id(task, task.session_id)
 
-            # Update task with session assignment
-            task.session_id = result.session_id
+        # Optionally send task context to session
+        if task.session_id:
+            await self._send_task_context(task.session_id, task)
 
-            # Set task status to IN_PROGRESS if it was PENDING
-            if task.status == TaskStatus.PENDING:
-                await self._update_task_status(task, TaskStatus.IN_PROGRESS)
-            else:
-                # Just update the session_id in PLAN.md
-                await self._update_task_session_id(task, result.session_id)
+        self.notify(f"Spawned session for task {task.id}")
 
-            # Optionally send task context to session
-            await self._send_task_context(result.session_id, task)
-
-            self.notify(f"Spawned session for task {task.id}")
-
-            # Reload data to show the updated state
-            await self._load_data()
-
-        except Exception as e:
-            self.notify(f"Error spawning session: {e}", severity="error")
+        # Reload data to show the updated state
+        await self._load_data()
 
     async def _update_task_session_id(self, task: Task, session_id: str) -> None:
         """Update just the task's session_id in PLAN.md.

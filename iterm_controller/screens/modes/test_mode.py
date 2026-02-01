@@ -501,8 +501,6 @@ class TestModeScreen(ModeScreen):
 
         async def _do_spawn() -> None:
             try:
-                from iterm_controller.iterm_api import SessionSpawner
-
                 # Create a temporary template for the QA session
                 template = SessionTemplate(
                     id=template_id,
@@ -512,18 +510,14 @@ class TestModeScreen(ModeScreen):
                     env={},
                 )
 
-                spawner = SessionSpawner(app.iterm)
-                result = await spawner.spawn_session(template, self.project)
+                result = await app.api.spawn_session_with_template(self.project, template)
 
                 if result.success:
-                    # Get the managed session
-                    managed = spawner.get_session(result.session_id)
-                    if managed:
-                        managed.metadata["test_plan_path"] = str(
+                    # Add test plan path to session metadata
+                    if result.session:
+                        result.session.metadata["test_plan_path"] = str(
                             self.project.full_test_plan_path
                         )
-                        app.state.add_session(managed)
-
                     await self._load_data()
                 else:
                     self.notify(f"Failed to spawn session: {result.error}", severity="error")

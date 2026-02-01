@@ -4,7 +4,7 @@ This module exposes core operations as async functions, enabling agents and
 external tools to perform all actions available in the TUI without requiring
 a graphical interface.
 
-Usage:
+Usage (standalone):
     from iterm_controller.api import ItermControllerAPI
 
     async def main():
@@ -25,6 +25,12 @@ Usage:
 
         # Clean up
         await api.shutdown()
+
+Usage (with TUI app):
+    # In a screen action handler:
+    result = await self.app.api.spawn_session(project_id, template_id)
+    if result.success:
+        self.notify(f"Spawned session: {result.session.name}")
 """
 
 from __future__ import annotations
@@ -1456,3 +1462,613 @@ async def get_test_plan(project_id: str) -> TestPlan | None:
         return await api.get_test_plan(project_id)
     finally:
         await api.shutdown()
+
+
+# =============================================================================
+# App-Integrated API (for TUI screens)
+# =============================================================================
+
+
+class AppAPI:
+    """API adapter for the TUI app.
+
+    This class provides the same interface as ItermControllerAPI but uses
+    the app's existing components (state, iterm controller, etc.) instead of
+    creating its own. This allows screens to call API methods without duplicating
+    component instantiation logic.
+
+    Usage in screen action handlers:
+        result = await self.app.api.spawn_session(project_id, template_id)
+        if result.success:
+            self.notify(f"Spawned: {result.session.name}")
+
+    The app should create this in __init__ or on_mount:
+        self.api = AppAPI(self)
+    """
+
+    def __init__(self, app: "ItermControllerApp") -> None:  # noqa: F821
+        """Initialize with the TUI app instance.
+
+        Args:
+            app: The ItermControllerApp instance.
+        """
+        self._app = app
+        self._spawner: SessionSpawner | None = None
+        self._terminator: SessionTerminator | None = None
+        self._layout_manager: WindowLayoutManager | None = None
+        self._layout_spawner: WindowLayoutSpawner | None = None
+        self._plan_watchers: dict[str, PlanWatcher] = {}
+        self._write_queues: dict[str, PlanWriteQueue] = {}
+
+    def _ensure_components(self) -> None:
+        """Lazily initialize iTerm2 components."""
+        if self._spawner is None:
+            self._spawner = SessionSpawner(self._app.iterm)
+        if self._terminator is None:
+            self._terminator = SessionTerminator(self._app.iterm)
+        if self._layout_manager is None:
+            self._layout_manager = WindowLayoutManager(self._app.iterm)
+            if self._app.state.config and self._app.state.config.window_layouts:
+                self._layout_manager.load_from_config(
+                    self._app.state.config.window_layouts
+                )
+        if self._layout_spawner is None and self._spawner:
+            self._layout_spawner = WindowLayoutSpawner(self._app.iterm, self._spawner)
+
+    @property
+    def is_connected(self) -> bool:
+        """Check if connected to iTerm2."""
+        return self._app.iterm.is_connected
+
+    @property
+    def state(self) -> AppState:
+        """Get the app's state."""
+        return self._app.state
+
+    # =========================================================================
+    # Session Operations
+    # =========================================================================
+
+    async def spawn_session(
+        self,
+        project_id: str,
+        template_id: str,
+        task_id: str | None = None,
+    ) -> SessionResult:
+        """Spawn a new terminal session.
+
+        Args:
+            project_id: The project to spawn the session for.
+            template_id: The session template to use.
+            task_id: Optional task ID to link to this session.
+
+        Returns:
+            SessionResult with the spawned session.
+        """
+        if not self._app.iterm.is_connected:
+            return SessionResult(success=False, error="Not connected to iTerm2")
+
+        project = self._app.state.projects.get(project_id)
+        if not project:
+            return SessionResult(success=False, error=f"Project not found: {project_id}")
+
+        # Find template
+        template = self._get_session_template(template_id)
+        if not template:
+            return SessionResult(
+                success=False, error=f"Template not found: {template_id}"
+            )
+
+        self._ensure_components()
+        if not self._spawner:
+            return SessionResult(success=False, error="Spawner not initialized")
+
+        try:
+            result = await self._spawner.spawn_session(template, project)
+
+            if result.success:
+                session = self._spawner.get_session(result.session_id)
+                if session:
+                    # Link task if provided
+                    if task_id:
+                        session.metadata["task_id"] = task_id
+
+                    # Add to app state
+                    self._app.state.add_session(session)
+
+                    return SessionResult(
+                        success=True, session=session, spawn_result=result
+                    )
+
+            return SessionResult(
+                success=False, error=result.error or "Unknown spawn error"
+            )
+
+        except Exception as e:
+            logger.error("Failed to spawn session: %s", e)
+            return SessionResult(success=False, error=str(e))
+
+    async def spawn_session_with_template(
+        self,
+        project: Project,
+        template: SessionTemplate,
+        task_id: str | None = None,
+    ) -> SessionResult:
+        """Spawn a session using an explicit template object.
+
+        This is useful when the caller has already resolved or created
+        the template (e.g., for QA sessions with custom commands).
+
+        Args:
+            project: The project to spawn the session for.
+            template: The session template to use.
+            task_id: Optional task ID to link to this session.
+
+        Returns:
+            SessionResult with the spawned session.
+        """
+        if not self._app.iterm.is_connected:
+            return SessionResult(success=False, error="Not connected to iTerm2")
+
+        self._ensure_components()
+        if not self._spawner:
+            return SessionResult(success=False, error="Spawner not initialized")
+
+        try:
+            result = await self._spawner.spawn_session(template, project)
+
+            if result.success:
+                session = self._spawner.get_session(result.session_id)
+                if session:
+                    if task_id:
+                        session.metadata["task_id"] = task_id
+                    self._app.state.add_session(session)
+                    return SessionResult(
+                        success=True, session=session, spawn_result=result
+                    )
+
+            return SessionResult(
+                success=False, error=result.error or "Unknown spawn error"
+            )
+
+        except Exception as e:
+            logger.error("Failed to spawn session: %s", e)
+            return SessionResult(success=False, error=str(e))
+
+    async def kill_session(self, session_id: str, force: bool = False) -> APIResult:
+        """Kill a terminal session.
+
+        Args:
+            session_id: The session to terminate.
+            force: If True, force-close without graceful shutdown.
+
+        Returns:
+            APIResult indicating success or failure.
+        """
+        if not self._app.iterm.is_connected:
+            return APIResult.fail("Not connected to iTerm2")
+
+        session = self._app.state.sessions.get(session_id)
+        if not session:
+            return APIResult.fail(f"Session not found: {session_id}")
+
+        self._ensure_components()
+        if not self._terminator or not self._spawner:
+            return APIResult.fail("Terminator not initialized")
+
+        try:
+            if not self._app.iterm.app:
+                return APIResult.fail("iTerm app not available")
+
+            iterm_session = await self._app.iterm.app.async_get_session_by_id(
+                session_id
+            )
+            if not iterm_session:
+                # Session already gone, just clean up tracking
+                self._spawner.untrack_session(session_id)
+                self._app.state.remove_session(session_id)
+                return APIResult.ok()
+
+            result = await self._terminator.close_session(iterm_session, force=force)
+
+            if result.success:
+                self._spawner.untrack_session(session_id)
+                self._app.state.remove_session(session_id)
+                return APIResult.ok()
+
+            return APIResult.fail(result.error or "Failed to close session")
+
+        except Exception as e:
+            logger.error("Failed to kill session: %s", e)
+            return APIResult.fail(str(e))
+
+    async def focus_session(self, session_id: str) -> APIResult:
+        """Focus a terminal session in iTerm2.
+
+        Args:
+            session_id: The session to focus.
+
+        Returns:
+            APIResult indicating success or failure.
+        """
+        if not self._app.iterm.is_connected:
+            return APIResult.fail("Not connected to iTerm2")
+
+        session = self._app.state.sessions.get(session_id)
+        if not session:
+            return APIResult.fail(f"Session not found: {session_id}")
+
+        try:
+            if not self._app.iterm.app:
+                return APIResult.fail("iTerm app not available")
+
+            iterm_session = await self._app.iterm.app.async_get_session_by_id(
+                session_id
+            )
+            if not iterm_session:
+                return APIResult.fail("Session no longer exists in iTerm2")
+
+            await iterm_session.async_activate()
+            return APIResult.ok()
+
+        except Exception as e:
+            logger.error("Failed to focus session: %s", e)
+            return APIResult.fail(str(e))
+
+    async def send_to_session(self, session_id: str, text: str) -> APIResult:
+        """Send text to a terminal session.
+
+        Args:
+            session_id: The session to send to.
+            text: The text to send (newline appended if not present).
+
+        Returns:
+            APIResult indicating success or failure.
+        """
+        if not self._app.iterm.is_connected:
+            return APIResult.fail("Not connected to iTerm2")
+
+        session = self._app.state.sessions.get(session_id)
+        if not session:
+            return APIResult.fail(f"Session not found: {session_id}")
+
+        try:
+            if not self._app.iterm.app:
+                return APIResult.fail("iTerm app not available")
+
+            iterm_session = await self._app.iterm.app.async_get_session_by_id(
+                session_id
+            )
+            if not iterm_session:
+                return APIResult.fail("Session no longer exists in iTerm2")
+
+            if not text.endswith("\n"):
+                text = text + "\n"
+            await iterm_session.async_send_text(text)
+            return APIResult.ok()
+
+        except Exception as e:
+            logger.error("Failed to send to session: %s", e)
+            return APIResult.fail(str(e))
+
+    # =========================================================================
+    # Task Operations (PLAN.md)
+    # =========================================================================
+
+    async def update_task_status(
+        self, project_id: str, task_id: str, new_status: TaskStatus
+    ) -> TaskResult:
+        """Update a task's status in PLAN.md.
+
+        Args:
+            project_id: The project's unique identifier.
+            task_id: The task's identifier (e.g., "2.1").
+            new_status: The new status to set.
+
+        Returns:
+            TaskResult with the updated task.
+        """
+        project = self._app.state.projects.get(project_id)
+        if not project:
+            return TaskResult(success=False, error=f"Project not found: {project_id}")
+
+        plan = self._app.state.get_plan(project_id)
+        if not plan:
+            return TaskResult(success=False, error="PLAN.md not loaded for project")
+
+        task = next((t for t in plan.all_tasks if t.id == task_id), None)
+        if not task:
+            return TaskResult(success=False, error=f"Task not found: {task_id}")
+
+        try:
+            # Update the file
+            plan_path = project.full_plan_path
+            if plan_path.exists():
+                updater = PlanUpdater()
+                updater.update_task_status_in_file(plan_path, task_id, new_status)
+
+            # Update in-memory task
+            task.status = new_status
+            self._app.state.update_task_status(project_id, task_id)
+
+            return TaskResult(success=True, task=task)
+
+        except PlanWriteError as e:
+            logger.error("Failed to update task: %s", e)
+            return TaskResult(success=False, error=str(e))
+        except Exception as e:
+            logger.error("Unexpected error updating task: %s", e)
+            return TaskResult(success=False, error=str(e))
+
+    async def claim_task(self, project_id: str, task_id: str) -> TaskResult:
+        """Claim a task (set to IN_PROGRESS).
+
+        Args:
+            project_id: The project's unique identifier.
+            task_id: The task's identifier (e.g., "2.1").
+
+        Returns:
+            TaskResult with the claimed task.
+        """
+        return await self.update_task_status(project_id, task_id, TaskStatus.IN_PROGRESS)
+
+    async def unclaim_task(self, project_id: str, task_id: str) -> TaskResult:
+        """Unclaim a task (set back to PENDING).
+
+        Args:
+            project_id: The project's unique identifier.
+            task_id: The task's identifier (e.g., "2.1").
+
+        Returns:
+            TaskResult with the unclaimed task.
+        """
+        return await self.update_task_status(project_id, task_id, TaskStatus.PENDING)
+
+    async def complete_task(self, project_id: str, task_id: str) -> TaskResult:
+        """Complete a task (set to COMPLETE).
+
+        Args:
+            project_id: The project's unique identifier.
+            task_id: The task's identifier (e.g., "2.1").
+
+        Returns:
+            TaskResult with the completed task.
+        """
+        return await self.update_task_status(project_id, task_id, TaskStatus.COMPLETE)
+
+    async def skip_task(self, project_id: str, task_id: str) -> TaskResult:
+        """Skip a task (set to SKIPPED).
+
+        Args:
+            project_id: The project's unique identifier.
+            task_id: The task's identifier (e.g., "2.1").
+
+        Returns:
+            TaskResult with the skipped task.
+        """
+        return await self.update_task_status(project_id, task_id, TaskStatus.SKIPPED)
+
+    # =========================================================================
+    # Test Plan Operations (TEST_PLAN.md)
+    # =========================================================================
+
+    async def toggle_test_step(
+        self,
+        project_id: str,
+        step_id: str,
+        new_status: TestStatus | None = None,
+        notes: str | None = None,
+    ) -> TestStepResult:
+        """Toggle or set a test step's status.
+
+        If new_status is not provided, cycles through:
+        PENDING -> IN_PROGRESS -> PASSED -> FAILED -> PENDING
+
+        Args:
+            project_id: The project's unique identifier.
+            step_id: The step's identifier.
+            new_status: Optional explicit status to set.
+            notes: Optional notes (typically for failed steps).
+
+        Returns:
+            TestStepResult with the updated step.
+        """
+        project = self._app.state.projects.get(project_id)
+        if not project:
+            return TestStepResult(
+                success=False, error=f"Project not found: {project_id}"
+            )
+
+        test_plan = self._app.state.get_test_plan(project_id)
+        if not test_plan:
+            return TestStepResult(
+                success=False, error="TEST_PLAN.md not loaded for project"
+            )
+
+        step = next((s for s in test_plan.all_steps if s.id == step_id), None)
+        if not step:
+            return TestStepResult(success=False, error=f"Step not found: {step_id}")
+
+        # Determine new status
+        if new_status is None:
+            status_cycle = [
+                TestStatus.PENDING,
+                TestStatus.IN_PROGRESS,
+                TestStatus.PASSED,
+                TestStatus.FAILED,
+            ]
+            try:
+                current_idx = status_cycle.index(step.status)
+                new_status = status_cycle[(current_idx + 1) % len(status_cycle)]
+            except ValueError:
+                new_status = TestStatus.PENDING
+
+        try:
+            # Update the file
+            test_plan_path = project.full_test_plan_path
+            updater = TestPlanUpdater()
+            updater.update_step_status_in_file(test_plan_path, step_id, new_status, notes)
+
+            # Update in-memory
+            step.status = new_status
+            step.notes = notes
+            self._app.state.update_test_step_status(project_id, step_id)
+
+            return TestStepResult(success=True, step=step)
+
+        except (TestPlanParseError, TestPlanWriteError) as e:
+            logger.error("Failed to toggle test step: %s", e)
+            return TestStepResult(success=False, error=str(e))
+        except Exception as e:
+            logger.error("Unexpected error toggling test step: %s", e)
+            return TestStepResult(success=False, error=str(e))
+
+    # =========================================================================
+    # Auto Mode Operations
+    # =========================================================================
+
+    async def toggle_auto_mode(self) -> APIResult:
+        """Toggle auto mode enabled/disabled.
+
+        Returns:
+            APIResult indicating success or failure.
+        """
+        if not self._app.state.config:
+            return APIResult.fail("No configuration loaded")
+
+        try:
+            auto_mode = self._app.state.config.auto_mode
+            auto_mode.enabled = not auto_mode.enabled
+            save_global_config(self._app.state.config)
+            return APIResult.ok()
+        except Exception as e:
+            return APIResult.fail(str(e))
+
+    def get_auto_mode_status(self) -> bool:
+        """Get whether auto mode is enabled.
+
+        Returns:
+            True if auto mode is enabled, False otherwise.
+        """
+        if not self._app.state.config:
+            return False
+        return self._app.state.config.auto_mode.enabled
+
+    # =========================================================================
+    # Project Operations
+    # =========================================================================
+
+    async def update_project_mode(
+        self, project_id: str, mode: WorkflowMode
+    ) -> APIResult:
+        """Update a project's workflow mode.
+
+        Args:
+            project_id: The project's unique identifier.
+            mode: The new workflow mode.
+
+        Returns:
+            APIResult indicating success or failure.
+        """
+        project = self._app.state.projects.get(project_id)
+        if not project:
+            return APIResult.fail(f"Project not found: {project_id}")
+
+        try:
+            project.last_mode = mode
+            self._app.state.update_project(project, persist=True)
+            return APIResult.ok()
+        except Exception as e:
+            return APIResult.fail(str(e))
+
+    # =========================================================================
+    # Quit Operations
+    # =========================================================================
+
+    async def close_all_sessions(self) -> APIResult:
+        """Close all sessions (managed and unmanaged).
+
+        Returns:
+            APIResult indicating success or failure.
+        """
+        if not self._app.iterm.is_connected or not self._app.iterm.app:
+            return APIResult.fail("Not connected to iTerm2")
+
+        self._ensure_components()
+        if not self._terminator:
+            return APIResult.fail("Terminator not initialized")
+
+        try:
+            for window in self._app.iterm.app.terminal_windows:
+                for tab in window.tabs:
+                    try:
+                        await self._terminator.close_tab(tab, force=False)
+                    except Exception as e:
+                        logger.warning("Failed to close tab: %s", e)
+            return APIResult.ok()
+        except Exception as e:
+            return APIResult.fail(str(e))
+
+    async def close_managed_sessions(self) -> APIResult:
+        """Close only sessions managed by this application.
+
+        Returns:
+            APIResult indicating success or failure.
+        """
+        if not self._app.iterm.is_connected:
+            return APIResult.fail("Not connected to iTerm2")
+
+        self._ensure_components()
+        if not self._terminator or not self._spawner:
+            return APIResult.fail("Components not initialized")
+
+        try:
+            managed_sessions = list(self._app.state.sessions.values())
+            if not managed_sessions:
+                return APIResult.ok()
+
+            # Copy sessions to spawner for proper untracking
+            for session in managed_sessions:
+                self._spawner.managed_sessions[session.id] = session
+
+            closed, results = await self._terminator.close_all_managed(
+                sessions=managed_sessions,
+                spawner=self._spawner,
+                force=False,
+            )
+
+            # Update app state
+            for result in results:
+                if result.success:
+                    self._app.state.remove_session(result.session_id)
+
+            return APIResult.ok()
+        except Exception as e:
+            return APIResult.fail(str(e))
+
+    # =========================================================================
+    # Helper Methods
+    # =========================================================================
+
+    def _get_session_template(self, template_id: str) -> SessionTemplate | None:
+        """Get a session template by ID."""
+        if not self._app.state.config:
+            return None
+        return next(
+            (
+                t
+                for t in self._app.state.config.session_templates
+                if t.id == template_id
+            ),
+            None,
+        )
+
+    def get_session_templates(self) -> list[SessionTemplate]:
+        """Get all available session templates.
+
+        Returns:
+            List of session templates from config.
+        """
+        if not self._app.state.config:
+            return []
+        return list(self._app.state.config.session_templates)

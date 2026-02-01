@@ -167,22 +167,11 @@ class ControlRoomScreen(Screen):
             self.notify("No active project", severity="error")
             return
 
-        try:
-            from iterm_controller.iterm_api import SessionSpawner
-
-            spawner = SessionSpawner(app.iterm)
-            result = await spawner.spawn_session(template, project)
-
-            if result.success:
-                # Add session to state
-                managed = spawner.get_session(result.session_id)
-                if managed:
-                    app.state.add_session(managed)
-                self.notify(f"Spawned session: {template.name}")
-            else:
-                self.notify(f"Failed to spawn session: {result.error}", severity="error")
-        except Exception as e:
-            self.notify(f"Error spawning session: {e}", severity="error")
+        result = await app.api.spawn_session_with_template(project, template)
+        if result.success:
+            self.notify(f"Spawned session: {template.name}")
+        else:
+            self.notify(f"Failed to spawn session: {result.error}", severity="error")
 
     async def action_kill_session(self) -> None:
         """Kill the selected session."""
@@ -193,35 +182,11 @@ class ControlRoomScreen(Screen):
             self.notify("No session to kill", severity="warning")
             return
 
-        if not app.iterm.is_connected:
-            self.notify("Not connected to iTerm2", severity="error")
-            return
-
-        try:
-            from iterm_controller.iterm_api import SessionTerminator
-
-            terminator = SessionTerminator(app.iterm)
-
-            # Get the actual iTerm2 session object
-            iterm_session = await app.iterm.app.async_get_session_by_id(session.id)
-            if not iterm_session:
-                # Session already gone, just remove from state
-                app.state.remove_session(session.id)
-                self.notify(f"Session already closed: {session.template_id}")
-                return
-
-            result = await terminator.close_session(iterm_session)
-
-            if result.success:
-                app.state.remove_session(session.id)
-                if result.force_required:
-                    self.notify(f"Force-closed session: {session.template_id}")
-                else:
-                    self.notify(f"Closed session: {session.template_id}")
-            else:
-                self.notify(f"Failed to close session: {result.error}", severity="error")
-        except Exception as e:
-            self.notify(f"Error closing session: {e}", severity="error")
+        result = await app.api.kill_session(session.id)
+        if result.success:
+            self.notify(f"Closed session: {session.template_id}")
+        else:
+            self.notify(f"Failed to close session: {result.error}", severity="error")
 
     async def action_focus_session(self) -> None:
         """Focus the selected session in iTerm2."""
@@ -232,22 +197,11 @@ class ControlRoomScreen(Screen):
             self.notify("No session to focus", severity="warning")
             return
 
-        if not app.iterm.is_connected:
-            self.notify("Not connected to iTerm2", severity="error")
-            return
-
-        try:
-            # Get the actual iTerm2 session object
-            iterm_session = await app.iterm.app.async_get_session_by_id(session.id)
-            if not iterm_session:
-                self.notify(f"Session not found: {session.template_id}", severity="error")
-                return
-
-            # Activate the session (focus it)
-            await iterm_session.async_activate()
+        result = await app.api.focus_session(session.id)
+        if result.success:
             self.notify(f"Focused session: {session.template_id}")
-        except Exception as e:
-            self.notify(f"Error focusing session: {e}", severity="error")
+        else:
+            self.notify(f"Error focusing session: {result.error}", severity="error")
 
     async def action_refresh(self) -> None:
         """Manually refresh the session list."""
@@ -271,20 +225,11 @@ class ControlRoomScreen(Screen):
 
         session = sessions[index]
 
-        if not app.iterm.is_connected:
-            self.notify("Not connected to iTerm2", severity="error")
-            return
-
-        try:
-            iterm_session = await app.iterm.app.async_get_session_by_id(session.id)
-            if not iterm_session:
-                self.notify(f"Session not found: {session.template_id}", severity="error")
-                return
-
-            await iterm_session.async_activate()
+        result = await app.api.focus_session(session.id)
+        if result.success:
             self.notify(f"Focused session #{num}: {session.template_id}")
-        except Exception as e:
-            self.notify(f"Error focusing session: {e}", severity="error")
+        else:
+            self.notify(f"Error focusing session: {result.error}", severity="error")
 
     # =========================================================================
     # State Event Handlers
