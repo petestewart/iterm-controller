@@ -429,7 +429,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Watch TEST_PLAN.md, emit events on change, handle conflicts
   - Acceptance: External edits detected within 1 second
 
-- [ ] **Create TestModeScreen with step list**
+- [x] **Create TestModeScreen with step list** `[complete]`
   - Spec: specs/test-mode.md
   - Scope: Two-panel layout: TEST_PLAN.md steps and unit test results
   - Acceptance: Test steps displayed with status indicators
