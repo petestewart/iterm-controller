@@ -642,7 +642,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Currently duplicated in: task_list.py:55-69, session_list.py:44-54, active_work.py:60-70
   - Acceptance: Consistent status display across all widgets
 
-- [ ] **Remove duplicate StateEvent enum** `[pending]`
+- [x] **Remove duplicate StateEvent enum** `[complete]`
   - Scope: Use single StateEvent definition from state.py
   - Location: Remove from iterm_controller/plan_watcher.py:28-32
   - Fix: Import StateEvent from state module instead

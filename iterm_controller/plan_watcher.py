@@ -9,7 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass, field
-from enum import Enum
 from pathlib import Path
 from typing import Callable, TYPE_CHECKING
 
@@ -23,13 +22,6 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .screens.modals import PlanConflictModal
-
-
-class StateEvent(Enum):
-    """Events emitted by the plan watcher."""
-
-    PLAN_RELOADED = "plan_reloaded"
-    PLAN_CONFLICT = "plan_conflict"
 
 
 @dataclass
