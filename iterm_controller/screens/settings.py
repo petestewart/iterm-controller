@@ -18,11 +18,34 @@ if TYPE_CHECKING:
 
 
 class SettingsScreen(Screen):
-    """Application settings."""
+    """Application settings.
+
+    Provides a form for configuring application defaults including:
+    - Default IDE for opening files
+    - Default shell for new sessions
+    - Polling interval for session monitoring
+    - Notification preferences
+    - Auto-advance workflow settings
+    """
 
     BINDINGS = [
         Binding("escape", "app.pop_screen", "Back"),
         Binding("ctrl+s", "save", "Save"),
+    ]
+
+    # IDE and shell options: format is (display, value)
+    IDE_OPTIONS = [
+        ("VS Code", "vscode"),
+        ("Cursor", "cursor"),
+        ("Vim", "vim"),
+        ("Neovim", "neovim"),
+        ("Sublime Text", "sublime"),
+    ]
+
+    SHELL_OPTIONS = [
+        ("zsh", "zsh"),
+        ("bash", "bash"),
+        ("fish", "fish"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -30,25 +53,19 @@ class SettingsScreen(Screen):
         yield Header()
         yield Container(
             Vertical(
-                Label("Default IDE"),
+                Label("Default IDE", classes="setting-label"),
                 Select(
                     id="ide-select",
-                    options=[
-                        ("vscode", "VS Code"),
-                        ("cursor", "Cursor"),
-                        ("vim", "Vim"),
-                    ],
+                    options=self.IDE_OPTIONS,
+                    prompt="Select IDE...",
                 ),
-                Label("Default Shell"),
+                Label("Default Shell", classes="setting-label"),
                 Select(
                     id="shell-select",
-                    options=[
-                        ("zsh", "zsh"),
-                        ("bash", "bash"),
-                        ("fish", "fish"),
-                    ],
+                    options=self.SHELL_OPTIONS,
+                    prompt="Select shell...",
                 ),
-                Label("Polling Interval (ms)"),
+                Label("Polling Interval (ms)", classes="setting-label"),
                 Input(id="polling-input", value="500"),
                 Checkbox("Enable Notifications", id="notify-checkbox", value=True),
                 Checkbox("Auto-advance Workflow", id="auto-advance-checkbox", value=False),
@@ -67,19 +84,32 @@ class SettingsScreen(Screen):
         """Initialize settings from config."""
         app: ItermControllerApp = self.app  # type: ignore[assignment]
 
-        if app.state.config and app.state.config.settings:
+        if app.state.config:
             settings = app.state.config.settings
+
+            # Set IDE select - find matching option (value is the second element)
+            ide_select = self.query_one("#ide-select", Select)
+            ide_value = settings.default_ide
+            if ide_value and any(opt[1] == ide_value for opt in self.IDE_OPTIONS):
+                ide_select.value = ide_value
+
+            # Set shell select - find matching option (value is the second element)
+            shell_select = self.query_one("#shell-select", Select)
+            shell_value = settings.default_shell
+            if shell_value and any(opt[1] == shell_value for opt in self.SHELL_OPTIONS):
+                shell_select.value = shell_value
 
             # Set polling interval
             polling_input = self.query_one("#polling-input", Input)
             polling_input.value = str(settings.polling_interval_ms)
 
-            # Set checkboxes
+            # Set notifications checkbox
             notify_checkbox = self.query_one("#notify-checkbox", Checkbox)
             notify_checkbox.value = settings.notification_enabled
 
-            # Note: Select value initialization is handled via default in compose
-            # Setting value directly on Select can cause issues before mount completes
+            # Set auto-advance checkbox from auto_mode config
+            auto_advance_checkbox = self.query_one("#auto-advance-checkbox", Checkbox)
+            auto_advance_checkbox.value = app.state.config.auto_mode.auto_advance
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -87,6 +117,28 @@ class SettingsScreen(Screen):
             self.app.pop_screen()
         elif event.button.id == "save":
             await self.action_save()
+
+    def _validate_polling_interval(self, value: str) -> int | None:
+        """Validate polling interval input.
+
+        Args:
+            value: The string value from the input.
+
+        Returns:
+            The validated integer value, or None if invalid.
+        """
+        try:
+            polling = int(value)
+            if polling < 100:
+                self.notify("Polling interval must be at least 100ms", severity="error")
+                return None
+            if polling > 10000:
+                self.notify("Polling interval must be at most 10000ms", severity="error")
+                return None
+            return polling
+        except ValueError:
+            self.notify("Invalid polling interval - must be a number", severity="error")
+            return None
 
     async def action_save(self) -> None:
         """Save settings to config."""
@@ -101,23 +153,36 @@ class SettingsScreen(Screen):
         shell = self.query_one("#shell-select", Select).value
         polling_str = self.query_one("#polling-input", Input).value
         notify = self.query_one("#notify-checkbox", Checkbox).value
+        auto_advance = self.query_one("#auto-advance-checkbox", Checkbox).value
 
-        try:
-            polling = int(polling_str)
-        except ValueError:
-            self.notify("Invalid polling interval", severity="error")
+        # Validate polling interval
+        polling = self._validate_polling_interval(polling_str)
+        if polling is None:
             return
 
-        # Update config
+        # Validate IDE selection
+        if ide is None or ide == Select.BLANK:
+            self.notify("Please select a default IDE", severity="error")
+            return
+
+        # Validate shell selection
+        if shell is None or shell == Select.BLANK:
+            self.notify("Please select a default shell", severity="error")
+            return
+
+        # Update settings in config
         app.state.config.settings.default_ide = str(ide)
         app.state.config.settings.default_shell = str(shell)
         app.state.config.settings.polling_interval_ms = polling
         app.state.config.settings.notification_enabled = notify
+
+        # Update auto-mode config
+        app.state.config.auto_mode.auto_advance = auto_advance
 
         # Save to disk
         from iterm_controller.config import save_global_config
 
         save_global_config(app.state.config)
 
-        self.notify("Settings saved")
+        self.notify("Settings saved successfully")
         self.app.pop_screen()

@@ -387,6 +387,7 @@ class AppConfig:
     """Complete application configuration."""
 
     settings: AppSettings = field(default_factory=AppSettings)
+    auto_mode: AutoModeConfig = field(default_factory=AutoModeConfig)
     projects: list[Project] = field(default_factory=list)
     templates: list[ProjectTemplate] = field(default_factory=list)
     session_templates: list[SessionTemplate] = field(default_factory=list)

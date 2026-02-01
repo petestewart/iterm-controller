@@ -182,7 +182,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Create project from template, run setup script, create branch
   - Acceptance: Template selection, form inputs, spawns initial sessions
 
-- [ ] **Build Settings screen** `[pending]`
+- [x] **Build Settings screen** `[complete]`
   - Spec: specs/ui.md#settings-screen
   - Scope: Configure defaults (IDE, shell, polling interval, notifications)
   - Acceptance: Settings persist to global config
