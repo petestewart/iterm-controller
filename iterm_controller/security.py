@@ -3,6 +3,7 @@
 This module provides centralized security functions for:
 - Path validation to prevent directory traversal attacks
 - Safe file path handling within project boundaries
+- Editor command validation to prevent arbitrary command execution
 
 All file operations that accept user-provided paths should use these utilities
 to ensure paths stay within allowed directories.
@@ -10,8 +11,86 @@ to ensure paths stay within allowed directories.
 
 from __future__ import annotations
 
+import logging
 import os
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+
+# Allowlist of known-safe editor commands
+# Only these commands can be executed via editor settings
+ALLOWED_EDITOR_COMMANDS: frozenset[str] = frozenset({
+    # VS Code and variants
+    "code",
+    "vscode",     # Common config alias for "code"
+    "cursor",
+    # Vim family
+    "vim",
+    "nvim",
+    "vi",
+    "gvim",
+    "mvim",
+    "neovim",     # Common config alias for "nvim"
+    # Emacs family
+    "emacs",
+    "emacsclient",
+    # Other common editors
+    "subl",       # Sublime Text
+    "sublime",    # Common config alias for "subl"
+    "atom",       # Atom (legacy)
+    "nano",
+    "pico",
+    "micro",
+    "helix",
+    "hx",         # Helix short command
+    "kate",       # KDE editor
+    "gedit",      # GNOME editor
+    "notepad++",  # Windows (just in case)
+    "textmate",
+    "mate",       # TextMate CLI
+    "bbedit",     # BBEdit
+    "edit",       # BBEdit CLI
+    "zed",        # Zed editor
+    # IDE commands
+    "idea",       # IntelliJ
+    "pycharm",
+    "webstorm",
+    "goland",
+    "rubymine",
+    "phpstorm",
+    "clion",
+    "rider",
+    "fleet",      # JetBrains Fleet
+    "studio",     # Android Studio
+    "xcode",
+    # macOS fallback
+    "open",
+})
+
+
+class EditorValidationError(Exception):
+    """Raised when an invalid editor command is detected.
+
+    This occurs when the configured editor command is not in the
+    allowlist of known-safe editor commands, which could indicate
+    an attempt to execute arbitrary commands.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        attempted_command: str | None = None,
+    ) -> None:
+        self.attempted_command = attempted_command
+        super().__init__(message)
+
+    def __str__(self) -> str:
+        parts = [self.args[0]]
+        if self.attempted_command:
+            parts.append(f"attempted_command={self.attempted_command}")
+        return " ".join(parts)
 
 
 class PathTraversalError(Exception):
@@ -278,3 +357,144 @@ def safe_join(
     # Join and validate the full path
     full_path = base_dir.joinpath(*parts)
     return validate_path_in_project(full_path, base_dir)
+
+
+def validate_editor_command(command: str) -> str:
+    """Validate an editor command against the allowlist.
+
+    This function ensures that only known-safe editor commands can be
+    executed, preventing arbitrary command execution via the editor
+    configuration setting.
+
+    Args:
+        command: The editor command to validate (e.g., "code", "vim").
+
+    Returns:
+        The validated command (stripped of whitespace, lowercased).
+
+    Raises:
+        EditorValidationError: If the command is not in the allowlist.
+        ValueError: If the command is empty.
+
+    Examples:
+        >>> validate_editor_command("code")
+        'code'
+
+        >>> validate_editor_command("vim")
+        'vim'
+
+        >>> validate_editor_command("rm -rf /")
+        Raises EditorValidationError
+
+        >>> validate_editor_command("/bin/sh -c 'malicious'")
+        Raises EditorValidationError
+    """
+    # Strip whitespace and convert to lowercase for comparison
+    command = command.strip().lower()
+
+    if not command:
+        raise ValueError("Editor command cannot be empty")
+
+    # Check for shell metacharacters that could indicate injection
+    dangerous_chars = {";", "&", "|", "$", "`", "(", ")", "{", "}", "<", ">", "\n", "\r"}
+    if any(c in command for c in dangerous_chars):
+        logger.warning("Editor command contains dangerous characters: %s", command)
+        raise EditorValidationError(
+            "Editor command contains shell metacharacters",
+            attempted_command=command,
+        )
+
+    # Check for paths (only allow bare command names)
+    if "/" in command or "\\" in command:
+        logger.warning("Editor command contains path: %s", command)
+        raise EditorValidationError(
+            "Editor command cannot contain paths",
+            attempted_command=command,
+        )
+
+    # Check for spaces (arguments not allowed in command name)
+    if " " in command:
+        logger.warning("Editor command contains spaces: %s", command)
+        raise EditorValidationError(
+            "Editor command cannot contain spaces (arguments not allowed)",
+            attempted_command=command,
+        )
+
+    # Validate against allowlist
+    if command not in ALLOWED_EDITOR_COMMANDS:
+        logger.warning("Editor command not in allowlist: %s", command)
+        raise EditorValidationError(
+            f"Editor '{command}' is not in the allowed editors list",
+            attempted_command=command,
+        )
+
+    return command
+
+
+def is_editor_command_allowed(command: str) -> bool:
+    """Check if an editor command is in the allowlist.
+
+    This is a convenience wrapper around validate_editor_command that
+    returns a boolean instead of raising an exception.
+
+    Args:
+        command: The editor command to check.
+
+    Returns:
+        True if the command is allowed, False otherwise.
+
+    Examples:
+        >>> is_editor_command_allowed("code")
+        True
+
+        >>> is_editor_command_allowed("rm")
+        False
+    """
+    try:
+        validate_editor_command(command)
+        return True
+    except (EditorValidationError, ValueError):
+        return False
+
+
+def get_safe_editor_command(
+    configured_editor: str,
+    fallback: str = "open",
+) -> str:
+    """Get a safe editor command, falling back if the configured one is invalid.
+
+    This function attempts to validate the configured editor command.
+    If invalid, it falls back to a safe default (usually "open" on macOS).
+
+    Args:
+        configured_editor: The editor command from configuration.
+        fallback: The fallback command if validation fails (must be in allowlist).
+
+    Returns:
+        The validated command or fallback.
+
+    Examples:
+        >>> get_safe_editor_command("code")
+        'code'
+
+        >>> get_safe_editor_command("malicious; rm -rf /")
+        'open'  # Falls back to safe default
+
+        >>> get_safe_editor_command("vim", fallback="nano")
+        'vim'
+    """
+    try:
+        return validate_editor_command(configured_editor)
+    except (EditorValidationError, ValueError) as e:
+        logger.warning(
+            "Invalid editor command '%s', falling back to '%s': %s",
+            configured_editor,
+            fallback,
+            e,
+        )
+        # Validate the fallback too (should always pass if configured correctly)
+        try:
+            return validate_editor_command(fallback)
+        except (EditorValidationError, ValueError):
+            # Ultimate fallback to "open" which should always be in the allowlist
+            return "open"

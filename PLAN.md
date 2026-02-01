@@ -612,7 +612,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Reject filenames with `..` or `/` characters
   - Acceptance: Cannot create files outside intended directory
 
-- [ ] **Add editor command allowlist** `[pending]`
+- [x] **Add editor command allowlist** `[complete]`
   - Scope: Validate editor commands against known-safe list
   - Locations: docs_mode.py, plan_mode.py, docs_picker.py subprocess calls
   - Fix: Only allow editors from EDITOR_COMMANDS dict

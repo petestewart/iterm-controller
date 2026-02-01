@@ -17,6 +17,8 @@ from textual.containers import Container, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
+from iterm_controller.security import get_safe_editor_command
+
 if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
 
@@ -242,22 +244,31 @@ class DocsPickerModal(ModalScreen[Path | None]):
         if app.state.config and app.state.config.settings:
             ide = app.state.config.settings.default_ide
 
-        # Map IDE name to command
-        editor_commands = {
-            "vscode": ["code", str(doc_path)],
-            "code": ["code", str(doc_path)],
-            "cursor": ["cursor", str(doc_path)],
-            "vim": ["vim", str(doc_path)],
-            "nvim": ["nvim", str(doc_path)],
-            "neovim": ["nvim", str(doc_path)],
-            "subl": ["subl", str(doc_path)],
-            "sublime": ["subl", str(doc_path)],
-            "atom": ["atom", str(doc_path)],
-            "nano": ["nano", str(doc_path)],
-            "emacs": ["emacs", str(doc_path)],
+        # Map IDE name to command - these are the internal mappings
+        editor_command_map = {
+            "vscode": "code",
+            "code": "code",
+            "cursor": "cursor",
+            "vim": "vim",
+            "nvim": "nvim",
+            "neovim": "nvim",
+            "subl": "subl",
+            "sublime": "subl",
+            "atom": "atom",
+            "nano": "nano",
+            "emacs": "emacs",
         }
 
-        cmd = editor_commands.get(ide.lower(), ["open", str(doc_path)])
+        # Get the editor command from the map
+        editor_cmd = editor_command_map.get(ide.lower())
+        if editor_cmd:
+            # Validate the command from the mapping
+            editor_cmd = get_safe_editor_command(editor_cmd, fallback="open")
+        else:
+            # Try to validate the IDE setting directly (might be a command)
+            editor_cmd = get_safe_editor_command(ide, fallback="open")
+
+        cmd = [editor_cmd, str(doc_path)]
 
         try:
             # Run editor command in background

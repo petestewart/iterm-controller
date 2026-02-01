@@ -20,6 +20,7 @@ from textual.widgets import Footer, Header, Static
 from iterm_controller.models import SessionTemplate, WorkflowMode
 from iterm_controller.screens.mode_screen import ModeScreen
 from iterm_controller.screens.modals.artifact_preview import ArtifactPreviewModal
+from iterm_controller.security import get_safe_editor_command
 from iterm_controller.widgets.artifact_list import ArtifactListWidget
 from iterm_controller.widgets.mode_indicator import ModeIndicatorWidget
 from iterm_controller.widgets.workflow_bar import WorkflowBarWidget
@@ -253,8 +254,14 @@ class PlanModeScreen(ModeScreen):
         if app.state.config and app.state.config.settings:
             ide = app.state.config.settings.default_ide
 
-        # Get editor command
-        editor_cmd = EDITOR_COMMANDS.get(ide.lower(), "open")
+        # Get editor command - validated against allowlist
+        editor_cmd = EDITOR_COMMANDS.get(ide.lower())
+        if editor_cmd:
+            # Validate the command from the mapping
+            editor_cmd = get_safe_editor_command(editor_cmd, fallback="open")
+        else:
+            # Try to validate the IDE setting directly (might be a command)
+            editor_cmd = get_safe_editor_command(ide, fallback="open")
 
         # Open file/directory in editor
         self._open_in_editor(path, editor_cmd, selected)

