@@ -551,7 +551,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 20: Agent-Native Architecture (Critical)
 
-- [ ] **Create public API module for programmatic access** `[pending]`
+- [x] **Create public API module for programmatic access** `[complete]`
   - Scope: Create iterm_controller/api.py exposing core operations as async functions
   - Functions: spawn_session, kill_session, open_project, claim_task, toggle_test_step, etc.
   - Acceptance: All 28 UI actions have programmatic equivalents
