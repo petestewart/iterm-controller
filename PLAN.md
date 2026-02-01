@@ -562,7 +562,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Commands: spawn, kill, list-projects, list-sessions, task claim, task done
   - Acceptance: Can perform operations without launching TUI
 
-- [ ] **Add state query API for external observation** `[pending]`
+- [x] **Add state query API for external observation** `[complete]`
   - Scope: Add methods to query state without TUI context
   - Location: iterm_controller/state.py
   - Functions: get_state(), get_sessions(), get_plan()

@@ -2,6 +2,9 @@
 
 This module provides the reactive application state with event dispatch
 for coordinating UI updates. Uses Textual Messages for automatic UI updates.
+
+For external observation (agents, CLI tools), use `AppState.to_snapshot()`
+or the convenience functions in `iterm_controller.api`.
 """
 
 from __future__ import annotations
@@ -23,6 +26,80 @@ from iterm_controller.models import (
 
 if TYPE_CHECKING:
     from textual.app import App
+
+
+@dataclass
+class StateSnapshot:
+    """Immutable snapshot of application state for external observation.
+
+    This dataclass provides a read-only view of the current application state
+    suitable for agents, CLI tools, and external integrations that need to
+    query state without interacting with the TUI.
+
+    Example:
+        from iterm_controller.state import AppState
+
+        state = AppState()
+        await state.load_config()
+        snapshot = state.to_snapshot()
+
+        # Query state
+        print(f"Projects: {len(snapshot.projects)}")
+        print(f"Active project: {snapshot.active_project_id}")
+        print(f"Sessions: {len(snapshot.sessions)}")
+    """
+
+    # Projects and their state
+    projects: dict[str, Project]
+    active_project_id: str | None
+
+    # Active sessions
+    sessions: dict[str, ManagedSession]
+
+    # Plans (PLAN.md content)
+    plans: dict[str, Plan]
+
+    # Test plans (TEST_PLAN.md content)
+    test_plans: dict[str, TestPlan]
+
+    # Health check statuses: project_id -> {check_name -> status}
+    health_statuses: dict[str, dict[str, HealthStatus]]
+
+    # Configuration (if loaded)
+    config: AppConfig | None
+
+    @property
+    def active_project(self) -> Project | None:
+        """Get the currently active project."""
+        if self.active_project_id:
+            return self.projects.get(self.active_project_id)
+        return None
+
+    @property
+    def has_active_sessions(self) -> bool:
+        """Check if any sessions are currently active."""
+        return any(s.is_active for s in self.sessions.values())
+
+    @property
+    def open_projects(self) -> list[Project]:
+        """Get all open projects."""
+        return [p for p in self.projects.values() if p.is_open]
+
+    def get_sessions_for_project(self, project_id: str) -> list[ManagedSession]:
+        """Get all sessions for a specific project."""
+        return [s for s in self.sessions.values() if s.project_id == project_id]
+
+    def get_plan(self, project_id: str) -> Plan | None:
+        """Get the plan for a project."""
+        return self.plans.get(project_id)
+
+    def get_test_plan(self, project_id: str) -> TestPlan | None:
+        """Get the test plan for a project."""
+        return self.test_plans.get(project_id)
+
+    def get_health_statuses(self, project_id: str) -> dict[str, HealthStatus]:
+        """Get health check statuses for a project."""
+        return self.health_statuses.get(project_id, {}).copy()
 
 
 class StateEvent(Enum):
@@ -568,3 +645,35 @@ class AppState:
         """
         self.emit(StateEvent.TEST_STEP_UPDATED, project_id=project_id, step_id=step_id)
         self._post_message(TestStepUpdated(project_id, step_id))
+
+    # =========================================================================
+    # State Query (External Observation)
+    # =========================================================================
+
+    def to_snapshot(self) -> StateSnapshot:
+        """Create an immutable snapshot of the current state.
+
+        Use this method for external observation by agents, CLI tools, or
+        other integrations that need to query state without TUI context.
+
+        Returns:
+            A StateSnapshot containing a copy of all state data.
+
+        Example:
+            state = AppState()
+            await state.load_config()
+            snapshot = state.to_snapshot()
+            for project in snapshot.projects.values():
+                print(f"{project.name}: {len(snapshot.get_sessions_for_project(project.id))} sessions")
+        """
+        return StateSnapshot(
+            projects=dict(self.projects),
+            active_project_id=self.active_project_id,
+            sessions=dict(self.sessions),
+            plans=dict(self.plans),
+            test_plans=dict(self.test_plans),
+            health_statuses={
+                k: dict(v) for k, v in self._health_statuses.items()
+            },
+            config=self.config,
+        )

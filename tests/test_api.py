@@ -14,9 +14,16 @@ from iterm_controller.api import (
     TaskResult,
     TestStepResult,
     claim_task,
+    get_plan,
+    get_project,
+    get_sessions,
+    get_state,
+    get_task_progress,
+    get_test_plan,
     list_projects,
     toggle_test_step,
 )
+from iterm_controller.state import StateSnapshot
 from iterm_controller.models import (
     AppConfig,
     AppSettings,
@@ -721,3 +728,223 @@ class TestEdgeCases:
             layouts = await api.list_layouts()
 
             assert len(layouts) == 0
+
+
+# =============================================================================
+# StateSnapshot Tests
+# =============================================================================
+
+
+class TestStateSnapshot:
+    """Tests for StateSnapshot class."""
+
+    @pytest.mark.asyncio
+    async def test_to_snapshot_basic(
+        self,
+        sample_config: AppConfig,
+        sample_project: Project,
+        sample_session: ManagedSession,
+    ) -> None:
+        """Test creating a state snapshot."""
+        api = ItermControllerAPI()
+
+        with patch("iterm_controller.config.load_global_config", return_value=sample_config):
+            await api.initialize(connect_iterm=False)
+            api._state.add_session(sample_session)
+
+            snapshot = api._state.to_snapshot()
+
+            assert isinstance(snapshot, StateSnapshot)
+            assert len(snapshot.projects) == 1
+            assert len(snapshot.sessions) == 1
+            assert "test-project" in snapshot.projects
+            assert "session-1" in snapshot.sessions
+
+    @pytest.mark.asyncio
+    async def test_snapshot_is_copy(
+        self,
+        sample_config: AppConfig,
+        sample_session: ManagedSession,
+    ) -> None:
+        """Test that snapshot contains copies, not references."""
+        api = ItermControllerAPI()
+
+        with patch("iterm_controller.config.load_global_config", return_value=sample_config):
+            await api.initialize(connect_iterm=False)
+            api._state.add_session(sample_session)
+
+            snapshot = api._state.to_snapshot()
+
+            # Modify snapshot
+            snapshot.sessions.clear()
+
+            # Original state should be unchanged
+            assert len(api._state.sessions) == 1
+
+    @pytest.mark.asyncio
+    async def test_snapshot_active_project(
+        self,
+        sample_config: AppConfig,
+        sample_project: Project,
+    ) -> None:
+        """Test snapshot active_project property."""
+        api = ItermControllerAPI()
+
+        with patch("iterm_controller.config.load_global_config", return_value=sample_config):
+            await api.initialize(connect_iterm=False)
+
+            # No active project initially
+            snapshot = api._state.to_snapshot()
+            assert snapshot.active_project is None
+
+            # Set active project
+            api._state.active_project_id = "test-project"
+            snapshot = api._state.to_snapshot()
+            assert snapshot.active_project is not None
+            assert snapshot.active_project.id == "test-project"
+
+    @pytest.mark.asyncio
+    async def test_snapshot_has_active_sessions(
+        self,
+        sample_config: AppConfig,
+        sample_session: ManagedSession,
+    ) -> None:
+        """Test snapshot has_active_sessions property."""
+        api = ItermControllerAPI()
+
+        with patch("iterm_controller.config.load_global_config", return_value=sample_config):
+            await api.initialize(connect_iterm=False)
+
+            # No sessions
+            snapshot = api._state.to_snapshot()
+            assert not snapshot.has_active_sessions
+
+            # Add active session
+            api._state.add_session(sample_session)
+            snapshot = api._state.to_snapshot()
+            assert snapshot.has_active_sessions
+
+    @pytest.mark.asyncio
+    async def test_snapshot_get_sessions_for_project(
+        self,
+        sample_config: AppConfig,
+        sample_session: ManagedSession,
+    ) -> None:
+        """Test snapshot get_sessions_for_project method."""
+        api = ItermControllerAPI()
+
+        with patch("iterm_controller.config.load_global_config", return_value=sample_config):
+            await api.initialize(connect_iterm=False)
+            api._state.add_session(sample_session)
+
+            # Add session for different project
+            other_session = ManagedSession(
+                id="session-2",
+                template_id="dev-server",
+                project_id="other-project",
+                tab_id="tab-2",
+            )
+            api._state.add_session(other_session)
+
+            snapshot = api._state.to_snapshot()
+            sessions = snapshot.get_sessions_for_project("test-project")
+
+            assert len(sessions) == 1
+            assert sessions[0].id == "session-1"
+
+    @pytest.mark.asyncio
+    async def test_snapshot_with_plans(
+        self,
+        sample_config: AppConfig,
+        sample_plan: Plan,
+        sample_test_plan: TestPlan,
+    ) -> None:
+        """Test snapshot includes plans."""
+        api = ItermControllerAPI()
+
+        with patch("iterm_controller.config.load_global_config", return_value=sample_config):
+            await api.initialize(connect_iterm=False)
+            api._state.set_plan("test-project", sample_plan)
+            api._state.set_test_plan("test-project", sample_test_plan)
+
+            snapshot = api._state.to_snapshot()
+
+            assert "test-project" in snapshot.plans
+            assert "test-project" in snapshot.test_plans
+            assert snapshot.get_plan("test-project") is not None
+            assert snapshot.get_test_plan("test-project") is not None
+
+
+# =============================================================================
+# State Query Convenience Function Tests
+# =============================================================================
+
+
+class TestStateQueryFunctions:
+    """Tests for state query convenience functions."""
+
+    @pytest.mark.asyncio
+    async def test_get_state(self, sample_config: AppConfig) -> None:
+        """Test get_state convenience function."""
+        with patch("iterm_controller.config.load_global_config", return_value=sample_config):
+            state = await get_state()
+
+            assert state is not None
+            assert isinstance(state, StateSnapshot)
+            assert len(state.projects) == 1
+            assert "test-project" in state.projects
+
+    @pytest.mark.asyncio
+    async def test_get_project_convenience(self, sample_config: AppConfig) -> None:
+        """Test get_project convenience function."""
+        with patch("iterm_controller.config.load_global_config", return_value=sample_config):
+            project = await get_project("test-project")
+
+            assert project is not None
+            assert project.id == "test-project"
+            assert project.name == "Test Project"
+
+    @pytest.mark.asyncio
+    async def test_get_project_not_found(self, sample_config: AppConfig) -> None:
+        """Test get_project returns None for missing project."""
+        with patch("iterm_controller.config.load_global_config", return_value=sample_config):
+            project = await get_project("nonexistent")
+
+            assert project is None
+
+    @pytest.mark.asyncio
+    async def test_get_sessions_alias(self, sample_config: AppConfig) -> None:
+        """Test get_sessions is alias for list_sessions."""
+        with patch("iterm_controller.config.load_global_config", return_value=sample_config):
+            with patch("iterm_controller.api.list_sessions", new_callable=AsyncMock) as mock:
+                mock.return_value = []
+
+                await get_sessions("test-project")
+
+                mock.assert_called_once_with("test-project")
+
+    @pytest.mark.asyncio
+    async def test_get_task_progress_convenience(
+        self, sample_config: AppConfig, sample_plan: Plan
+    ) -> None:
+        """Test get_task_progress convenience function."""
+        with patch("iterm_controller.config.load_global_config", return_value=sample_config):
+            # Create a project directory with PLAN.md
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # Update project path
+                sample_config.projects[0].path = tmpdir
+                plan_path = Path(tmpdir) / "PLAN.md"
+                plan_path.write_text("""
+# Plan
+
+## Phase 1
+
+- [ ] Task 1
+- [x] Task 2
+- [~] Task 3
+""")
+
+                progress = await get_task_progress("test-project")
+
+                # Should have loaded the plan and returned progress
+                assert isinstance(progress, dict)

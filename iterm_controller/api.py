@@ -75,7 +75,7 @@ from .models import (
 )
 from .plan_parser import PlanParser, PlanUpdater
 from .plan_watcher import PlanWatcher, PlanWriteQueue
-from .state import AppState
+from .state import AppState, StateSnapshot
 from .test_plan_parser import TestPlanParser, TestPlanUpdater
 
 logger = logging.getLogger(__name__)
@@ -1275,5 +1275,184 @@ async def list_sessions(project_id: str | None = None) -> list[ManagedSession]:
 
     try:
         return await api.list_sessions(project_id)
+    finally:
+        await api.shutdown()
+
+
+# =============================================================================
+# State Query Functions (External Observation)
+# =============================================================================
+
+
+async def get_state() -> StateSnapshot | None:
+    """Get a snapshot of the current application state.
+
+    Creates a temporary API instance and returns a read-only snapshot
+    of all state data. Useful for external tools that need to query
+    sessions, tasks, projects, and plans without interacting with the TUI.
+
+    Returns:
+        StateSnapshot containing all current state, or None on error.
+
+    Example:
+        from iterm_controller.api import get_state
+
+        state = await get_state()
+        if state:
+            print(f"Projects: {len(state.projects)}")
+            print(f"Active: {state.active_project_id}")
+            for session in state.sessions.values():
+                print(f"  Session {session.name}: {session.attention_state}")
+    """
+    api = ItermControllerAPI()
+    result = await api.initialize(connect_iterm=False)
+    if not result.success:
+        return None
+
+    try:
+        return api.state.to_snapshot()
+    finally:
+        await api.shutdown()
+
+
+async def get_plan(project_id: str) -> Plan | None:
+    """Get the parsed PLAN.md for a project.
+
+    Creates a temporary API instance and returns the plan.
+
+    Args:
+        project_id: The project's unique identifier.
+
+    Returns:
+        The Plan if available, None otherwise.
+
+    Example:
+        from iterm_controller.api import get_plan
+
+        plan = await get_plan("my-project")
+        if plan:
+            for task in plan.all_tasks:
+                print(f"{task.id}: {task.title} [{task.status.value}]")
+    """
+    api = ItermControllerAPI()
+    result = await api.initialize(connect_iterm=False)
+    if not result.success:
+        return None
+
+    try:
+        await api.open_project(project_id)
+        return await api.get_plan(project_id)
+    finally:
+        await api.shutdown()
+
+
+async def get_project(project_id: str) -> Project | None:
+    """Get a project by ID.
+
+    Creates a temporary API instance and returns the project.
+
+    Args:
+        project_id: The project's unique identifier.
+
+    Returns:
+        The Project if found, None otherwise.
+
+    Example:
+        from iterm_controller.api import get_project
+
+        project = await get_project("my-project")
+        if project:
+            print(f"Path: {project.path}")
+            print(f"Template: {project.template_id}")
+    """
+    api = ItermControllerAPI()
+    result = await api.initialize(connect_iterm=False)
+    if not result.success:
+        return None
+
+    try:
+        return await api.get_project(project_id)
+    finally:
+        await api.shutdown()
+
+
+async def get_sessions(project_id: str | None = None) -> list[ManagedSession]:
+    """Get managed sessions (alias for list_sessions).
+
+    Creates a temporary API instance and returns the session list.
+    This function connects to iTerm2 to get live session data.
+
+    Args:
+        project_id: Optional project to filter by.
+
+    Returns:
+        List of managed sessions.
+
+    Example:
+        from iterm_controller.api import get_sessions
+
+        sessions = await get_sessions("my-project")
+        for s in sessions:
+            print(f"{s.name}: {s.attention_state.value}")
+    """
+    return await list_sessions(project_id)
+
+
+async def get_task_progress(project_id: str) -> dict[str, int]:
+    """Get task completion summary for a project.
+
+    Creates a temporary API instance and returns task counts by status.
+
+    Args:
+        project_id: The project's unique identifier.
+
+    Returns:
+        Dictionary with status counts (e.g., {"pending": 3, "complete": 5}).
+
+    Example:
+        from iterm_controller.api import get_task_progress
+
+        progress = await get_task_progress("my-project")
+        print(f"Completed: {progress.get('complete', 0)}/{sum(progress.values())}")
+    """
+    api = ItermControllerAPI()
+    result = await api.initialize(connect_iterm=False)
+    if not result.success:
+        return {}
+
+    try:
+        await api.open_project(project_id)
+        return await api.get_task_progress(project_id)
+    finally:
+        await api.shutdown()
+
+
+async def get_test_plan(project_id: str) -> TestPlan | None:
+    """Get the parsed TEST_PLAN.md for a project.
+
+    Creates a temporary API instance and returns the test plan.
+
+    Args:
+        project_id: The project's unique identifier.
+
+    Returns:
+        The TestPlan if available, None otherwise.
+
+    Example:
+        from iterm_controller.api import get_test_plan
+
+        test_plan = await get_test_plan("my-project")
+        if test_plan:
+            for step in test_plan.all_steps:
+                print(f"{step.id}: {step.description} [{step.status.value}]")
+    """
+    api = ItermControllerAPI()
+    result = await api.initialize(connect_iterm=False)
+    if not result.success:
+        return None
+
+    try:
+        await api.open_project(project_id)
+        return await api.get_test_plan(project_id)
     finally:
         await api.shutdown()
