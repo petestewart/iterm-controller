@@ -31,6 +31,7 @@ from iterm_controller.state import (
     SessionStatusChanged,
 )
 from iterm_controller.test_output_parser import UnitTestResults, parse_test_output
+from iterm_controller.widgets.mode_indicator import ModeIndicatorWidget
 from iterm_controller.widgets.session_list import SessionListWidget
 from iterm_controller.widgets.test_plan import TestPlanWidget
 from iterm_controller.widgets.unit_tests import UnitTestWidget
@@ -95,6 +96,14 @@ class TestModeScreen(ModeScreen):
     DEFAULT_CSS = """
     TestModeScreen {
         layout: vertical;
+    }
+
+    TestModeScreen #mode-indicator {
+        dock: top;
+        width: 100%;
+        height: 1;
+        background: $surface;
+        padding: 0 1;
     }
 
     TestModeScreen #main {
@@ -173,6 +182,7 @@ class TestModeScreen(ModeScreen):
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
         yield Header()
+        yield ModeIndicatorWidget(current_mode=self.CURRENT_MODE, id="mode-indicator")
         yield Container(
             Horizontal(
                 Vertical(

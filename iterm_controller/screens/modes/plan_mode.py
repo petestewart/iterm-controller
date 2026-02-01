@@ -21,6 +21,7 @@ from iterm_controller.models import SessionTemplate, WorkflowMode
 from iterm_controller.screens.mode_screen import ModeScreen
 from iterm_controller.screens.modals.artifact_preview import ArtifactPreviewModal
 from iterm_controller.widgets.artifact_list import ArtifactListWidget
+from iterm_controller.widgets.mode_indicator import ModeIndicatorWidget
 from iterm_controller.widgets.workflow_bar import WorkflowBarWidget
 
 if TYPE_CHECKING:
@@ -85,6 +86,14 @@ class PlanModeScreen(ModeScreen):
         layout: vertical;
     }
 
+    PlanModeScreen #mode-indicator {
+        dock: top;
+        width: 100%;
+        height: 1;
+        background: $surface;
+        padding: 0 1;
+    }
+
     PlanModeScreen #main {
         height: 1fr;
         padding: 1;
@@ -132,6 +141,7 @@ class PlanModeScreen(ModeScreen):
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
         yield Header()
+        yield ModeIndicatorWidget(current_mode=self.CURRENT_MODE, id="mode-indicator")
         yield Container(
             Vertical(
                 Static("Planning Artifacts", id="artifacts-title"),

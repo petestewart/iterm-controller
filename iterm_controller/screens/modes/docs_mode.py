@@ -21,6 +21,7 @@ from textual.widgets import Footer, Header, Static
 from iterm_controller.models import WorkflowMode
 from iterm_controller.screens.mode_screen import ModeScreen
 from iterm_controller.widgets.doc_tree import DocTreeWidget
+from iterm_controller.widgets.mode_indicator import ModeIndicatorWidget
 
 if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
@@ -102,6 +103,14 @@ class DocsModeScreen(ModeScreen):
         layout: vertical;
     }
 
+    DocsModeScreen #mode-indicator {
+        dock: top;
+        width: 100%;
+        height: 1;
+        background: $surface;
+        padding: 0 1;
+    }
+
     DocsModeScreen #main {
         height: 1fr;
         padding: 1;
@@ -140,6 +149,7 @@ class DocsModeScreen(ModeScreen):
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
         yield Header()
+        yield ModeIndicatorWidget(current_mode=self.CURRENT_MODE, id="mode-indicator")
         yield Container(
             Vertical(
                 Static("Documentation", id="tree-title"),

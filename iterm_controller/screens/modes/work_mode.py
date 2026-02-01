@@ -31,6 +31,7 @@ from iterm_controller.state import (
 )
 from iterm_controller.widgets.active_work import ActiveWorkWidget
 from iterm_controller.widgets.blocked_tasks import BlockedTasksWidget
+from iterm_controller.widgets.mode_indicator import ModeIndicatorWidget
 from iterm_controller.widgets.session_list import SessionListWidget
 from iterm_controller.widgets.task_queue import TaskQueueWidget
 
@@ -82,6 +83,14 @@ class WorkModeScreen(ModeScreen):
     DEFAULT_CSS = """
     WorkModeScreen {
         layout: vertical;
+    }
+
+    WorkModeScreen #mode-indicator {
+        dock: top;
+        width: 100%;
+        height: 1;
+        background: $surface;
+        padding: 0 1;
     }
 
     WorkModeScreen #main {
@@ -160,6 +169,7 @@ class WorkModeScreen(ModeScreen):
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
         yield Header()
+        yield ModeIndicatorWidget(current_mode=self.CURRENT_MODE, id="mode-indicator")
         yield Container(
             Horizontal(
                 Vertical(

@@ -473,22 +473,22 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 17: Mode Integration
 
-- [ ] **Extend Auto Mode for mode-specific commands**
+- [x] **Extend Auto Mode for mode-specific commands** `[complete]`
   - Spec: specs/auto-mode.md#mode-specific-automation
   - Scope: Add mode_commands config, trigger on mode entry
   - Acceptance: Entering Plan Mode can auto-run "claude /prd"
 
-- [ ] **Add mode indicator to header**
+- [x] **Add mode indicator to header** `[complete]`
   - Spec: specs/workflow-modes.md#mode-indicator
   - Scope: Show current mode and 1-4 shortcuts in header
   - Acceptance: Header shows "[Plan] 1 2 3 4" with current highlighted
 
-- [ ] **Implement mode persistence (restore on reopen)**
+- [x] **Implement mode persistence (restore on reopen)** `[complete]`
   - Spec: specs/workflow-modes.md#mode-persistence
   - Scope: Save last_mode to project, restore on project open
   - Acceptance: Closing and reopening project returns to last mode
 
-- [ ] **Update help screen with mode shortcuts**
+- [x] **Update help screen with mode shortcuts** `[complete]`
   - Scope: Add workflow modes section to help modal
   - Acceptance: Help shows 1-4 key descriptions for modes
 
