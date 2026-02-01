@@ -214,7 +214,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Display branch status, PR info, comments
   - Acceptance: Shows data when available, hides/degrades gracefully
 
-- [ ] **Add GitHub actions modal** `[pending]`
+- [x] **Add GitHub actions modal** `[complete]`
   - Spec: specs/github.md#github-actions-modal
   - Scope: View workflow runs and status
   - Acceptance: Lists recent runs, shows pass/fail status

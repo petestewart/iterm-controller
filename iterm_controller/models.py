@@ -315,6 +315,18 @@ class PullRequest:
 
 
 @dataclass
+class WorkflowRun:
+    """GitHub Actions workflow run."""
+
+    id: int
+    name: str
+    status: str  # "queued", "in_progress", "completed"
+    conclusion: str | None  # "success", "failure", "cancelled", etc.
+    created_at: str
+    branch: str
+
+
+@dataclass
 class GitHubStatus:
     """Current GitHub state for a project."""
 
