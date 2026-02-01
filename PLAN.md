@@ -150,7 +150,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Display tasks with phases, dependencies, blocked state dimming
   - Acceptance: Blocked tasks show "blocked by X" and are dimmed
 
-- [ ] **Build workflow bar widget** `[pending]`
+- [x] **Build workflow bar widget** `[complete]`
   - Spec: specs/auto-mode.md#workflow-bar-widget
   - Scope: Display Planning → Execute → Review → PR → Done stages
   - Acceptance: Current stage highlighted, progress visible
