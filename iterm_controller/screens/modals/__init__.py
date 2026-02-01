@@ -5,6 +5,7 @@ from .github_actions import GitHubActionsModal
 from .plan_conflict import PlanConflictModal
 from .quit_confirm import QuitAction, QuitConfirmModal
 from .script_picker import ScriptPickerModal
+from .stage_advance import StageAdvanceModal
 
 __all__ = [
     "DocsPickerModal",
@@ -13,4 +14,5 @@ __all__ = [
     "QuitAction",
     "QuitConfirmModal",
     "ScriptPickerModal",
+    "StageAdvanceModal",
 ]

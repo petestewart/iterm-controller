@@ -2,12 +2,15 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from iterm_controller.auto_mode import (
+    AutoAdvanceHandler,
     AutoModeController,
+    AutoModeIntegration,
+    CommandExecutionResult,
     StageTransition,
     WorkflowStageInferrer,
     create_controller_for_project,
@@ -490,3 +493,428 @@ class TestCreateControllerForProject:
         )
 
         assert controller.on_stage_change is on_change
+
+
+class TestCommandExecutionResult:
+    """Tests for CommandExecutionResult dataclass."""
+
+    def test_successful_result(self):
+        """Test creating a successful execution result."""
+        result = CommandExecutionResult(
+            success=True,
+            command="claude /prd",
+            session_id="session-123",
+        )
+        assert result.success is True
+        assert result.command == "claude /prd"
+        assert result.session_id == "session-123"
+        assert result.error is None
+
+    def test_failed_result(self):
+        """Test creating a failed execution result."""
+        result = CommandExecutionResult(
+            success=False,
+            command="claude /prd",
+            error="No session available",
+        )
+        assert result.success is False
+        assert result.error == "No session available"
+
+
+class TestAutoAdvanceHandler:
+    """Tests for AutoAdvanceHandler class."""
+
+    def test_handler_init(self):
+        """Test handler initialization."""
+        config = AutoModeConfig(enabled=True)
+        handler = AutoAdvanceHandler(config=config)
+
+        assert handler.config.enabled is True
+        assert handler.iterm is None
+        assert handler.app is None
+
+    @pytest.mark.asyncio
+    async def test_handle_stage_change_disabled(self):
+        """Test that handler does nothing when auto mode is disabled."""
+        config = AutoModeConfig(enabled=False)
+        handler = AutoAdvanceHandler(config=config)
+
+        transition = StageTransition(
+            old_stage=WorkflowStage.PLANNING,
+            new_stage=WorkflowStage.EXECUTE,
+            project_id="test-project",
+        )
+
+        result = await handler.handle_stage_change(transition)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_handle_stage_change_no_auto_advance(self):
+        """Test that handler does nothing when auto_advance is False."""
+        config = AutoModeConfig(enabled=True, auto_advance=False)
+        handler = AutoAdvanceHandler(config=config)
+
+        transition = StageTransition(
+            old_stage=WorkflowStage.PLANNING,
+            new_stage=WorkflowStage.EXECUTE,
+            project_id="test-project",
+        )
+
+        result = await handler.handle_stage_change(transition)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_handle_stage_change_no_command(self):
+        """Test that handler does nothing when no command configured."""
+        config = AutoModeConfig(
+            enabled=True,
+            auto_advance=True,
+            stage_commands={},  # No commands
+        )
+        handler = AutoAdvanceHandler(config=config)
+
+        transition = StageTransition(
+            old_stage=WorkflowStage.PLANNING,
+            new_stage=WorkflowStage.EXECUTE,
+            project_id="test-project",
+        )
+
+        result = await handler.handle_stage_change(transition)
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_handle_stage_change_no_iterm(self):
+        """Test that handler returns error when iTerm not available."""
+        config = AutoModeConfig(
+            enabled=True,
+            auto_advance=True,
+            require_confirmation=False,
+            stage_commands={"execute": "claude /plan"},
+        )
+        handler = AutoAdvanceHandler(config=config, iterm=None)
+
+        transition = StageTransition(
+            old_stage=WorkflowStage.PLANNING,
+            new_stage=WorkflowStage.EXECUTE,
+            project_id="test-project",
+        )
+
+        result = await handler.handle_stage_change(transition)
+        assert result is not None
+        assert result.success is False
+        assert "not connected" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_handle_stage_change_executes_command(self):
+        """Test that handler executes command when properly configured."""
+        config = AutoModeConfig(
+            enabled=True,
+            auto_advance=True,
+            require_confirmation=False,
+            stage_commands={"execute": "claude /plan"},
+        )
+
+        # Mock iTerm controller and session
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_tab = MagicMock()
+        mock_tab.current_session = mock_session
+
+        mock_window = MagicMock()
+        mock_window.current_tab = mock_tab
+
+        mock_app = MagicMock()
+        mock_app.current_terminal_window = mock_window
+
+        mock_iterm = MagicMock()
+        mock_iterm.is_connected = True
+        mock_iterm.app = mock_app
+
+        handler = AutoAdvanceHandler(config=config, iterm=mock_iterm)
+
+        transition = StageTransition(
+            old_stage=WorkflowStage.PLANNING,
+            new_stage=WorkflowStage.EXECUTE,
+            project_id="test-project",
+        )
+
+        result = await handler.handle_stage_change(transition)
+
+        assert result is not None
+        assert result.success is True
+        assert result.command == "claude /plan"
+        assert result.session_id == "session-123"
+        mock_session.async_send_text.assert_called_once_with("claude /plan\n")
+
+    @pytest.mark.asyncio
+    async def test_handle_stage_change_uses_designated_session(self):
+        """Test that handler uses designated session when configured."""
+        config = AutoModeConfig(
+            enabled=True,
+            auto_advance=True,
+            require_confirmation=False,
+            stage_commands={"execute": "claude /plan"},
+            designated_session="designated-session-id",
+        )
+
+        # Mock designated session
+        mock_session = MagicMock()
+        mock_session.session_id = "designated-session-id"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_app = MagicMock()
+        mock_app.async_get_session_by_id = AsyncMock(return_value=mock_session)
+        mock_app.current_terminal_window = None  # Should not be used
+
+        mock_iterm = MagicMock()
+        mock_iterm.is_connected = True
+        mock_iterm.app = mock_app
+
+        handler = AutoAdvanceHandler(config=config, iterm=mock_iterm)
+
+        transition = StageTransition(
+            old_stage=WorkflowStage.PLANNING,
+            new_stage=WorkflowStage.EXECUTE,
+            project_id="test-project",
+        )
+
+        result = await handler.handle_stage_change(transition)
+
+        assert result.success is True
+        assert result.session_id == "designated-session-id"
+        mock_app.async_get_session_by_id.assert_called_once_with(
+            "designated-session-id"
+        )
+
+    @pytest.mark.asyncio
+    async def test_handle_stage_change_confirmation_declined(self):
+        """Test that handler respects declined confirmation."""
+        config = AutoModeConfig(
+            enabled=True,
+            auto_advance=True,
+            require_confirmation=True,
+            stage_commands={"execute": "claude /plan"},
+        )
+
+        # Mock app that returns False from modal
+        mock_app = MagicMock()
+        mock_app.push_screen_wait = AsyncMock(return_value=False)
+
+        handler = AutoAdvanceHandler(config=config, app=mock_app)
+
+        transition = StageTransition(
+            old_stage=WorkflowStage.PLANNING,
+            new_stage=WorkflowStage.EXECUTE,
+            project_id="test-project",
+        )
+
+        result = await handler.handle_stage_change(transition)
+
+        assert result is not None
+        assert result.success is False
+        assert "declined" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_handle_stage_change_confirmation_accepted(self):
+        """Test that handler proceeds when confirmation accepted."""
+        config = AutoModeConfig(
+            enabled=True,
+            auto_advance=True,
+            require_confirmation=True,
+            stage_commands={"execute": "claude /plan"},
+        )
+
+        # Mock session
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_tab = MagicMock()
+        mock_tab.current_session = mock_session
+
+        mock_window = MagicMock()
+        mock_window.current_tab = mock_tab
+
+        mock_iterm_app = MagicMock()
+        mock_iterm_app.current_terminal_window = mock_window
+
+        mock_iterm = MagicMock()
+        mock_iterm.is_connected = True
+        mock_iterm.app = mock_iterm_app
+
+        # Mock textual app that returns True from modal
+        mock_app = MagicMock()
+        mock_app.push_screen_wait = AsyncMock(return_value=True)
+
+        handler = AutoAdvanceHandler(config=config, iterm=mock_iterm, app=mock_app)
+
+        transition = StageTransition(
+            old_stage=WorkflowStage.PLANNING,
+            new_stage=WorkflowStage.EXECUTE,
+            project_id="test-project",
+        )
+
+        result = await handler.handle_stage_change(transition)
+
+        assert result.success is True
+        mock_session.async_send_text.assert_called_once()
+
+    def test_create_transition_handler(self):
+        """Test create_transition_handler returns correct callable."""
+        config = AutoModeConfig(enabled=True)
+        handler = AutoAdvanceHandler(config=config)
+
+        transition_handler = handler.create_transition_handler()
+
+        # Should be the same as handle_stage_change
+        assert transition_handler == handler.handle_stage_change
+
+
+class TestAutoModeIntegration:
+    """Tests for AutoModeIntegration class."""
+
+    def test_integration_init(self, tmp_path):
+        """Test integration initialization."""
+        config = AutoModeConfig(enabled=True)
+        integration = AutoModeIntegration(
+            config=config,
+            project_id="test-project",
+            project_path=tmp_path,
+        )
+
+        assert integration.config.enabled is True
+        assert integration.current_stage is None
+        assert integration.current_state is None
+        assert integration.last_execution_result is None
+
+    @pytest.mark.asyncio
+    async def test_on_plan_change_evaluates_stage(self, tmp_path):
+        """Test that on_plan_change evaluates the new stage."""
+        config = AutoModeConfig(enabled=False)  # Disable auto advance
+        integration = AutoModeIntegration(
+            config=config,
+            project_id="test-project",
+            project_path=tmp_path,
+        )
+
+        plan = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[Task(id="1.1", title="Task 1", status=TaskStatus.PENDING)],
+                )
+            ]
+        )
+
+        state = await integration.on_plan_change(plan)
+
+        assert state.stage == WorkflowStage.EXECUTE
+        assert integration.current_stage == WorkflowStage.EXECUTE
+
+    @pytest.mark.asyncio
+    async def test_on_plan_change_executes_command_on_transition(self, tmp_path):
+        """Test that on_plan_change executes command on stage transition."""
+        config = AutoModeConfig(
+            enabled=True,
+            auto_advance=True,
+            require_confirmation=False,
+            stage_commands={"review": "claude /review"},
+        )
+
+        # Mock session
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_tab = MagicMock()
+        mock_tab.current_session = mock_session
+
+        mock_window = MagicMock()
+        mock_window.current_tab = mock_tab
+
+        mock_iterm_app = MagicMock()
+        mock_iterm_app.current_terminal_window = mock_window
+
+        mock_iterm = MagicMock()
+        mock_iterm.is_connected = True
+        mock_iterm.app = mock_iterm_app
+
+        integration = AutoModeIntegration(
+            config=config,
+            project_id="test-project",
+            project_path=tmp_path,
+            iterm=mock_iterm,
+        )
+
+        # First: Set up execute stage
+        plan1 = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[Task(id="1.1", title="Task 1", status=TaskStatus.PENDING)],
+                )
+            ]
+        )
+        await integration.on_plan_change(plan1)
+
+        # Then: Transition to review stage (all tasks complete)
+        plan2 = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[Task(id="1.1", title="Task 1", status=TaskStatus.COMPLETE)],
+                )
+            ]
+        )
+        state = await integration.on_plan_change(plan2)
+
+        assert state.stage == WorkflowStage.REVIEW
+        assert integration.last_execution_result is not None
+        assert integration.last_execution_result.success is True
+        assert integration.last_execution_result.command == "claude /review"
+        mock_session.async_send_text.assert_called_with("claude /review\n")
+
+    def test_set_prd_unneeded(self, tmp_path):
+        """Test setting PRD as unneeded."""
+        config = AutoModeConfig()
+        integration = AutoModeIntegration(
+            config=config,
+            project_id="test-project",
+            project_path=tmp_path,
+        )
+
+        integration.set_prd_unneeded(True)
+        assert integration.controller._prd_unneeded is True
+
+    def test_update_iterm(self, tmp_path):
+        """Test updating iTerm controller reference."""
+        config = AutoModeConfig()
+        integration = AutoModeIntegration(
+            config=config,
+            project_id="test-project",
+            project_path=tmp_path,
+        )
+
+        mock_iterm = MagicMock()
+        integration.update_iterm(mock_iterm)
+
+        assert integration.handler.iterm is mock_iterm
+
+    def test_update_app(self, tmp_path):
+        """Test updating Textual app reference."""
+        config = AutoModeConfig()
+        integration = AutoModeIntegration(
+            config=config,
+            project_id="test-project",
+            project_path=tmp_path,
+        )
+
+        mock_app = MagicMock()
+        integration.update_app(mock_app)
+
+        assert integration.handler.app is mock_app

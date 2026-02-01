@@ -286,6 +286,7 @@ class AutoModeConfig:
     stage_commands: dict[str, str] = field(default_factory=dict)
     auto_advance: bool = True
     require_confirmation: bool = True
+    designated_session: str | None = None  # Session to run commands in
 
 
 @dataclass

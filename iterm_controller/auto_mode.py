@@ -1,14 +1,16 @@
 """Workflow stage automation.
 
 This module provides automatic workflow stage inference and monitoring.
-It integrates with the plan watcher to detect stage transitions.
+It integrates with the plan watcher to detect stage transitions and
+can automatically execute stage commands when advancing.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from .models import (
     AutoModeConfig,
@@ -19,8 +21,13 @@ from .models import (
 )
 
 if TYPE_CHECKING:
+    from textual.app import App
+
     from .github import GitHubIntegration
+    from .iterm_api import ItermController
     from .state import AppState
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -302,3 +309,374 @@ def create_controller_for_project(
         github=github,
         on_stage_change=on_stage_change,
     )
+
+
+# =============================================================================
+# Auto Advance Handler
+# =============================================================================
+
+
+@dataclass
+class CommandExecutionResult:
+    """Result of executing a stage command."""
+
+    success: bool
+    command: str
+    session_id: str | None = None
+    error: str | None = None
+
+
+class AutoAdvanceHandler:
+    """Handles automatic stage advancement with command execution.
+
+    This handler:
+    1. Receives stage transition notifications
+    2. Optionally shows confirmation modal
+    3. Executes stage commands in iTerm2 sessions
+
+    Usage:
+        handler = AutoAdvanceHandler(
+            config=config.auto_mode,
+            iterm=iterm_controller,
+            app=textual_app,
+        )
+
+        # Connect to controller
+        controller = AutoModeController(
+            config=config.auto_mode,
+            project_id="my-project",
+            project_path="/path/to/project",
+            on_stage_change=handler.on_stage_transition,
+        )
+    """
+
+    def __init__(
+        self,
+        config: AutoModeConfig,
+        iterm: ItermController | None = None,
+        app: App | None = None,
+    ) -> None:
+        """Initialize the auto advance handler.
+
+        Args:
+            config: Auto mode configuration.
+            iterm: iTerm controller for session access.
+            app: Textual app for modal display.
+        """
+        self.config = config
+        self.iterm = iterm
+        self.app = app
+        self._pending_advance: StageTransition | None = None
+
+    async def handle_stage_change(
+        self,
+        transition: StageTransition,
+    ) -> CommandExecutionResult | None:
+        """Handle a workflow stage transition.
+
+        If auto-advance is enabled and there's a command configured for the
+        new stage, this method will:
+        1. Show confirmation modal (if required)
+        2. Execute the stage command in the designated session
+
+        Args:
+            transition: The stage transition that occurred.
+
+        Returns:
+            CommandExecutionResult if a command was executed, None otherwise.
+        """
+        if not self.config.enabled:
+            logger.debug("Auto mode disabled, skipping auto advance")
+            return None
+
+        if not self.config.auto_advance:
+            logger.debug("Auto advance disabled, skipping command execution")
+            return None
+
+        command = self.config.stage_commands.get(transition.new_stage.value)
+        if not command:
+            logger.debug(
+                f"No command configured for stage {transition.new_stage.value}"
+            )
+            return None
+
+        # Check for confirmation
+        if self.config.require_confirmation:
+            confirmed = await self._show_confirmation_modal(
+                transition.new_stage, command
+            )
+            if not confirmed:
+                logger.info(
+                    f"User declined stage advancement to {transition.new_stage.value}"
+                )
+                return CommandExecutionResult(
+                    success=False,
+                    command=command,
+                    error="User declined confirmation",
+                )
+
+        # Execute the command
+        return await self._execute_command(command)
+
+    async def _show_confirmation_modal(
+        self,
+        stage: WorkflowStage,
+        command: str,
+    ) -> bool:
+        """Show confirmation modal for stage advancement.
+
+        Args:
+            stage: The stage we're advancing to.
+            command: The command that will be executed.
+
+        Returns:
+            True if user confirmed, False otherwise.
+        """
+        if self.app is None:
+            logger.warning("No app available for confirmation modal, skipping")
+            return True  # Proceed without confirmation
+
+        # Import here to avoid circular imports
+        from .screens.modals import StageAdvanceModal
+
+        modal = StageAdvanceModal(stage, command)
+        result = await self.app.push_screen_wait(modal)
+        return bool(result)
+
+    async def _execute_command(
+        self,
+        command: str,
+    ) -> CommandExecutionResult:
+        """Execute a stage command in the appropriate session.
+
+        The command is sent to:
+        1. The designated session (if configured and exists)
+        2. The current session in the current terminal window (fallback)
+
+        Args:
+            command: The command to execute.
+
+        Returns:
+            CommandExecutionResult with execution status.
+        """
+        if self.iterm is None or not self.iterm.is_connected:
+            logger.warning("iTerm not connected, cannot execute command")
+            return CommandExecutionResult(
+                success=False,
+                command=command,
+                error="iTerm not connected",
+            )
+
+        if self.iterm.app is None:
+            logger.warning("iTerm app not available, cannot execute command")
+            return CommandExecutionResult(
+                success=False,
+                command=command,
+                error="iTerm app not available",
+            )
+
+        try:
+            session = None
+            session_id = None
+
+            # Try designated session first
+            if self.config.designated_session:
+                session = await self.iterm.app.async_get_session_by_id(
+                    self.config.designated_session
+                )
+                if session:
+                    session_id = self.config.designated_session
+                    logger.debug(
+                        f"Using designated session {self.config.designated_session}"
+                    )
+                else:
+                    logger.warning(
+                        f"Designated session {self.config.designated_session} not found"
+                    )
+
+            # Fall back to current session
+            if session is None:
+                window = self.iterm.app.current_terminal_window
+                if window and window.current_tab:
+                    session = window.current_tab.current_session
+                    if session:
+                        session_id = session.session_id
+                        logger.debug(f"Using current session {session_id}")
+
+            if session is None:
+                logger.warning("No session available for command execution")
+                return CommandExecutionResult(
+                    success=False,
+                    command=command,
+                    error="No session available",
+                )
+
+            # Send the command with newline
+            await session.async_send_text(command + "\n")
+            logger.info(
+                f"Executed stage command in session {session_id}: {command}"
+            )
+
+            return CommandExecutionResult(
+                success=True,
+                command=command,
+                session_id=session_id,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to execute stage command: {e}")
+            return CommandExecutionResult(
+                success=False,
+                command=command,
+                error=str(e),
+            )
+
+    def create_transition_handler(
+        self,
+    ) -> Callable[[StageTransition], Awaitable[CommandExecutionResult | None]]:
+        """Create an async handler for stage transitions.
+
+        This is a convenience method that returns a callable suitable for
+        use as the on_stage_change callback.
+
+        Returns:
+            Async callable that handles stage transitions.
+        """
+        return self.handle_stage_change
+
+
+# =============================================================================
+# Auto Mode Integration
+# =============================================================================
+
+
+class AutoModeIntegration:
+    """Integrates auto mode controller with advance handler.
+
+    This class ties together the stage inference (controller) with
+    the command execution (handler) for a complete auto mode experience.
+
+    Usage:
+        integration = AutoModeIntegration(
+            config=config.auto_mode,
+            project_id="my-project",
+            project_path="/path/to/project",
+            iterm=iterm_controller,
+            app=textual_app,
+            github=github_integration,
+        )
+
+        # Evaluate on plan change
+        await integration.on_plan_change(plan)
+    """
+
+    def __init__(
+        self,
+        config: AutoModeConfig,
+        project_id: str,
+        project_path: str | Path,
+        iterm: ItermController | None = None,
+        app: App | None = None,
+        github: GitHubIntegration | None = None,
+    ) -> None:
+        """Initialize the integration.
+
+        Args:
+            config: Auto mode configuration.
+            project_id: ID of the project being monitored.
+            project_path: Path to the project directory.
+            iterm: iTerm controller for session access.
+            app: Textual app for modal display.
+            github: GitHub integration for PR status checks.
+        """
+        self.config = config
+        self.handler = AutoAdvanceHandler(
+            config=config,
+            iterm=iterm,
+            app=app,
+        )
+
+        # Create controller with our handler
+        self.controller = AutoModeController(
+            config=config,
+            project_id=project_id,
+            project_path=project_path,
+            github=github,
+        )
+
+        self._last_execution_result: CommandExecutionResult | None = None
+
+    @property
+    def current_stage(self) -> WorkflowStage | None:
+        """Get the current workflow stage."""
+        return self.controller.current_stage
+
+    @property
+    def current_state(self) -> WorkflowState | None:
+        """Get the current workflow state."""
+        return self.controller.current_state
+
+    @property
+    def last_execution_result(self) -> CommandExecutionResult | None:
+        """Get the result of the last command execution."""
+        return self._last_execution_result
+
+    async def on_plan_change(
+        self,
+        plan: Plan,
+        github_status: GitHubStatus | None = None,
+    ) -> WorkflowState:
+        """Handle PLAN.md changes.
+
+        Evaluates the new stage and executes commands if appropriate.
+
+        Args:
+            plan: The updated plan.
+            github_status: Optional GitHub status.
+
+        Returns:
+            The updated WorkflowState.
+        """
+        # Get old stage before evaluation
+        old_stage = self.controller.current_stage
+
+        # Evaluate the new stage
+        new_state = await self.controller.evaluate_stage(plan, github_status)
+
+        # Check if stage changed
+        if old_stage != new_state.stage:
+            transition = StageTransition(
+                old_stage=old_stage,
+                new_stage=new_state.stage,
+                project_id=self.controller.project_id,
+            )
+
+            # Handle the transition (may execute command)
+            result = await self.handler.handle_stage_change(transition)
+            self._last_execution_result = result
+
+        return new_state
+
+    def set_prd_unneeded(self, unneeded: bool) -> None:
+        """Mark the PRD as unneeded.
+
+        Args:
+            unneeded: Whether the PRD is not needed for this project.
+        """
+        self.controller.set_prd_unneeded(unneeded)
+
+    def update_iterm(self, iterm: ItermController | None) -> None:
+        """Update the iTerm controller reference.
+
+        Args:
+            iterm: New iTerm controller instance.
+        """
+        self.handler.iterm = iterm
+
+    def update_app(self, app: App | None) -> None:
+        """Update the Textual app reference.
+
+        Args:
+            app: New Textual app instance.
+        """
+        self.handler.app = app

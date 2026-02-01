@@ -248,7 +248,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Detect current stage from PLAN.md and project state
   - Acceptance: Stage correctly identified based on completion criteria
 
-- [ ] **Implement auto advance logic** `[pending]`
+- [x] **Implement auto advance logic** `[complete]`
   - Spec: specs/auto-mode.md#auto-mode-controller
   - Scope: Trigger stage commands when phase completes
   - Acceptance: Commands execute (with confirmation if configured)
