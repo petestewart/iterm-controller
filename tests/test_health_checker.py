@@ -178,12 +178,13 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={})
         check = HealthCheck(name="test", url="http://localhost:8080", expected_status=200)
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_client.return_value.__aenter__.return_value.request = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             result = await poller._perform_check(check)
 
@@ -196,12 +197,13 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={})
         check = HealthCheck(name="test", url="http://localhost:8080", expected_status=200)
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.status_code = 500
-            mock_client.return_value.__aenter__.return_value.request = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             result = await poller._perform_check(check)
 
@@ -214,10 +216,11 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={})
         check = HealthCheck(name="test", url="http://localhost:8080")
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.request = AsyncMock(
-                side_effect=httpx.ConnectError("Connection refused")
-            )
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.request = AsyncMock(side_effect=httpx.ConnectError("Connection refused"))
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             result = await poller._perform_check(check)
 
@@ -229,10 +232,11 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={})
         check = HealthCheck(name="test", url="http://localhost:8080")
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.request = AsyncMock(
-                side_effect=httpx.TimeoutException("Timeout")
-            )
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.request = AsyncMock(side_effect=httpx.TimeoutException("Timeout"))
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             result = await poller._perform_check(check)
 
@@ -244,10 +248,11 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={})
         check = HealthCheck(name="test", url="http://localhost:8080")
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.request = AsyncMock(
-                side_effect=Exception("Unknown error")
-            )
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.request = AsyncMock(side_effect=Exception("Unknown error"))
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             result = await poller._perform_check(check)
 
@@ -259,11 +264,14 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={})
         check = HealthCheck(name="test", url="http://localhost:8080", method="POST")
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_request = AsyncMock(return_value=mock_response)
-            mock_client.return_value.__aenter__.return_value.request = mock_request
+            mock_client.request = mock_request
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             await poller._perform_check(check)
 
@@ -279,11 +287,14 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={})
         check = HealthCheck(name="test", url="http://localhost:8080", timeout_seconds=2.5)
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_request = AsyncMock(return_value=mock_response)
-            mock_client.return_value.__aenter__.return_value.request = mock_request
+            mock_client.request = mock_request
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             await poller._perform_check(check)
 
@@ -299,11 +310,14 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={"PORT": "9000"})
         check = HealthCheck(name="test", url="http://localhost:{env.PORT}/health")
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
             mock_request = AsyncMock(return_value=mock_response)
-            mock_client.return_value.__aenter__.return_value.request = mock_request
+            mock_client.request = mock_request
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             await poller._perform_check(check)
 
@@ -328,12 +342,13 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={}, on_status_change=on_change)
         check = HealthCheck(name="test", url="http://localhost:8080")
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_client.return_value.__aenter__.return_value.request = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             await poller._perform_check(check)
 
@@ -351,12 +366,13 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={}, on_status_change=on_change)
         check = HealthCheck(name="test", url="http://localhost:8080")
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_client.return_value.__aenter__.return_value.request = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             # First check - status changes from None to HEALTHY
             await poller._perform_check(check)
@@ -377,14 +393,15 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={}, on_status_change=on_change)
         check = HealthCheck(name="test", url="http://localhost:8080")
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
             mock_response = MagicMock()
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             # First check - HEALTHY
             mock_response.status_code = 200
-            mock_client.return_value.__aenter__.return_value.request = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.request = AsyncMock(return_value=mock_response)
             await poller._perform_check(check)
 
             # Second check - UNHEALTHY
@@ -405,12 +422,13 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={})
         check = HealthCheck(name="test", url="http://localhost:8080")
 
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_client.return_value.__aenter__.return_value.request = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
 
             result = await poller.check_now(check)
 
@@ -422,21 +440,22 @@ class TestHealthCheckPoller:
         poller = HealthCheckPoller(env={})
         check = HealthCheck(name="test", url="http://localhost:8080")
 
-        # Register the check
-        await poller.start_polling([check])
-
-        with patch("httpx.AsyncClient") as mock_client:
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
             mock_response = MagicMock()
             mock_response.status_code = 200
-            mock_client.return_value.__aenter__.return_value.request = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
+
+            # Register the check (this creates the shared client)
+            await poller.start_polling([check])
 
             result = await poller.check_by_name("test")
 
-        assert result == HealthStatus.HEALTHY
+            assert result == HealthStatus.HEALTHY
 
-        await poller.stop_polling()
+            await poller.stop_polling()
 
     @pytest.mark.asyncio
     async def test_check_by_name_not_found(self):
@@ -446,6 +465,94 @@ class TestHealthCheckPoller:
         result = await poller.check_by_name("unknown")
 
         assert result is None
+
+    # ==========================================================================
+    # Client Reuse
+    # ==========================================================================
+
+    @pytest.mark.asyncio
+    async def test_start_polling_creates_shared_client(self):
+        """start_polling creates a shared httpx client."""
+        poller = HealthCheckPoller(env={})
+        check = HealthCheck(name="test", url="http://localhost:8080", interval_seconds=10.0)
+
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
+
+            await poller.start_polling([check])
+
+            # Shared client should be created
+            assert poller._client is not None
+            assert poller._client is mock_client
+
+            await poller.stop_polling()
+
+    @pytest.mark.asyncio
+    async def test_stop_polling_closes_shared_client(self):
+        """stop_polling closes the shared httpx client."""
+        poller = HealthCheckPoller(env={})
+        check = HealthCheck(name="test", url="http://localhost:8080", interval_seconds=10.0)
+
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
+
+            await poller.start_polling([check])
+            await poller.stop_polling()
+
+            # Client should be closed and cleared
+            mock_client.aclose.assert_called_once()
+            assert poller._client is None
+
+    @pytest.mark.asyncio
+    async def test_perform_check_reuses_shared_client(self):
+        """_perform_check reuses the shared client when available."""
+        poller = HealthCheckPoller(env={})
+        check = HealthCheck(name="test", url="http://localhost:8080", interval_seconds=10.0)
+
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
+
+            await poller.start_polling([check])
+
+            # Perform multiple checks
+            await poller._perform_check(check)
+            await poller._perform_check(check)
+            await poller._perform_check(check)
+
+            # Client should only be created once (in start_polling)
+            assert mock_client_class.call_count == 1
+
+            await poller.stop_polling()
+
+    @pytest.mark.asyncio
+    async def test_perform_check_creates_temporary_client_when_no_shared(self):
+        """_perform_check creates a temporary client when shared is unavailable."""
+        poller = HealthCheckPoller(env={})
+        check = HealthCheck(name="test", url="http://localhost:8080")
+
+        with patch("iterm_controller.health_checker.httpx.AsyncClient") as mock_client_class:
+            mock_client = MagicMock()
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_client.request = AsyncMock(return_value=mock_response)
+            mock_client.aclose = AsyncMock()
+            mock_client_class.return_value = mock_client
+
+            # Don't call start_polling - directly call _perform_check
+            await poller._perform_check(check)
+
+            # Temporary client should be created and closed
+            assert mock_client_class.call_count == 1
+            mock_client.aclose.assert_called_once()
 
 
 class TestProjectHealthManager:

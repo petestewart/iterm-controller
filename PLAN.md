@@ -695,7 +695,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Use `await asyncio.to_thread(path.read_text, encoding="utf-8")`
   - Acceptance: Event loop not blocked during file reads
 
-- [ ] **Reuse httpx client in health checker** `[pending]`
+- [x] **Reuse httpx client in health checker** `[complete]`
   - Scope: Create single httpx.AsyncClient instance for reuse
   - Location: iterm_controller/health_checker.py:117-135
   - Fix: Initialize client in __init__, close in stop_polling()

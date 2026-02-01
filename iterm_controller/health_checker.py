@@ -42,6 +42,7 @@ class HealthCheckPoller:
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._status: dict[str, HealthStatus] = {}
         self._checks: dict[str, HealthCheck] = {}
+        self._client: httpx.AsyncClient | None = None
 
     def resolve_url(self, url: str) -> str:
         """Resolve {env.VAR} placeholders in URL.
@@ -68,6 +69,9 @@ class HealthCheckPoller:
         """
         self._running = True
 
+        # Create a shared httpx client for connection pooling
+        self._client = httpx.AsyncClient()
+
         for check in checks:
             self._checks[check.name] = check
             if check.interval_seconds > 0:
@@ -88,6 +92,11 @@ class HealthCheckPoller:
             except asyncio.CancelledError:
                 pass
         self._tasks.clear()
+
+        # Close the shared httpx client
+        if self._client:
+            await self._client.aclose()
+            self._client = None
 
     async def _poll_loop(self, check: HealthCheck) -> None:
         """Polling loop for a single health check.
@@ -114,25 +123,32 @@ class HealthCheckPoller:
         url = self.resolve_url(check.url)
         logger.debug("Checking %s at %s", check.name, url)
 
-        try:
-            async with httpx.AsyncClient() as client:
-                response = await client.request(
-                    method=check.method,
-                    url=url,
-                    timeout=check.timeout_seconds,
-                )
+        # Use shared client if available, otherwise create a temporary one
+        # (for check_now() called before start_polling())
+        client = self._client
+        should_close = False
+        if client is None:
+            client = httpx.AsyncClient()
+            should_close = True
 
-                if response.status_code == check.expected_status:
-                    new_status = HealthStatus.HEALTHY
-                    logger.debug("%s is healthy (status %d)", check.name, response.status_code)
-                else:
-                    new_status = HealthStatus.UNHEALTHY
-                    logger.warning(
-                        "%s unhealthy: expected status %d, got %d",
-                        check.name,
-                        check.expected_status,
-                        response.status_code,
-                    )
+        try:
+            response = await client.request(
+                method=check.method,
+                url=url,
+                timeout=check.timeout_seconds,
+            )
+
+            if response.status_code == check.expected_status:
+                new_status = HealthStatus.HEALTHY
+                logger.debug("%s is healthy (status %d)", check.name, response.status_code)
+            else:
+                new_status = HealthStatus.UNHEALTHY
+                logger.warning(
+                    "%s unhealthy: expected status %d, got %d",
+                    check.name,
+                    check.expected_status,
+                    response.status_code,
+                )
 
         except httpx.ConnectError as e:
             logger.warning("%s connection refused: %s", check.name, e)
@@ -152,6 +168,10 @@ class HealthCheckPoller:
             logger.error("%s check failed: %s", check.name, e)
             record_error(e)
             new_status = HealthStatus.UNHEALTHY
+        finally:
+            # Close temporary client if we created one
+            if should_close:
+                await client.aclose()
 
         self._set_status(check.name, new_status)
 
