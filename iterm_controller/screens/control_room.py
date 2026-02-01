@@ -135,9 +135,13 @@ class ControlRoomScreen(Screen):
             self.notify("No session templates configured", severity="warning")
             return
 
-        # For now, spawn using the first available template
-        # TODO: Implement script picker modal for template selection
-        template = app.state.config.session_templates[0]
+        # Show script picker modal to select a template
+        from iterm_controller.screens.modals import ScriptPickerModal
+
+        template = await self.app.push_screen_wait(ScriptPickerModal())
+        if template is None:
+            # User cancelled
+            return
 
         try:
             from iterm_controller.iterm_api import SessionSpawner

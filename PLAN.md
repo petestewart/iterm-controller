@@ -194,7 +194,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Offer Close All / Close Managed / Leave Running options
   - Acceptance: Each option behaves correctly per spec
 
-- [ ] **Implement script picker modal** `[pending]`
+- [x] **Implement script picker modal** `[complete]`
   - Scope: Select and run project scripts in new sessions
   - Acceptance: Lists scripts, spawns session with selected command
 

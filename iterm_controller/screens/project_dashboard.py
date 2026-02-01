@@ -191,9 +191,13 @@ class ProjectDashboardScreen(Screen):
             self.notify("Project not found", severity="error")
             return
 
-        # For now, spawn using the first available template
-        # TODO: Implement script picker modal for template selection
-        template = app.state.config.session_templates[0]
+        # Show script picker modal to select a template
+        from iterm_controller.screens.modals import ScriptPickerModal
+
+        template = await self.app.push_screen_wait(ScriptPickerModal())
+        if template is None:
+            # User cancelled
+            return
 
         try:
             from iterm_controller.iterm_api import SessionSpawner
@@ -212,9 +216,50 @@ class ProjectDashboardScreen(Screen):
         except Exception as e:
             self.notify(f"Error spawning session: {e}", severity="error")
 
-    def action_run_script(self) -> None:
-        """Show script picker modal."""
-        self.notify("Run script: Not implemented yet")
+    async def action_run_script(self) -> None:
+        """Show script picker modal and run selected script."""
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        # Check if connected to iTerm2
+        if not app.iterm.is_connected:
+            self.notify("Not connected to iTerm2", severity="error")
+            return
+
+        # Get session templates from config
+        if not app.state.config or not app.state.config.session_templates:
+            self.notify("No session templates configured", severity="warning")
+            return
+
+        # Get project
+        project = app.state.projects.get(self.project_id)
+        if not project:
+            self.notify("Project not found", severity="error")
+            return
+
+        # Show script picker modal to select a template
+        from iterm_controller.screens.modals import ScriptPickerModal
+
+        template = await self.app.push_screen_wait(ScriptPickerModal())
+        if template is None:
+            # User cancelled
+            return
+
+        try:
+            from iterm_controller.iterm_api import SessionSpawner
+
+            spawner = SessionSpawner(app.iterm)
+            result = await spawner.spawn_session(template, project)
+
+            if result.success:
+                # Add session to state
+                managed = spawner.get_session(result.session_id)
+                if managed:
+                    app.state.add_session(managed)
+                self.notify(f"Running script: {template.name}")
+            else:
+                self.notify(f"Failed to run script: {result.error}", severity="error")
+        except Exception as e:
+            self.notify(f"Error running script: {e}", severity="error")
 
     def action_open_docs(self) -> None:
         """Show docs picker modal."""
