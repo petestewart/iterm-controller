@@ -620,7 +620,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 22: Code Duplication Cleanup (Important)
 
-- [ ] **Extract EDITOR_COMMANDS to shared module** `[pending]`
+- [x] **Extract EDITOR_COMMANDS to shared module** `[complete]`
   - Scope: Create shared constants for editor command mapping
   - Location: New file iterm_controller/editors.py
   - Currently duplicated in: plan_mode.py:42-54, docs_mode.py:34-46

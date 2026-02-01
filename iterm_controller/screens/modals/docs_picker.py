@@ -17,6 +17,7 @@ from textual.containers import Container, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Static
 
+from iterm_controller.editors import EDITOR_COMMANDS
 from iterm_controller.security import get_safe_editor_command
 
 if TYPE_CHECKING:
@@ -244,23 +245,8 @@ class DocsPickerModal(ModalScreen[Path | None]):
         if app.state.config and app.state.config.settings:
             ide = app.state.config.settings.default_ide
 
-        # Map IDE name to command - these are the internal mappings
-        editor_command_map = {
-            "vscode": "code",
-            "code": "code",
-            "cursor": "cursor",
-            "vim": "vim",
-            "nvim": "nvim",
-            "neovim": "nvim",
-            "subl": "subl",
-            "sublime": "subl",
-            "atom": "atom",
-            "nano": "nano",
-            "emacs": "emacs",
-        }
-
-        # Get the editor command from the map
-        editor_cmd = editor_command_map.get(ide.lower())
+        # Get the editor command from the shared mapping
+        editor_cmd = EDITOR_COMMANDS.get(ide.lower())
         if editor_cmd:
             # Validate the command from the mapping
             editor_cmd = get_safe_editor_command(editor_cmd, fallback="open")

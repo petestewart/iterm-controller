@@ -17,6 +17,7 @@ from textual.binding import Binding
 from textual.containers import Container, Vertical
 from textual.widgets import Footer, Header, Static
 
+from iterm_controller.editors import EDITOR_COMMANDS
 from iterm_controller.models import SessionTemplate, WorkflowMode
 from iterm_controller.screens.mode_screen import ModeScreen
 from iterm_controller.screens.modals.artifact_preview import ArtifactPreviewModal
@@ -39,20 +40,6 @@ ARTIFACT_COMMANDS = {
     "PLAN.md": "claude /plan",
 }
 
-# Editor command mapping (mirrors docs_picker.py)
-EDITOR_COMMANDS = {
-    "vscode": "code",
-    "code": "code",
-    "cursor": "cursor",
-    "vim": "vim",
-    "nvim": "nvim",
-    "neovim": "nvim",
-    "subl": "subl",
-    "sublime": "subl",
-    "atom": "atom",
-    "nano": "nano",
-    "emacs": "emacs",
-}
 
 
 class PlanModeScreen(ModeScreen):

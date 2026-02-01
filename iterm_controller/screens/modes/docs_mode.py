@@ -18,6 +18,7 @@ from textual.binding import Binding
 from textual.containers import Container, Vertical
 from textual.widgets import Footer, Header, Static
 
+from iterm_controller.editors import EDITOR_COMMANDS
 from iterm_controller.models import WorkflowMode
 from iterm_controller.screens.mode_screen import ModeScreen
 from iterm_controller.security import (
@@ -35,22 +36,6 @@ if TYPE_CHECKING:
     from iterm_controller.models import Project
 
 logger = logging.getLogger(__name__)
-
-
-# Editor command mapping (mirrors docs_picker.py and plan_mode.py)
-EDITOR_COMMANDS = {
-    "vscode": "code",
-    "code": "code",
-    "cursor": "cursor",
-    "vim": "vim",
-    "nvim": "nvim",
-    "neovim": "nvim",
-    "subl": "subl",
-    "sublime": "subl",
-    "atom": "atom",
-    "nano": "nano",
-    "emacs": "emacs",
-}
 
 
 class DocsModeScreen(ModeScreen):
