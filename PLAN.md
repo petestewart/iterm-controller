@@ -743,10 +743,11 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Acceptance: Only spawn methods remain in layouts
   - Result: Removed capture_current_layout, capture_and_save, _capture_tab, _capture_session, _infer_split_direction and related tests (180 lines removed)
 
-- [ ] **Simplify auto_mode.py class structure** `[pending]`
+- [x] **Simplify auto_mode.py class structure** `[complete]`
   - Scope: Consolidate 4 classes into single AutoMode class
   - Remove: WorkflowStageInferrer (trivial wrapper), create_controller_for_project factory
   - Acceptance: Single cohesive class for auto mode
+  - Result: Created unified AutoMode class (520 lines), kept backward compatibility wrappers for existing API (WorkflowStageInferrer, AutoModeController, AutoAdvanceHandler, AutoModeIntegration, create_controller_for_project) that delegate to AutoMode. All 63 tests pass.
 
 - [ ] **Add logging to silent exception handlers** `[pending]`
   - Scope: Add logging to exception handlers that currently silently swallow errors

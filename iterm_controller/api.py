@@ -2103,7 +2103,7 @@ class AppAPI:
     ) -> "CommandExecutionResult | None":
         """Execute the configured command for a workflow mode.
 
-        This method handles mode entry commands via the AutoAdvanceHandler,
+        This method handles mode entry commands via AutoMode,
         with modal confirmation if configured.
 
         Args:
@@ -2112,7 +2112,7 @@ class AppAPI:
         Returns:
             CommandExecutionResult if a command was executed, None otherwise.
         """
-        from .auto_mode import AutoAdvanceHandler, CommandExecutionResult
+        from .auto_mode import AutoMode, CommandExecutionResult
 
         if not self._app.state.config or not self._app.state.config.auto_mode:
             return None
@@ -2125,11 +2125,13 @@ class AppAPI:
         if not command:
             return None
 
-        handler = AutoAdvanceHandler(
+        auto_mode = AutoMode(
             config=auto_mode_config,
+            project_id="",  # Not used for mode commands
+            project_path=".",
             iterm=self._app.iterm,
             app=self._app,
             screen_factory=self._app.screen_factory,
         )
 
-        return await handler.handle_mode_enter(mode)
+        return await auto_mode.handle_mode_enter(mode)

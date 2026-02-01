@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from .github import GitHubIntegration
     from .iterm import ItermController
     from .ports import ScreenFactoryProtocol
-    from .state import AppState
 
 logger = logging.getLogger(__name__)
 
@@ -70,80 +69,43 @@ class StageTransition:
     project_id: str
 
 
-class WorkflowStageInferrer:
-    """Infers workflow stage from project state.
+@dataclass
+class CommandExecutionResult:
+    """Result of executing a stage command."""
 
-    This class centralizes the logic for determining the current
-    workflow stage based on:
-    - PLAN.md task completion
-    - PRD.md existence
-    - GitHub PR status
-    """
-
-    def __init__(self, project_path: str | Path) -> None:
-        """Initialize the inferrer.
-
-        Args:
-            project_path: Path to the project directory.
-        """
-        self.project_path = Path(project_path)
-
-    def check_prd_exists(self) -> bool:
-        """Check if PRD file exists for the project.
-
-        Returns:
-            True if PRD.md exists in the project directory.
-        """
-        prd_path = self.project_path / "PRD.md"
-        return prd_path.exists()
-
-    def infer_stage(
-        self,
-        plan: Plan,
-        github_status: GitHubStatus | None,
-        prd_unneeded: bool = False,
-    ) -> WorkflowState:
-        """Infer the current workflow stage.
-
-        Args:
-            plan: The parsed PLAN.md document.
-            github_status: Current GitHub status, if available.
-            prd_unneeded: Whether PRD has been marked as unnecessary.
-
-        Returns:
-            WorkflowState with inferred stage.
-        """
-        prd_exists = self.check_prd_exists()
-        return WorkflowState.infer_stage(
-            plan=plan,
-            github_status=github_status,
-            prd_exists=prd_exists,
-            prd_unneeded=prd_unneeded,
-        )
+    success: bool
+    command: str
+    session_id: str | None = None
+    error: str | None = None
 
 
-class AutoModeController:
-    """Controls automatic workflow stage monitoring and advancement.
+class AutoMode:
+    """Unified auto mode controller for workflow stage automation.
 
-    This controller:
-    1. Monitors PLAN.md changes via Textual messages
-    2. Re-evaluates the workflow stage when changes occur
-    3. Tracks stage transitions for UI updates
-    4. Optionally triggers stage commands when advancing
+    This class consolidates workflow stage monitoring, inference, and
+    command execution into a single cohesive interface.
+
+    Features:
+    1. Monitors PLAN.md changes and infers workflow stage
+    2. Tracks stage transitions for UI updates
+    3. Executes stage commands when advancing (with optional confirmation)
+    4. Executes mode commands when entering workflow modes
 
     Usage:
-        controller = AutoModeController(
+        auto_mode = AutoMode(
             config=config.auto_mode,
             project_id="my-project",
             project_path="/path/to/project",
+            iterm=iterm_controller,
+            app=textual_app,
+            github=github_integration,
         )
 
-        # Handle plan reload messages in a Screen or Widget
-        def on_plan_reloaded(self, event: PlanReloaded) -> None:
-            controller.on_plan_reloaded(plan=event.plan)
+        # Evaluate on plan change
+        await auto_mode.on_plan_change(plan)
 
-        # Check current stage
-        stage = controller.current_stage
+        # Handle mode entry
+        await auto_mode.handle_mode_enter(WorkflowMode.PLAN)
     """
 
     def __init__(
@@ -151,27 +113,33 @@ class AutoModeController:
         config: AutoModeConfig,
         project_id: str,
         project_path: str | Path,
+        iterm: ItermController | None = None,
+        app: App | None = None,
         github: GitHubIntegration | None = None,
-        on_stage_change: Callable[[StageTransition], None] | None = None,
+        screen_factory: ScreenFactoryProtocol | None = None,
     ) -> None:
-        """Initialize the auto mode controller.
+        """Initialize auto mode.
 
         Args:
             config: Auto mode configuration.
             project_id: ID of the project being monitored.
             project_path: Path to the project directory.
+            iterm: iTerm controller for session access.
+            app: Textual app for modal display.
             github: GitHub integration for PR status checks.
-            on_stage_change: Callback invoked when stage changes.
+            screen_factory: Factory for creating modals without circular imports.
         """
         self.config = config
         self.project_id = project_id
         self.project_path = Path(project_path)
         self.github = github
-        self.on_stage_change = on_stage_change
+        self.iterm = iterm
+        self.app = app
+        self.screen_factory = screen_factory
 
-        self._inferrer = WorkflowStageInferrer(project_path)
         self._current_state: WorkflowState | None = None
         self._prd_unneeded: bool = False
+        self._last_execution_result: CommandExecutionResult | None = None
 
     @property
     def current_stage(self) -> WorkflowStage | None:
@@ -183,6 +151,11 @@ class AutoModeController:
         """Get the current workflow state."""
         return self._current_state
 
+    @property
+    def last_execution_result(self) -> CommandExecutionResult | None:
+        """Get the result of the last command execution."""
+        return self._last_execution_result
+
     def set_prd_unneeded(self, unneeded: bool) -> None:
         """Mark the PRD as unneeded.
 
@@ -190,6 +163,84 @@ class AutoModeController:
             unneeded: Whether the PRD is not needed for this project.
         """
         self._prd_unneeded = unneeded
+
+    def check_prd_exists(self) -> bool:
+        """Check if PRD file exists for the project.
+
+        Returns:
+            True if PRD.md exists in the project directory.
+        """
+        prd_path = self.project_path / "PRD.md"
+        return prd_path.exists()
+
+    def should_auto_advance(self) -> bool:
+        """Check if auto-advance is enabled.
+
+        Returns:
+            True if auto_mode is enabled and auto_advance is True.
+        """
+        return self.config.enabled and self.config.auto_advance
+
+    def requires_confirmation(self) -> bool:
+        """Check if stage advance requires confirmation.
+
+        Returns:
+            True if confirmation is required before running stage commands.
+        """
+        return self.config.require_confirmation
+
+    def get_stage_command(self, stage: WorkflowStage) -> str | None:
+        """Get the command configured for a stage.
+
+        Args:
+            stage: The workflow stage.
+
+        Returns:
+            The command string if configured, None otherwise.
+        """
+        return self.config.stage_commands.get(stage.value)
+
+    def update_iterm(self, iterm: ItermController | None) -> None:
+        """Update the iTerm controller reference.
+
+        Args:
+            iterm: New iTerm controller instance.
+        """
+        self.iterm = iterm
+
+    def update_app(self, app: App | None) -> None:
+        """Update the Textual app reference.
+
+        Args:
+            app: New Textual app instance.
+        """
+        self.app = app
+
+    # =========================================================================
+    # Stage Inference
+    # =========================================================================
+
+    def _infer_stage(
+        self,
+        plan: Plan,
+        github_status: GitHubStatus | None,
+    ) -> WorkflowState:
+        """Infer the current workflow stage.
+
+        Args:
+            plan: The parsed PLAN.md document.
+            github_status: Current GitHub status, if available.
+
+        Returns:
+            WorkflowState with inferred stage.
+        """
+        prd_exists = self.check_prd_exists()
+        return WorkflowState.infer_stage(
+            plan=plan,
+            github_status=github_status,
+            prd_exists=prd_exists,
+            prd_unneeded=self._prd_unneeded,
+        )
 
     async def evaluate_stage(
         self,
@@ -202,7 +253,6 @@ class AutoModeController:
         1. Infers the new stage from current state
         2. Detects stage transitions
         3. Updates internal state
-        4. Calls the stage change callback if transition occurred
 
         Args:
             plan: The current PLAN.md document.
@@ -217,30 +267,8 @@ class AutoModeController:
             github_status = await self.github.get_status(str(self.project_path))
 
         # Infer the new stage
-        new_state = self._inferrer.infer_stage(
-            plan=plan,
-            github_status=github_status,
-            prd_unneeded=self._prd_unneeded,
-        )
-
-        # Check for transition
-        old_stage = self._current_state.stage if self._current_state else None
-        if old_stage != new_state.stage:
-            transition = StageTransition(
-                old_stage=old_stage,
-                new_stage=new_state.stage,
-                project_id=self.project_id,
-            )
-
-            # Update state before callback
-            self._current_state = new_state
-
-            # Notify listener
-            if self.on_stage_change:
-                self.on_stage_change(transition)
-        else:
-            self._current_state = new_state
-
+        new_state = self._infer_stage(plan=plan, github_status=github_status)
+        self._current_state = new_state
         return new_state
 
     def evaluate_stage_sync(
@@ -260,15 +288,37 @@ class AutoModeController:
         Returns:
             The updated WorkflowState.
         """
-        # Infer the new stage
-        new_state = self._inferrer.infer_stage(
-            plan=plan,
-            github_status=github_status,
-            prd_unneeded=self._prd_unneeded,
-        )
+        new_state = self._infer_stage(plan=plan, github_status=github_status)
+        self._current_state = new_state
+        return new_state
 
-        # Check for transition
-        old_stage = self._current_state.stage if self._current_state else None
+    # =========================================================================
+    # Plan Change Handling
+    # =========================================================================
+
+    async def on_plan_change(
+        self,
+        plan: Plan,
+        github_status: GitHubStatus | None = None,
+    ) -> WorkflowState:
+        """Handle PLAN.md changes.
+
+        Evaluates the new stage and executes commands if appropriate.
+
+        Args:
+            plan: The updated plan.
+            github_status: Optional GitHub status.
+
+        Returns:
+            The updated WorkflowState.
+        """
+        # Get old stage before evaluation
+        old_stage = self.current_stage
+
+        # Evaluate the new stage
+        new_state = await self.evaluate_stage(plan, github_status)
+
+        # Check if stage changed
         if old_stage != new_state.stage:
             transition = StageTransition(
                 old_stage=old_stage,
@@ -276,135 +326,13 @@ class AutoModeController:
                 project_id=self.project_id,
             )
 
-            # Update state before callback
-            self._current_state = new_state
-
-            # Notify listener
-            if self.on_stage_change:
-                self.on_stage_change(transition)
-        else:
-            self._current_state = new_state
+            # Handle the transition (may execute command)
+            result = await self._handle_stage_change(transition)
+            self._last_execution_result = result
 
         return new_state
 
-    def get_stage_command(self, stage: WorkflowStage) -> str | None:
-        """Get the command configured for a stage.
-
-        Args:
-            stage: The workflow stage.
-
-        Returns:
-            The command string if configured, None otherwise.
-        """
-        return self.config.stage_commands.get(stage.value)
-
-    def should_auto_advance(self) -> bool:
-        """Check if auto-advance is enabled.
-
-        Returns:
-            True if auto_mode is enabled and auto_advance is True.
-        """
-        return self.config.enabled and self.config.auto_advance
-
-    def requires_confirmation(self) -> bool:
-        """Check if stage advance requires confirmation.
-
-        Returns:
-            True if confirmation is required before running stage commands.
-        """
-        return self.config.require_confirmation
-
-
-def create_controller_for_project(
-    project_id: str,
-    project_path: str | Path,
-    config: AutoModeConfig,
-    github: GitHubIntegration | None = None,
-    on_stage_change: Callable[[StageTransition], None] | None = None,
-) -> AutoModeController:
-    """Factory function to create an AutoModeController for a project.
-
-    Args:
-        project_id: ID of the project.
-        project_path: Path to the project directory.
-        config: Auto mode configuration.
-        github: Optional GitHub integration.
-        on_stage_change: Optional callback for stage transitions.
-
-    Returns:
-        Configured AutoModeController instance.
-    """
-    return AutoModeController(
-        config=config,
-        project_id=project_id,
-        project_path=project_path,
-        github=github,
-        on_stage_change=on_stage_change,
-    )
-
-
-# =============================================================================
-# Auto Advance Handler
-# =============================================================================
-
-
-@dataclass
-class CommandExecutionResult:
-    """Result of executing a stage command."""
-
-    success: bool
-    command: str
-    session_id: str | None = None
-    error: str | None = None
-
-
-class AutoAdvanceHandler:
-    """Handles automatic stage advancement with command execution.
-
-    This handler:
-    1. Receives stage transition notifications
-    2. Optionally shows confirmation modal
-    3. Executes stage commands in iTerm2 sessions
-
-    Usage:
-        handler = AutoAdvanceHandler(
-            config=config.auto_mode,
-            iterm=iterm_controller,
-            app=textual_app,
-        )
-
-        # Connect to controller
-        controller = AutoModeController(
-            config=config.auto_mode,
-            project_id="my-project",
-            project_path="/path/to/project",
-            on_stage_change=handler.on_stage_transition,
-        )
-    """
-
-    def __init__(
-        self,
-        config: AutoModeConfig,
-        iterm: ItermController | None = None,
-        app: App | None = None,
-        screen_factory: ScreenFactoryProtocol | None = None,
-    ) -> None:
-        """Initialize the auto advance handler.
-
-        Args:
-            config: Auto mode configuration.
-            iterm: iTerm controller for session access.
-            app: Textual app for modal display.
-            screen_factory: Factory for creating modals without circular imports.
-                If None, will fall back to dynamic imports (deprecated).
-        """
-        self.config = config
-        self.iterm = iterm
-        self.app = app
-        self.screen_factory = screen_factory
-        self._pending_advance: StageTransition | None = None
-
-    async def handle_stage_change(
+    async def _handle_stage_change(
         self,
         transition: StageTransition,
     ) -> CommandExecutionResult | None:
@@ -461,6 +389,10 @@ class AutoAdvanceHandler:
                 error=f"Command not allowed: {e.command}",
             )
 
+    # =========================================================================
+    # Mode Entry Handling
+    # =========================================================================
+
     async def handle_mode_enter(
         self,
         mode: WorkflowMode,
@@ -508,6 +440,10 @@ class AutoAdvanceHandler:
                 error=f"Command not allowed: {e.command}",
             )
 
+    # =========================================================================
+    # Modal Display
+    # =========================================================================
+
     async def _show_mode_command_modal(
         self,
         mode: WorkflowMode,
@@ -528,7 +464,7 @@ class AutoAdvanceHandler:
 
         if self.screen_factory is None:
             logger.warning(
-                "No screen factory provided to AutoAdvanceHandler; "
+                "No screen factory provided to AutoMode; "
                 "modal confirmation cannot be shown"
             )
             return True  # Proceed without confirmation
@@ -567,7 +503,7 @@ class AutoAdvanceHandler:
 
         if self.screen_factory is None:
             logger.warning(
-                "No screen factory provided to AutoAdvanceHandler; "
+                "No screen factory provided to AutoMode; "
                 "modal confirmation cannot be shown"
             )
             return True  # Proceed without confirmation
@@ -587,6 +523,10 @@ class AutoAdvanceHandler:
         self.app.push_screen(modal, on_modal_dismiss)
 
         return await future
+
+    # =========================================================================
+    # Command Execution
+    # =========================================================================
 
     async def _execute_command(
         self,
@@ -693,43 +633,319 @@ class AutoAdvanceHandler:
                 error=str(e),
             )
 
+
+# =============================================================================
+# Backward Compatibility Aliases
+# =============================================================================
+
+# These aliases maintain backward compatibility with existing code.
+# They should be considered deprecated and will be removed in a future version.
+
+
+class WorkflowStageInferrer:
+    """DEPRECATED: Use AutoMode instead.
+
+    This class is maintained for backward compatibility only.
+    """
+
+    def __init__(self, project_path: str | Path) -> None:
+        self.project_path = Path(project_path)
+
+    def check_prd_exists(self) -> bool:
+        prd_path = self.project_path / "PRD.md"
+        return prd_path.exists()
+
+    def infer_stage(
+        self,
+        plan: Plan,
+        github_status: GitHubStatus | None,
+        prd_unneeded: bool = False,
+    ) -> WorkflowState:
+        prd_exists = self.check_prd_exists()
+        return WorkflowState.infer_stage(
+            plan=plan,
+            github_status=github_status,
+            prd_exists=prd_exists,
+            prd_unneeded=prd_unneeded,
+        )
+
+
+class AutoModeController:
+    """DEPRECATED: Use AutoMode instead.
+
+    This class is maintained for backward compatibility only.
+    """
+
+    def __init__(
+        self,
+        config: AutoModeConfig,
+        project_id: str,
+        project_path: str | Path,
+        github: GitHubIntegration | None = None,
+        on_stage_change: "Callable[[StageTransition], None] | None" = None,
+    ) -> None:
+        self._auto_mode = AutoMode(
+            config=config,
+            project_id=project_id,
+            project_path=project_path,
+            github=github,
+        )
+        self.config = config
+        self.project_id = project_id
+        self.project_path = Path(project_path)
+        self.github = github
+        self.on_stage_change = on_stage_change
+        self._prd_unneeded = False
+
+    @property
+    def current_stage(self) -> WorkflowStage | None:
+        return self._auto_mode.current_stage
+
+    @property
+    def current_state(self) -> WorkflowState | None:
+        return self._auto_mode.current_state
+
+    def set_prd_unneeded(self, unneeded: bool) -> None:
+        self._prd_unneeded = unneeded
+        self._auto_mode.set_prd_unneeded(unneeded)
+
+    async def evaluate_stage(
+        self,
+        plan: Plan,
+        github_status: GitHubStatus | None = None,
+    ) -> WorkflowState:
+        old_stage = self._auto_mode.current_stage
+        result = await self._auto_mode.evaluate_stage(plan, github_status)
+        self._handle_transition(old_stage, result.stage)
+        return result
+
+    def evaluate_stage_sync(
+        self,
+        plan: Plan,
+        github_status: GitHubStatus | None = None,
+    ) -> WorkflowState:
+        old_stage = self._auto_mode.current_stage
+        result = self._auto_mode.evaluate_stage_sync(plan, github_status)
+        self._handle_transition(old_stage, result.stage)
+        return result
+
+    def _handle_transition(
+        self, old_stage: WorkflowStage | None, new_stage: WorkflowStage
+    ) -> None:
+        """Handle transition callback if stage changed."""
+        if old_stage != new_stage and self.on_stage_change:
+            transition = StageTransition(
+                old_stage=old_stage,
+                new_stage=new_stage,
+                project_id=self.project_id,
+            )
+            self.on_stage_change(transition)
+
+    def get_stage_command(self, stage: WorkflowStage) -> str | None:
+        return self._auto_mode.get_stage_command(stage)
+
+    def should_auto_advance(self) -> bool:
+        return self._auto_mode.should_auto_advance()
+
+    def requires_confirmation(self) -> bool:
+        return self._auto_mode.requires_confirmation()
+
+
+def create_controller_for_project(
+    project_id: str,
+    project_path: str | Path,
+    config: AutoModeConfig,
+    github: GitHubIntegration | None = None,
+    on_stage_change: "Callable[[StageTransition], None] | None" = None,
+) -> AutoModeController:
+    """DEPRECATED: Use AutoMode directly instead."""
+    return AutoModeController(
+        config=config,
+        project_id=project_id,
+        project_path=project_path,
+        github=github,
+        on_stage_change=on_stage_change,
+    )
+
+
+class AutoAdvanceHandler:
+    """DEPRECATED: Use AutoMode instead.
+
+    This class is maintained for backward compatibility only.
+    """
+
+    def __init__(
+        self,
+        config: AutoModeConfig,
+        iterm: ItermController | None = None,
+        app: App | None = None,
+        screen_factory: ScreenFactoryProtocol | None = None,
+    ) -> None:
+        self._auto_mode = AutoMode(
+            config=config,
+            project_id="",  # Not used in handler-only mode
+            project_path=".",
+            iterm=iterm,
+            app=app,
+            screen_factory=screen_factory,
+        )
+        self.config = config
+        self.iterm = iterm
+        self.app = app
+        self.screen_factory = screen_factory
+        self._pending_advance: StageTransition | None = None
+
+    async def handle_stage_change(
+        self,
+        transition: StageTransition,
+    ) -> CommandExecutionResult | None:
+        """Handle a workflow stage transition."""
+        if not self.config.enabled:
+            logger.debug("Auto mode disabled, skipping auto advance")
+            return None
+
+        if not self.config.auto_advance:
+            logger.debug("Auto advance disabled, skipping command execution")
+            return None
+
+        command = self.config.stage_commands.get(transition.new_stage.value)
+        if not command:
+            logger.debug(
+                f"No command configured for stage {transition.new_stage.value}"
+            )
+            return None
+
+        # Check for confirmation
+        if self.config.require_confirmation:
+            confirmed = await self._show_confirmation_modal(
+                transition.new_stage, command
+            )
+            if not confirmed:
+                logger.info(
+                    f"User declined stage advancement to {transition.new_stage.value}"
+                )
+                return CommandExecutionResult(
+                    success=False,
+                    command=command,
+                    error="User declined confirmation",
+                )
+
+        # Execute the command (validates against allowlist)
+        try:
+            return await self._execute_command(command)
+        except CommandNotAllowedError as e:
+            return CommandExecutionResult(
+                success=False,
+                command=command,
+                error=f"Command not allowed: {e.command}",
+            )
+
+    async def handle_mode_enter(
+        self,
+        mode: WorkflowMode,
+    ) -> CommandExecutionResult | None:
+        """Handle entering a workflow mode."""
+        if not self.config.enabled:
+            logger.debug("Auto mode disabled, skipping mode command")
+            return None
+
+        command = self.config.mode_commands.get(mode.value)
+        if not command:
+            logger.debug(f"No command configured for mode {mode.value}")
+            return None
+
+        # Check for confirmation
+        if self.config.require_confirmation:
+            confirmed = await self._show_mode_command_modal(mode, command)
+            if not confirmed:
+                logger.info(f"User declined mode command for {mode.value}")
+                return CommandExecutionResult(
+                    success=False,
+                    command=command,
+                    error="User declined confirmation",
+                )
+
+        # Execute the command (validates against allowlist)
+        try:
+            return await self._execute_command(command)
+        except CommandNotAllowedError as e:
+            return CommandExecutionResult(
+                success=False,
+                command=command,
+                error=f"Command not allowed: {e.command}",
+            )
+
+    async def _show_mode_command_modal(
+        self,
+        mode: WorkflowMode,
+        command: str,
+    ) -> bool:
+        """Show confirmation modal for mode command execution."""
+        return await self._auto_mode._show_mode_command_modal(mode, command)
+
+    async def _show_confirmation_modal(
+        self,
+        stage: WorkflowStage,
+        command: str,
+    ) -> bool:
+        """Show confirmation modal for stage advancement."""
+        return await self._auto_mode._show_confirmation_modal(stage, command)
+
+    async def _execute_command(
+        self,
+        command: str,
+    ) -> CommandExecutionResult:
+        """Execute a stage command in the appropriate session."""
+        # Update internal iterm reference in case it changed
+        self._auto_mode.iterm = self.iterm
+        return await self._auto_mode._execute_command(command)
+
     def create_transition_handler(
         self,
-    ) -> Callable[[StageTransition], Awaitable[CommandExecutionResult | None]]:
-        """Create an async handler for stage transitions.
-
-        This is a convenience method that returns a callable suitable for
-        use as the on_stage_change callback.
-
-        Returns:
-            Async callable that handles stage transitions.
-        """
+    ) -> "Callable[[StageTransition], Awaitable[CommandExecutionResult | None]]":
+        """Create an async handler for stage transitions."""
         return self.handle_stage_change
 
 
-# =============================================================================
-# Auto Mode Integration
-# =============================================================================
+class _IntegrationHandler:
+    """Helper class to expose handler-like interface for backward compatibility."""
+
+    def __init__(self, auto_mode: AutoMode) -> None:
+        self._auto_mode = auto_mode
+
+    @property
+    def iterm(self) -> "ItermController | None":
+        return self._auto_mode.iterm
+
+    @iterm.setter
+    def iterm(self, value: "ItermController | None") -> None:
+        self._auto_mode.iterm = value
+
+    @property
+    def app(self) -> "App | None":
+        return self._auto_mode.app
+
+    @app.setter
+    def app(self, value: "App | None") -> None:
+        self._auto_mode.app = value
+
+
+class _IntegrationController:
+    """Helper class to expose controller-like interface for backward compatibility."""
+
+    def __init__(self, auto_mode: AutoMode) -> None:
+        self._auto_mode = auto_mode
+        self._prd_unneeded = False
+
+    def set_prd_unneeded(self, unneeded: bool) -> None:
+        self._prd_unneeded = unneeded
+        self._auto_mode.set_prd_unneeded(unneeded)
 
 
 class AutoModeIntegration:
-    """Integrates auto mode controller with advance handler.
+    """DEPRECATED: Use AutoMode instead.
 
-    This class ties together the stage inference (controller) with
-    the command execution (handler) for a complete auto mode experience.
-
-    Usage:
-        integration = AutoModeIntegration(
-            config=config.auto_mode,
-            project_id="my-project",
-            project_path="/path/to/project",
-            iterm=iterm_controller,
-            app=textual_app,
-            github=github_integration,
-        )
-
-        # Evaluate on plan change
-        await integration.on_plan_change(plan)
+    This class is maintained for backward compatibility only.
     """
 
     def __init__(
@@ -742,106 +958,57 @@ class AutoModeIntegration:
         github: GitHubIntegration | None = None,
         screen_factory: ScreenFactoryProtocol | None = None,
     ) -> None:
-        """Initialize the integration.
-
-        Args:
-            config: Auto mode configuration.
-            project_id: ID of the project being monitored.
-            project_path: Path to the project directory.
-            iterm: iTerm controller for session access.
-            app: Textual app for modal display.
-            github: GitHub integration for PR status checks.
-            screen_factory: Factory for creating modals without circular imports.
-        """
-        self.config = config
-        self.handler = AutoAdvanceHandler(
-            config=config,
-            iterm=iterm,
-            app=app,
-            screen_factory=screen_factory,
-        )
-
-        # Create controller with our handler
-        self.controller = AutoModeController(
+        self._auto_mode = AutoMode(
             config=config,
             project_id=project_id,
             project_path=project_path,
+            iterm=iterm,
+            app=app,
             github=github,
+            screen_factory=screen_factory,
         )
-
-        self._last_execution_result: CommandExecutionResult | None = None
+        self.config = config
+        # Expose internal objects for compatibility
+        self.handler = _IntegrationHandler(self._auto_mode)
+        self.controller = _IntegrationController(self._auto_mode)
 
     @property
     def current_stage(self) -> WorkflowStage | None:
-        """Get the current workflow stage."""
-        return self.controller.current_stage
+        return self._auto_mode.current_stage
 
     @property
     def current_state(self) -> WorkflowState | None:
-        """Get the current workflow state."""
-        return self.controller.current_state
+        return self._auto_mode.current_state
 
     @property
     def last_execution_result(self) -> CommandExecutionResult | None:
-        """Get the result of the last command execution."""
-        return self._last_execution_result
+        return self._auto_mode.last_execution_result
 
     async def on_plan_change(
         self,
         plan: Plan,
         github_status: GitHubStatus | None = None,
     ) -> WorkflowState:
-        """Handle PLAN.md changes.
-
-        Evaluates the new stage and executes commands if appropriate.
-
-        Args:
-            plan: The updated plan.
-            github_status: Optional GitHub status.
-
-        Returns:
-            The updated WorkflowState.
-        """
-        # Get old stage before evaluation
-        old_stage = self.controller.current_stage
-
-        # Evaluate the new stage
-        new_state = await self.controller.evaluate_stage(plan, github_status)
-
-        # Check if stage changed
-        if old_stage != new_state.stage:
-            transition = StageTransition(
-                old_stage=old_stage,
-                new_stage=new_state.stage,
-                project_id=self.controller.project_id,
-            )
-
-            # Handle the transition (may execute command)
-            result = await self.handler.handle_stage_change(transition)
-            self._last_execution_result = result
-
-        return new_state
+        return await self._auto_mode.on_plan_change(plan, github_status)
 
     def set_prd_unneeded(self, unneeded: bool) -> None:
-        """Mark the PRD as unneeded.
-
-        Args:
-            unneeded: Whether the PRD is not needed for this project.
-        """
         self.controller.set_prd_unneeded(unneeded)
 
     def update_iterm(self, iterm: ItermController | None) -> None:
-        """Update the iTerm controller reference.
-
-        Args:
-            iterm: New iTerm controller instance.
-        """
-        self.handler.iterm = iterm
+        self._auto_mode.update_iterm(iterm)
 
     def update_app(self, app: App | None) -> None:
-        """Update the Textual app reference.
+        self._auto_mode.update_app(app)
 
-        Args:
-            app: New Textual app instance.
-        """
-        self.handler.app = app
+    # These are needed for tests that access handler/controller directly
+    async def handle_stage_change(
+        self,
+        transition: StageTransition,
+    ) -> CommandExecutionResult | None:
+        return await self._auto_mode._handle_stage_change(transition)
+
+    async def handle_mode_enter(
+        self,
+        mode: WorkflowMode,
+    ) -> CommandExecutionResult | None:
+        return await self._auto_mode.handle_mode_enter(mode)
