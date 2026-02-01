@@ -236,7 +236,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Display health check status in project dashboard
   - Acceptance: Shows green/red indicators per service
 
-- [ ] **Add notification latency tracking** `[pending]`
+- [x] **Add notification latency tracking** `[complete]`
   - Spec: specs/notifications.md#notification-latency-verification
   - Scope: Track and verify notification latency meets 5-second SLA
   - Acceptance: Latency measured, SLA violations logged, stats available

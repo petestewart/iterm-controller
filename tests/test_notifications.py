@@ -544,6 +544,108 @@ class TestNotificationManager:
 
         assert "session-1" not in manager.latency_tracker.state_change_times
 
+    @pytest.mark.asyncio
+    async def test_sla_violation_logged(self, mock_session, app_state, caplog):
+        """SLA violation is logged when notification latency exceeds 5 seconds."""
+        import logging
+
+        notifier = Notifier(available=True)
+        manager = NotificationManager(notifier, app_state)
+
+        # Track the call order to simulate time passing
+        call_count = 0
+        base_time = 1000.0
+
+        def mock_monotonic():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # First call is record_state_change
+                return base_time
+            else:
+                # Subsequent calls (record_notification_sent, etc.) are 6 seconds later
+                return base_time + 6.0
+
+        with patch.object(notifier, "notify_session_waiting", new_callable=AsyncMock) as mock_notify:
+            mock_notify.return_value = True
+
+            with patch("time.monotonic", side_effect=mock_monotonic):
+                with caplog.at_level(logging.WARNING):
+                    await manager.on_session_state_change(
+                        mock_session,
+                        AttentionState.IDLE,
+                        AttentionState.WAITING,
+                    )
+
+            # Verify SLA violation was logged
+            assert any(
+                "SLA violated" in record.message and mock_session.id in record.message
+                for record in caplog.records
+            )
+
+    @pytest.mark.asyncio
+    async def test_sla_met_logged_as_debug(self, mock_session, app_state, caplog):
+        """Successful notification within SLA is logged at debug level."""
+        import logging
+
+        notifier = Notifier(available=True)
+        manager = NotificationManager(notifier, app_state)
+
+        with patch.object(notifier, "notify_session_waiting", new_callable=AsyncMock) as mock_notify:
+            mock_notify.return_value = True
+
+            with caplog.at_level(logging.DEBUG):
+                await manager.on_session_state_change(
+                    mock_session,
+                    AttentionState.IDLE,
+                    AttentionState.WAITING,
+                )
+
+            # Verify notification was logged at debug level
+            assert any(
+                "Notification sent" in record.message and mock_session.id in record.message
+                for record in caplog.records
+            )
+
+    @pytest.mark.asyncio
+    async def test_latency_stats_accumulate(self, mock_session, app_state):
+        """Latency stats accumulate across multiple notifications."""
+        notifier = Notifier(available=True)
+        manager = NotificationManager(notifier, app_state)
+
+        with patch.object(notifier, "notify_session_waiting", new_callable=AsyncMock) as mock_notify:
+            mock_notify.return_value = True
+
+            # Send first notification
+            await manager.on_session_state_change(
+                mock_session,
+                AttentionState.IDLE,
+                AttentionState.WAITING,
+            )
+
+            # Clear and send another
+            mock_session2 = ManagedSession(
+                id="session-456",
+                template_id="server",
+                project_id="project-1",
+                tab_id="tab-2",
+                attention_state=AttentionState.IDLE,
+            )
+
+            await manager.on_session_state_change(
+                mock_session2,
+                AttentionState.IDLE,
+                AttentionState.WAITING,
+            )
+
+            stats = manager.get_latency_stats()
+            assert stats["count"] == 2
+            assert "min" in stats
+            assert "max" in stats
+            assert "avg" in stats
+            assert "sla_met" in stats
+            assert "sla_violated" in stats
+
 
 # =============================================================================
 # SessionMonitorWithNotifications Tests
