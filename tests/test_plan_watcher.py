@@ -260,6 +260,31 @@ class TestPlanWatcherFileOperations:
 
             assert plan is None
 
+    @pytest.mark.asyncio
+    async def test_reload_from_file_async(self):
+        """Test async file reload."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(SAMPLE_PLAN_MD)
+
+            watcher = PlanWatcher(plan_path=plan_path)
+            plan = await watcher.reload_from_file_async()
+
+            assert plan is not None
+            assert len(plan.phases) == 2
+            assert watcher.plan is plan
+
+    @pytest.mark.asyncio
+    async def test_reload_from_file_async_nonexistent(self):
+        """Test async file reload with missing file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+
+            watcher = PlanWatcher(plan_path=plan_path)
+            plan = await watcher.reload_from_file_async()
+
+            assert plan is None
+
     def test_accept_external_changes(self):
         parser = PlanParser()
         original_plan = parser.parse(SAMPLE_PLAN_MD)

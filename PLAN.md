@@ -689,7 +689,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Add MAX_OUTPUT_BUFFER constant (100KB), truncate older output
   - Acceptance: Memory usage stable with long-running sessions
 
-- [ ] **Use async file I/O for plan parsing** `[pending]`
+- [x] **Use async file I/O for plan parsing** `[complete]`
   - Scope: Replace synchronous file reads with asyncio.to_thread
   - Locations: plan_parser.py:62-101, plan_watcher.py:159-161, 481-486
   - Fix: Use `await asyncio.to_thread(path.read_text, encoding="utf-8")`

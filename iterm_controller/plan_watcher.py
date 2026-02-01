@@ -324,6 +324,38 @@ class PlanWatcher:
                 cause=e,
             ) from e
 
+    async def reload_from_file_async(self) -> Plan | None:
+        """Force reload the plan from disk asynchronously.
+
+        Uses asyncio.to_thread to avoid blocking the event loop during file I/O.
+
+        Returns:
+            The reloaded plan, or None if file doesn't exist
+
+        Raises:
+            PlanParseError: If the file cannot be read or parsed.
+        """
+        if self.plan_path is None or not self.plan_path.exists():
+            logger.debug("Cannot reload: plan path is None or doesn't exist")
+            return None
+
+        parser = PlanParser()
+        try:
+            self.plan = await parser.parse_file_async(self.plan_path)
+            self.last_mtime = self.plan_path.stat().st_mtime
+            logger.info("Reloaded PLAN.md from %s", self.plan_path)
+            return self.plan
+        except PlanParseError:
+            raise
+        except OSError as e:
+            logger.error("Failed to stat PLAN.md after reload: %s", e)
+            record_error(e)
+            raise PlanParseError(
+                f"Failed to access PLAN.md: {e}",
+                file_path=str(self.plan_path),
+                cause=e,
+            ) from e
+
     def accept_external_changes(self, new_plan: Plan) -> None:
         """Accept external changes and update the current plan.
 
@@ -416,6 +448,7 @@ class PlanWriteQueue:
         self._queue: asyncio.Queue[PlanWrite] = asyncio.Queue()
         self._processing = False
         self._process_task: asyncio.Task | None = None
+        self._enqueue_lock = asyncio.Lock()
 
     async def enqueue(self, task_id: str, new_status: TaskStatus) -> None:
         """Add a write operation to the queue.
@@ -423,13 +456,18 @@ class PlanWriteQueue:
         If no processing is in progress, starts processing immediately.
         Otherwise, the write is queued for later processing.
 
+        Uses a lock to prevent race conditions when multiple enqueues happen
+        before the processing task has started.
+
         Args:
             task_id: The task ID to update (e.g., "2.1")
             new_status: The new status to set
         """
-        await self._queue.put(PlanWrite(task_id=task_id, new_status=new_status))
-        if not self._processing:
-            self._process_task = asyncio.create_task(self._process_queue())
+        async with self._enqueue_lock:
+            await self._queue.put(PlanWrite(task_id=task_id, new_status=new_status))
+            if not self._processing:
+                self._processing = True  # Set immediately to prevent race
+                self._process_task = asyncio.create_task(self._process_queue())
 
     async def _process_queue(self) -> None:
         """Process all queued write operations.
@@ -437,8 +475,9 @@ class PlanWriteQueue:
         Marks pending writes on the watcher before starting, and
         clears the flag after all writes are complete. Handles
         any queued reloads after processing finishes.
+
+        Note: _processing is set to True in enqueue() before this task starts.
         """
-        self._processing = True
         self.watcher.mark_write_started()
 
         try:
@@ -458,6 +497,7 @@ class PlanWriteQueue:
         """Apply a single write operation to PLAN.md.
 
         Updates both the file on disk and the in-memory plan state.
+        Uses asyncio.to_thread for file I/O to avoid blocking the event loop.
 
         Args:
             write: The write operation to apply
@@ -470,9 +510,9 @@ class PlanWriteQueue:
             logger.warning("PLAN.md does not exist at %s", plan_path)
             return
 
-        # Read current content
+        # Read current content asynchronously
         try:
-            content = plan_path.read_text(encoding="utf-8")
+            content = await asyncio.to_thread(plan_path.read_text, encoding="utf-8")
         except OSError as e:
             logger.error("Failed to read PLAN.md for write: %s", e)
             record_error(e)
@@ -493,9 +533,9 @@ class PlanWriteQueue:
             record_error(e)
             return
 
-        # Write to disk
+        # Write to disk asynchronously
         try:
-            plan_path.write_text(new_content, encoding="utf-8")
+            await asyncio.to_thread(plan_path.write_text, new_content, encoding="utf-8")
             logger.debug("Wrote task %s status update to PLAN.md", write.task_id)
         except OSError as e:
             logger.error("Failed to write PLAN.md: %s", e)

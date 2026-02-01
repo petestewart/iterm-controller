@@ -214,6 +214,29 @@ class TestPlanParserFile:
             assert len(plan.phases) == 3
             assert plan.phases[0].tasks[0].title == "Set up project structure"
 
+    @pytest.mark.asyncio
+    async def test_parse_file_async(self):
+        """Test async file parsing."""
+        parser = PlanParser()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(SAMPLE_PLAN_MD)
+            plan = await parser.parse_file_async(plan_path)
+            assert len(plan.phases) == 3
+            assert plan.phases[0].tasks[0].title == "Set up project structure"
+
+    @pytest.mark.asyncio
+    async def test_parse_file_async_not_found(self):
+        """Test async file parsing with missing file."""
+        from iterm_controller.exceptions import PlanParseError
+
+        parser = PlanParser()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            # Don't create the file
+            with pytest.raises(PlanParseError, match="Failed to read"):
+                await parser.parse_file_async(plan_path)
+
 
 class TestParseStatus:
     """Test status parsing edge cases."""
@@ -714,6 +737,75 @@ class TestPlanUpdaterFileOperations:
             result = plan_path.read_text()
             assert "- [ ] **Task A** `[pending]`" in result
             assert "- [ ] **Task B** `[pending]`" in result
+
+    @pytest.mark.asyncio
+    async def test_update_task_status_in_file_async(self):
+        """Test async file update."""
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+"""
+        updater = PlanUpdater()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(plan_md)
+
+            await updater.update_task_status_in_file_async(plan_path, "1.1", TaskStatus.COMPLETE)
+
+            result = plan_path.read_text()
+            assert "- [x] **Task A** `[complete]`" in result
+
+    @pytest.mark.asyncio
+    async def test_add_task_to_file_async(self):
+        """Test async file task addition."""
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+"""
+        task = Task(id="1.2", title="Task B", status=TaskStatus.PENDING)
+        updater = PlanUpdater()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            plan_path.write_text(plan_md)
+
+            await updater.add_task_to_file_async(plan_path, "1", task)
+
+            result = plan_path.read_text()
+            assert "- [ ] **Task A** `[pending]`" in result
+            assert "- [ ] **Task B** `[pending]`" in result
+
+    @pytest.mark.asyncio
+    async def test_update_task_status_in_file_async_not_found(self):
+        """Test async file update with missing file."""
+        from iterm_controller.exceptions import PlanParseError
+
+        updater = PlanUpdater()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            # Don't create the file
+            with pytest.raises(PlanParseError, match="Failed to read"):
+                await updater.update_task_status_in_file_async(plan_path, "1.1", TaskStatus.COMPLETE)
+
+    @pytest.mark.asyncio
+    async def test_add_task_to_file_async_not_found(self):
+        """Test async file task addition with missing file."""
+        from iterm_controller.exceptions import PlanParseError
+
+        task = Task(id="1.2", title="Task B", status=TaskStatus.PENDING)
+        updater = PlanUpdater()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "PLAN.md"
+            # Don't create the file
+            with pytest.raises(PlanParseError, match="Failed to read"):
+                await updater.add_task_to_file_async(plan_path, "1", task)
 
 
 class TestPlanUpdaterRoundTrip:

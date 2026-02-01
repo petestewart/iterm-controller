@@ -8,6 +8,7 @@ Also provides PlanUpdater for updating PLAN.md files while preserving formatting
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from collections.abc import Callable
@@ -74,6 +75,49 @@ class PlanParser:
         """
         try:
             content = path.read_text(encoding="utf-8")
+            logger.debug("Read PLAN.md from %s (%d bytes)", path, len(content))
+        except OSError as e:
+            logger.error("Failed to read PLAN.md: %s", e)
+            record_error(e)
+            raise PlanParseError(
+                f"Failed to read PLAN.md: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e
+
+        try:
+            plan = self.parse(content)
+            logger.debug(
+                "Parsed %d phases with %d total tasks",
+                len(plan.phases),
+                len(plan.all_tasks),
+            )
+            return plan
+        except Exception as e:
+            logger.error("Failed to parse PLAN.md content: %s", e)
+            record_error(e)
+            raise PlanParseError(
+                f"Failed to parse PLAN.md content: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e
+
+    async def parse_file_async(self, path: Path) -> Plan:
+        """Parse PLAN.md file from disk asynchronously.
+
+        Uses asyncio.to_thread to avoid blocking the event loop during file I/O.
+
+        Args:
+            path: Path to the PLAN.md file.
+
+        Returns:
+            Parsed Plan object.
+
+        Raises:
+            PlanParseError: If the file cannot be read or parsed.
+        """
+        try:
+            content = await asyncio.to_thread(path.read_text, encoding="utf-8")
             logger.debug("Read PLAN.md from %s (%d bytes)", path, len(content))
         except OSError as e:
             logger.error("Failed to read PLAN.md: %s", e)
@@ -455,6 +499,94 @@ class PlanUpdater:
 
         try:
             path.write_text(updated_content, encoding="utf-8")
+            logger.info("Added task '%s' to phase %s in %s", task.title, phase_id, path)
+        except OSError as e:
+            logger.error("Failed to write PLAN.md: %s", e)
+            record_error(e)
+            raise PlanWriteError(
+                f"Failed to write PLAN.md: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e
+
+    async def update_task_status_in_file_async(
+        self,
+        path: Path,
+        task_id: str,
+        new_status: TaskStatus,
+    ) -> None:
+        """Update a task's status in a PLAN.md file asynchronously.
+
+        Uses asyncio.to_thread to avoid blocking the event loop during file I/O.
+
+        Args:
+            path: Path to the PLAN.md file
+            task_id: The task ID to update (e.g., "2.1")
+            new_status: The new status to set
+
+        Raises:
+            PlanParseError: If the file cannot be read.
+            PlanWriteError: If the file cannot be written.
+        """
+        try:
+            content = await asyncio.to_thread(path.read_text, encoding="utf-8")
+        except OSError as e:
+            logger.error("Failed to read PLAN.md for update: %s", e)
+            record_error(e)
+            raise PlanParseError(
+                f"Failed to read PLAN.md: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e
+
+        updated_content = self.update_task_status(content, task_id, new_status)
+
+        try:
+            await asyncio.to_thread(path.write_text, updated_content, encoding="utf-8")
+            logger.info("Updated task %s to %s in %s", task_id, new_status.value, path)
+        except OSError as e:
+            logger.error("Failed to write PLAN.md: %s", e)
+            record_error(e)
+            raise PlanWriteError(
+                f"Failed to write PLAN.md: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e
+
+    async def add_task_to_file_async(
+        self,
+        path: Path,
+        phase_id: str,
+        task: Task,
+    ) -> None:
+        """Add a new task to a phase in a PLAN.md file asynchronously.
+
+        Uses asyncio.to_thread to avoid blocking the event loop during file I/O.
+
+        Args:
+            path: Path to the PLAN.md file
+            phase_id: The phase to add the task to (e.g., "2")
+            task: The task to add
+
+        Raises:
+            PlanParseError: If the file cannot be read.
+            PlanWriteError: If the file cannot be written.
+        """
+        try:
+            content = await asyncio.to_thread(path.read_text, encoding="utf-8")
+        except OSError as e:
+            logger.error("Failed to read PLAN.md for adding task: %s", e)
+            record_error(e)
+            raise PlanParseError(
+                f"Failed to read PLAN.md: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e
+
+        updated_content = self.add_task(content, phase_id, task)
+
+        try:
+            await asyncio.to_thread(path.write_text, updated_content, encoding="utf-8")
             logger.info("Added task '%s' to phase %s in %s", task.title, phase_id, path)
         except OSError as e:
             logger.error("Failed to write PLAN.md: %s", e)
