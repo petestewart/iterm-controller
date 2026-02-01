@@ -13,6 +13,7 @@ from textual.binding import Binding
 from textual.widgets import Static
 
 from iterm_controller.models import AttentionState, ManagedSession, Plan, Task, TaskStatus
+from iterm_controller.status_display import get_attention_color, get_attention_icon
 
 
 class ActiveWorkWidget(Static, can_focus=True):
@@ -53,18 +54,6 @@ class ActiveWorkWidget(Static, can_focus=True):
         Binding("down", "cursor_down", "Down", show=False),
         Binding("up", "cursor_up", "Up", show=False),
     ]
-
-    STATUS_ICONS = {
-        AttentionState.WAITING: "⧖",
-        AttentionState.WORKING: "●",
-        AttentionState.IDLE: "○",
-    }
-
-    STATUS_COLORS = {
-        AttentionState.WAITING: "yellow",
-        AttentionState.WORKING: "green",
-        AttentionState.IDLE: "dim",
-    }
 
     def __init__(
         self,
@@ -245,8 +234,8 @@ class ActiveWorkWidget(Static, can_focus=True):
             text.append("\n")
 
             # Attention state
-            icon = self.STATUS_ICONS.get(session.attention_state, "○")
-            color = self.STATUS_COLORS.get(session.attention_state, "dim")
+            icon = get_attention_icon(session.attention_state)
+            color = get_attention_color(session.attention_state)
             status = session.attention_state.value.title()
             text.append(f"{indent}Status: ")
             text.append(f"{icon} ", style=color)

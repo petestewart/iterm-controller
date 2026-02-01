@@ -12,6 +12,7 @@ from textual.widgets import Static
 
 from iterm_controller.models import AttentionState, ManagedSession
 from iterm_controller.state import SessionClosed, SessionSpawned, SessionStatusChanged
+from iterm_controller.status_display import get_attention_color, get_attention_icon
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
@@ -40,18 +41,6 @@ class SessionListWidget(Static):
         padding: 0 1;
     }
     """
-
-    STATUS_ICONS = {
-        AttentionState.WAITING: "⧖",
-        AttentionState.WORKING: "●",
-        AttentionState.IDLE: "○",
-    }
-
-    STATUS_COLORS = {
-        AttentionState.WAITING: "yellow",
-        AttentionState.WORKING: "green",
-        AttentionState.IDLE: "dim",
-    }
 
     def __init__(
         self,
@@ -93,7 +82,7 @@ class SessionListWidget(Static):
         Returns:
             Unicode icon representing the state.
         """
-        return self.STATUS_ICONS.get(state, "○")
+        return get_attention_icon(state)
 
     def _get_status_color(self, state: AttentionState) -> str:
         """Get the color for a given attention state.
@@ -104,7 +93,7 @@ class SessionListWidget(Static):
         Returns:
             Color name for Rich markup.
         """
-        return self.STATUS_COLORS.get(state, "dim")
+        return get_attention_color(state)
 
     def _render_session(self, session: ManagedSession) -> Text:
         """Render a single session row.

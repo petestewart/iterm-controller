@@ -13,6 +13,7 @@ from iterm_controller.models import (
     Task,
     TaskStatus,
 )
+from iterm_controller.status_display import ATTENTION_STATE_ICONS
 from iterm_controller.widgets.active_work import ActiveWorkWidget
 
 
@@ -312,12 +313,11 @@ class TestActiveWorkRendering:
         assert "▸" in str(result)
 
     def test_render_attention_state_icons(self) -> None:
-        """Test attention state icons are rendered correctly."""
-        widget = ActiveWorkWidget()
-
-        assert widget.STATUS_ICONS[AttentionState.WAITING] == "⧖"
-        assert widget.STATUS_ICONS[AttentionState.WORKING] == "●"
-        assert widget.STATUS_ICONS[AttentionState.IDLE] == "○"
+        """Test attention state icons are defined correctly."""
+        # Icons are now defined in status_display module
+        assert ATTENTION_STATE_ICONS[AttentionState.WAITING] == "⧖"
+        assert ATTENTION_STATE_ICONS[AttentionState.WORKING] == "●"
+        assert ATTENTION_STATE_ICONS[AttentionState.IDLE] == "○"
 
 
 class TestActiveWorkTimeFormatting:

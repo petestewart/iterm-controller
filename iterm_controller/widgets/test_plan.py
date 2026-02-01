@@ -12,6 +12,7 @@ from textual.binding import Binding
 from textual.widgets import Static
 
 from iterm_controller.models import TestPlan, TestSection, TestStatus, TestStep
+from iterm_controller.status_display import get_test_color, get_test_icon
 
 
 class TestPlanWidget(Static, can_focus=True):
@@ -56,22 +57,6 @@ class TestPlanWidget(Static, can_focus=True):
         Binding("down", "cursor_down", "Down", show=False),
         Binding("up", "cursor_up", "Up", show=False),
     ]
-
-    # Status icons matching TEST_PLAN.md markers
-    STATUS_ICONS = {
-        TestStatus.PENDING: "[ ]",
-        TestStatus.IN_PROGRESS: "[~]",
-        TestStatus.PASSED: "[x]",
-        TestStatus.FAILED: "[!]",
-    }
-
-    # Status colors
-    STATUS_COLORS = {
-        TestStatus.PENDING: "white",
-        TestStatus.IN_PROGRESS: "yellow",
-        TestStatus.PASSED: "green",
-        TestStatus.FAILED: "red",
-    }
 
     def __init__(
         self,
@@ -172,7 +157,7 @@ class TestPlanWidget(Static, can_focus=True):
         Returns:
             String icon representing the status.
         """
-        return self.STATUS_ICONS.get(status, "[ ]")
+        return get_test_icon(status)
 
     def _get_status_color(self, status: TestStatus) -> str:
         """Get the color for a given test status.
@@ -183,7 +168,7 @@ class TestPlanWidget(Static, can_focus=True):
         Returns:
             Color name for Rich markup.
         """
-        return self.STATUS_COLORS.get(status, "white")
+        return get_test_color(status)
 
     def _render_step(self, step: TestStep, is_selected: bool) -> Text:
         """Render a single test step row.

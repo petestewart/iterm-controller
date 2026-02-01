@@ -15,6 +15,7 @@ from textual.widgets import Static
 from iterm_controller.models import Phase, Plan, Task, TaskStatus
 from iterm_controller.spec_validator import SpecValidationResult, validate_spec_ref
 from iterm_controller.state import PlanReloaded, TaskStatusChanged
+from iterm_controller.status_display import get_task_color, get_task_icon
 from iterm_controller.task_dependency import TaskDependencyResolver
 
 
@@ -49,22 +50,6 @@ class TaskListWidget(Static):
         padding: 0 1;
     }
     """
-
-    STATUS_ICONS = {
-        TaskStatus.PENDING: "○",
-        TaskStatus.IN_PROGRESS: "●",
-        TaskStatus.COMPLETE: "✓",
-        TaskStatus.SKIPPED: "⊖",
-        TaskStatus.BLOCKED: "⊘",
-    }
-
-    STATUS_COLORS = {
-        TaskStatus.PENDING: "white",
-        TaskStatus.IN_PROGRESS: "yellow",
-        TaskStatus.COMPLETE: "green",
-        TaskStatus.SKIPPED: "dim",
-        TaskStatus.BLOCKED: "dim",
-    }
 
     def __init__(
         self,
@@ -203,7 +188,7 @@ class TaskListWidget(Static):
         Returns:
             Unicode icon representing the status.
         """
-        return self.STATUS_ICONS.get(status, "○")
+        return get_task_icon(status)
 
     def _get_status_color(self, status: TaskStatus) -> str:
         """Get the color for a given task status.
@@ -214,7 +199,7 @@ class TaskListWidget(Static):
         Returns:
             Color name for Rich markup.
         """
-        return self.STATUS_COLORS.get(status, "white")
+        return get_task_color(status)
 
     def _render_phase_header(self, phase: Phase) -> Text:
         """Render a phase header with completion progress.

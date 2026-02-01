@@ -637,7 +637,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Currently duplicated in: task_list.py:180-221, task_queue.py:122-161, blocked_tasks.py:88-125
   - Acceptance: Single implementation of dependency checking
 
-- [ ] **Create shared STATUS_ICONS and STATUS_COLORS constants** `[pending]`
+- [x] **Create shared STATUS_ICONS and STATUS_COLORS constants** `[complete]`
   - Scope: Consolidate status display constants
   - Currently duplicated in: task_list.py:55-69, session_list.py:44-54, active_work.py:60-70
   - Acceptance: Consistent status display across all widgets
