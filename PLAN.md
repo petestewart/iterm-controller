@@ -39,7 +39,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Implement dataclasses for Project, Session, Task, Config, HealthCheck, etc.
   - Acceptance: All models serializable to/from JSON with dacite
 
-- [ ] **Implement configuration loading** `[pending]`
+- [x] **Implement configuration loading** `[complete]`
   - Spec: specs/config.md#configuration-merging
   - Scope: Load global config from ~/.config/iterm-controller/config.json, merge with project-local overrides
   - Acceptance: Config merging works per spec (scalars override, lists replace, dicts merge, null removes)
