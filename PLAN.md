@@ -514,7 +514,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 19: Type System & Code Quality (Critical)
 
-- [ ] **Rename ConnectionError to avoid shadowing built-in** `[pending]`
+- [x] **Rename ConnectionError to avoid shadowing built-in** `[complete]`
   - Scope: Rename `ConnectionError` class to `ItermControllerConnectionError`
   - Location: iterm_controller/exceptions.py:51
   - Fix: Find/replace all usages across codebase

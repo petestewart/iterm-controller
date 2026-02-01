@@ -48,13 +48,13 @@ class ItermControllerError(Exception):
 # =============================================================================
 
 
-class ConnectionError(ItermControllerError):
+class ItermControllerConnectionError(ItermControllerError):
     """Base class for connection-related errors."""
 
     pass
 
 
-class ItermConnectionError(ConnectionError):
+class ItermConnectionError(ItermControllerConnectionError):
     """Raised when iTerm2 connection fails."""
 
     def __init__(
@@ -71,7 +71,7 @@ class ItermConnectionError(ConnectionError):
         )
 
 
-class ItermNotConnectedError(ConnectionError):
+class ItermNotConnectedError(ItermControllerConnectionError):
     """Raised when operation requires connection but not connected."""
 
     def __init__(self, operation: str = "unknown") -> None:
@@ -81,7 +81,7 @@ class ItermNotConnectedError(ConnectionError):
         )
 
 
-class NetworkError(ConnectionError):
+class NetworkError(ItermControllerConnectionError):
     """Raised when network connection fails."""
 
     def __init__(

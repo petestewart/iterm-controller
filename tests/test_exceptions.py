@@ -8,7 +8,7 @@ from iterm_controller.exceptions import (
     ConfigLoadError,
     ConfigSaveError,
     ConfigValidationError,
-    ConnectionError,
+    ItermControllerConnectionError,
     GitHubError,
     GitHubUnavailableError,
     HealthCheckError,
@@ -285,6 +285,13 @@ class TestExceptionInheritance:
         assert issubclass(ItermSessionError, SessionError)
         assert issubclass(SessionSpawnError, SessionError)
         assert issubclass(SessionTerminationError, SessionError)
+
+    def test_connection_errors_inherit_from_base(self):
+        """Connection errors inherit from ItermControllerError."""
+        assert issubclass(ItermControllerConnectionError, ItermControllerError)
+        assert issubclass(ItermConnectionError, ItermControllerConnectionError)
+        assert issubclass(ItermNotConnectedError, ItermControllerConnectionError)
+        assert issubclass(NetworkError, ItermControllerConnectionError)
 
     def test_github_errors_inherit_from_base(self):
         """GitHub errors inherit from ItermControllerError."""
