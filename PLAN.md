@@ -375,7 +375,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: `c` creates missing artifact via Claude, `e` opens in editor
   - Acceptance: Can create PRD.md and open it for editing
 
-- [ ] **Add inline artifact preview**
+- [x] **Add inline artifact preview** `[complete]`
   - Spec: specs/plan-mode.md#inline-preview
   - Scope: Enter key shows markdown preview modal
   - Acceptance: Can preview PRD.md content inline

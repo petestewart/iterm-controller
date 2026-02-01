@@ -19,6 +19,7 @@ from textual.widgets import Footer, Header, Static
 
 from iterm_controller.models import SessionTemplate, WorkflowMode
 from iterm_controller.screens.mode_screen import ModeScreen
+from iterm_controller.screens.modals.artifact_preview import ArtifactPreviewModal
 from iterm_controller.widgets.artifact_list import ArtifactListWidget
 from iterm_controller.widgets.workflow_bar import WorkflowBarWidget
 
@@ -173,7 +174,7 @@ class PlanModeScreen(ModeScreen):
         """View the selected artifact (inline preview).
 
         Opens a preview modal showing the artifact content.
-        Implementation deferred to Phase 13 task: "Add inline artifact preview".
+        For directories (specs/), toggles expansion instead.
         """
         artifact_widget = self.query_one("#artifacts", ArtifactListWidget)
         selected = artifact_widget.selected_artifact
@@ -191,10 +192,30 @@ class PlanModeScreen(ModeScreen):
         if not path:
             return
 
-        if path.exists():
-            self.notify(f"Preview: {selected} (inline preview coming in Phase 13)")
-        else:
+        if not path.exists():
             self.notify(f"{selected} does not exist", severity="warning")
+            return
+
+        # For directories (like individual spec files shown under specs/),
+        # just open in editor since we can't preview a directory
+        if path.is_dir():
+            self.action_edit_artifact()
+            return
+
+        # Open preview modal for files
+        def handle_preview_result(result: str | None) -> None:
+            """Handle the result from the preview modal."""
+            if result == "edit":
+                # User wants to edit - trigger edit action
+                self.action_edit_artifact()
+
+        self.app.push_screen(
+            ArtifactPreviewModal(
+                artifact_name=selected,
+                artifact_path=path,
+            ),
+            handle_preview_result,
+        )
 
     def action_edit_artifact(self) -> None:
         """Edit the selected artifact in configured editor.
