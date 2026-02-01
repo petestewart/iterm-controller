@@ -71,6 +71,17 @@ TEST_STATUS_COLORS: dict[TestStatus, str] = {
 DEFAULT_ICON = "○"
 DEFAULT_COLOR = "white"
 
+# Layout constants for widget rendering
+# These define column widths and padding for consistent table layouts
+
+# Phase header layout (task_list.py)
+PHASE_HEADER_WIDTH = 40  # Total width for phase title + progress
+
+# Session list layout (session_list.py)
+SESSION_NAME_WIDTH = 25  # Width for project_id/template_id column
+SESSION_TASK_ID_WIDTH = 8  # Width for task ID in "Task {id}" format
+SESSION_TASK_PLACEHOLDER_WIDTH = 13  # Width for placeholder when no task linked
+
 
 def get_task_icon(status: TaskStatus) -> str:
     """Get the display icon for a task status.

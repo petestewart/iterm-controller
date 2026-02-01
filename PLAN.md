@@ -756,10 +756,11 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Result: Added logging to 12 silent exception handlers across 10 files
   - Acceptance: All exception handlers log their errors
 
-- [ ] **Extract magic numbers to named constants** `[pending]`
+- [x] **Extract magic numbers to named constants** `[complete]`
   - Scope: Replace hardcoded numbers with named constants
   - Locations: task_list.py:264 (padding=40), session_list.py:134 (width=25)
   - Acceptance: No magic numbers in widget rendering code
+  - Result: Added PHASE_HEADER_WIDTH, SESSION_NAME_WIDTH, SESSION_TASK_ID_WIDTH, SESSION_TASK_PLACEHOLDER_WIDTH to status_display.py and updated both widgets to use them
 
 - [ ] **Remove unused model fields** `[pending]`
   - Scope: Remove fields that are tracked but never meaningfully used

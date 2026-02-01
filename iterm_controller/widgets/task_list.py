@@ -15,7 +15,11 @@ from textual.widgets import Static
 from iterm_controller.models import Phase, Plan, Task, TaskStatus
 from iterm_controller.spec_validator import SpecValidationResult, validate_spec_ref
 from iterm_controller.state import PlanReloaded, TaskStatusChanged
-from iterm_controller.status_display import get_task_color, get_task_icon
+from iterm_controller.status_display import (
+    PHASE_HEADER_WIDTH,
+    get_task_color,
+    get_task_icon,
+)
 from iterm_controller.task_dependency import TaskDependencyResolver
 
 
@@ -220,7 +224,7 @@ class TaskListWidget(Static):
 
         # Right-align the progress
         progress = f"{completed}/{total}"
-        padding = 40 - len(phase.title) - 2  # Account for icon and space
+        padding = PHASE_HEADER_WIDTH - len(phase.title) - 2  # Account for icon and space
         if padding > 0:
             text.append(" " * padding)
         text.append(progress, style="dim")

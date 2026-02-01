@@ -12,7 +12,13 @@ from textual.widgets import Static
 
 from iterm_controller.models import AttentionState, ManagedSession
 from iterm_controller.state import SessionClosed, SessionSpawned, SessionStatusChanged
-from iterm_controller.status_display import get_attention_color, get_attention_icon
+from iterm_controller.status_display import (
+    SESSION_NAME_WIDTH,
+    SESSION_TASK_ID_WIDTH,
+    SESSION_TASK_PLACEHOLDER_WIDTH,
+    get_attention_color,
+    get_attention_icon,
+)
 
 if TYPE_CHECKING:
     from textual.app import ComposeResult
@@ -149,17 +155,17 @@ class SessionListWidget(Static):
             name = session.template_id
 
         # Pad name to align columns
-        name_padded = f"{name:<25}"
+        name_padded = f"{name:<{SESSION_NAME_WIDTH}}"
         text.append(name_padded)
 
         # Task info if session is linked to a task
         task_id = session.metadata.get("task_id", "")
         if task_id:
-            task_display = f"Task {task_id:<8}"
+            task_display = f"Task {task_id:<{SESSION_TASK_ID_WIDTH}}"
             text.append(task_display, style="cyan")
         else:
             # No task linked - show placeholder
-            text.append(f"{'—':<13}", style="dim")
+            text.append(f"{'—':<{SESSION_TASK_PLACEHOLDER_WIDTH}}", style="dim")
 
         # Status with color
         text.append(status, style=color)
