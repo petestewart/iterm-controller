@@ -701,7 +701,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Initialize client in __init__, close in stop_polling()
   - Acceptance: Connection pool reused, reduced SSL handshakes
 
-- [ ] **Add task lookup dictionary to Plan model** `[pending]`
+- [x] **Add task lookup dictionary to Plan model** `[complete]`
   - Scope: Cache task by ID for O(1) lookups instead of O(n) linear search
   - Location: iterm_controller/plan_watcher.py:520-524
   - Fix: Add `_task_map_cache` property to Plan model

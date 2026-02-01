@@ -548,12 +548,11 @@ class PlanWriteQueue:
         except OSError as e:
             logger.warning("Failed to update mtime after write: %s", e)
 
-        # Update in-memory plan if watcher has one
+        # Update in-memory plan if watcher has one using O(1) lookup
         if self.watcher.plan:
-            for task in self.watcher.plan.all_tasks:
-                if task.id == write.task_id:
-                    task.status = write.new_status
-                    break
+            task = self.watcher.plan.get_task_by_id(write.task_id)
+            if task:
+                task.status = write.new_status
 
     @property
     def is_processing(self) -> bool:

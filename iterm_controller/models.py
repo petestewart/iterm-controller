@@ -132,10 +132,49 @@ class Plan:
     overview: str = ""
     success_criteria: list[str] = field(default_factory=list)
 
+    # Note: _task_map_cache is NOT a dataclass field (not serialized)
+    # It's initialized in __post_init__ and stored as an instance attribute
+
+    def __post_init__(self) -> None:
+        """Initialize non-serialized cache attribute."""
+        # Use object.__setattr__ to bypass frozen if ever needed
+        object.__setattr__(self, "_task_map_cache", None)
+
     @property
     def all_tasks(self) -> list[Task]:
         """Flatten all tasks from all phases."""
         return [task for phase in self.phases for task in phase.tasks]
+
+    @property
+    def _task_map(self) -> dict[str, Task]:
+        """Get cached task lookup dictionary for O(1) access by ID.
+
+        The cache is automatically invalidated when phases change.
+        """
+        cache = getattr(self, "_task_map_cache", None)
+        if cache is None:
+            cache = {task.id: task for task in self.all_tasks}
+            object.__setattr__(self, "_task_map_cache", cache)
+        return cache
+
+    def get_task_by_id(self, task_id: str) -> Task | None:
+        """Get a task by its ID using O(1) lookup.
+
+        Args:
+            task_id: The task ID to look up.
+
+        Returns:
+            The task if found, None otherwise.
+        """
+        return self._task_map.get(task_id)
+
+    def invalidate_task_cache(self) -> None:
+        """Invalidate the task lookup cache.
+
+        Call this when modifying tasks directly (adding/removing tasks)
+        to ensure the cache is rebuilt on next access.
+        """
+        object.__setattr__(self, "_task_map_cache", None)
 
     @property
     def completion_summary(self) -> dict[str, int]:

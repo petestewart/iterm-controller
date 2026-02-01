@@ -347,6 +347,142 @@ class TestTaskModels:
         assert restored.overview == "Test plan"
         assert restored.phases[0].tasks[0].status == TaskStatus.COMPLETE
 
+    def test_plan_get_task_by_id(self):
+        """Test Plan.get_task_by_id() returns correct task."""
+        plan = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[
+                        Task(id="1.1", title="Task 1"),
+                        Task(id="1.2", title="Task 2"),
+                    ],
+                ),
+                Phase(
+                    id="2",
+                    title="Phase 2",
+                    tasks=[Task(id="2.1", title="Task 3")],
+                ),
+            ],
+        )
+        task = plan.get_task_by_id("1.2")
+        assert task is not None
+        assert task.id == "1.2"
+        assert task.title == "Task 2"
+
+        task = plan.get_task_by_id("2.1")
+        assert task is not None
+        assert task.id == "2.1"
+        assert task.title == "Task 3"
+
+    def test_plan_get_task_by_id_not_found(self):
+        """Test Plan.get_task_by_id() returns None for missing task."""
+        plan = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[Task(id="1.1", title="Task 1")],
+                ),
+            ],
+        )
+        assert plan.get_task_by_id("nonexistent") is None
+
+    def test_plan_get_task_by_id_empty_plan(self):
+        """Test Plan.get_task_by_id() on empty plan returns None."""
+        plan = Plan()
+        assert plan.get_task_by_id("1.1") is None
+
+    def test_plan_task_cache_is_populated_on_first_access(self):
+        """Test that task cache is built lazily on first access."""
+        plan = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[Task(id="1.1", title="Task 1")],
+                ),
+            ],
+        )
+        # Cache should be None initially (internal attribute)
+        assert getattr(plan, "_task_map_cache", None) is None
+
+        # First lookup should populate cache
+        plan.get_task_by_id("1.1")
+        cache = getattr(plan, "_task_map_cache", None)
+        assert cache is not None
+        assert "1.1" in cache
+
+    def test_plan_invalidate_task_cache(self):
+        """Test Plan.invalidate_task_cache() clears the cache."""
+        plan = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[Task(id="1.1", title="Task 1")],
+                ),
+            ],
+        )
+        # Populate cache
+        plan.get_task_by_id("1.1")
+        assert getattr(plan, "_task_map_cache", None) is not None
+
+        # Invalidate cache
+        plan.invalidate_task_cache()
+        assert getattr(plan, "_task_map_cache", None) is None
+
+        # Cache should be rebuilt on next access
+        plan.get_task_by_id("1.1")
+        assert getattr(plan, "_task_map_cache", None) is not None
+
+    def test_plan_task_lookup_is_o1(self):
+        """Test that task lookup uses O(1) dictionary access."""
+        # Create a plan with many tasks
+        tasks = [Task(id=f"1.{i}", title=f"Task {i}") for i in range(1000)]
+        plan = Plan(
+            phases=[
+                Phase(id="1", title="Phase 1", tasks=tasks),
+            ],
+        )
+
+        # Populate cache
+        plan.get_task_by_id("1.500")
+
+        # Verify the internal cache is a dict (O(1) lookup)
+        cache = getattr(plan, "_task_map_cache", None)
+        assert isinstance(cache, dict)
+        assert len(cache) == 1000
+
+        # Multiple lookups should be fast (using cached dict)
+        for i in [0, 500, 999]:
+            task = plan.get_task_by_id(f"1.{i}")
+            assert task is not None
+            assert task.id == f"1.{i}"
+
+    def test_plan_task_cache_not_serialized(self):
+        """Test that _task_map_cache is not included in serialization."""
+        plan = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[Task(id="1.1", title="Task 1")],
+                ),
+            ],
+        )
+        # Populate cache
+        plan.get_task_by_id("1.1")
+
+        data = model_to_dict(plan)
+        # Cache field should not be in serialized data
+        assert "_task_map_cache" not in data
+
+        # Restored plan should work correctly
+        restored = model_from_dict(Plan, data)
+        assert restored.get_task_by_id("1.1") is not None
+
 
 class TestTestPlanModels:
     """Test TEST_PLAN.md related dataclasses."""
