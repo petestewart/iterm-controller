@@ -34,7 +34,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Create iterm_controller package with __init__.py, __main__.py, empty module files
   - Acceptance: `python -m iterm_controller` runs without import errors
 
-- [ ] **Create core data models** `[pending]`
+- [x] **Create core data models** `[complete]`
   - Spec: specs/models.md
   - Scope: Implement dataclasses for Project, Session, Task, Config, HealthCheck, etc.
   - Acceptance: All models serializable to/from JSON with dacite
