@@ -66,7 +66,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Connect to iTerm2 Python API, handle connection lifecycle
   - Acceptance: Can connect, verify iTerm2 version, gracefully handle disconnection
 
-- [ ] **Implement session spawning** `[pending]`
+- [x] **Implement session spawning** `[complete]`
   - Spec: specs/iterm.md#session-spawning
   - Scope: Create tabs/panes in iTerm2 windows, send initial commands from SessionTemplate
   - Acceptance: Can spawn tabs and split panes per configuration

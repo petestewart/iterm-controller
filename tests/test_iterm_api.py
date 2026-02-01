@@ -8,12 +8,14 @@ from iterm_controller.iterm_api import (
     ItermConnectionError,
     ItermController,
     ItermNotConnectedError,
+    SessionSpawner,
     SpawnResult,
     TabState,
     WindowState,
     WindowTracker,
     with_reconnect,
 )
+from iterm_controller.models import Project, SessionTemplate
 
 
 class TestItermController:
@@ -469,3 +471,502 @@ class TestWindowTracker:
         assert window_state.tabs[0].tab_id == "tab-1"
         assert window_state.tabs[0].title == "Test Tab"
         assert window_state.tabs[0].session_ids == ["session-1"]
+
+
+class TestSessionSpawner:
+    """Test SessionSpawner session spawning functionality."""
+
+    def make_template(
+        self,
+        id: str = "test-template",
+        name: str = "Test Template",
+        command: str = "echo hello",
+        working_dir: str | None = None,
+        env: dict | None = None,
+    ) -> SessionTemplate:
+        """Create a test session template."""
+        return SessionTemplate(
+            id=id,
+            name=name,
+            command=command,
+            working_dir=working_dir,
+            env=env or {},
+        )
+
+    def make_project(
+        self,
+        id: str = "test-project",
+        name: str = "Test Project",
+        path: str = "/path/to/project",
+    ) -> Project:
+        """Create a test project."""
+        return Project(id=id, name=name, path=path)
+
+    def make_connected_controller(self) -> ItermController:
+        """Create a controller in connected state."""
+        controller = ItermController()
+        controller._connected = True
+        controller.connection = MagicMock()
+        controller.app = MagicMock()
+        return controller
+
+    def test_init(self):
+        """SessionSpawner initializes with empty sessions."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        assert spawner.controller is controller
+        assert spawner.managed_sessions == {}
+
+    def test_build_command_simple(self):
+        """Build command with just command, no env."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(command="npm start")
+        project = self.make_project(path="/my/project")
+
+        cmd = spawner._build_command(template, project)
+
+        assert cmd == "cd /my/project && npm start"
+
+    def test_build_command_with_working_dir(self):
+        """Build command uses template working_dir over project path."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="npm start",
+            working_dir="/custom/dir",
+        )
+        project = self.make_project(path="/my/project")
+
+        cmd = spawner._build_command(template, project)
+
+        assert cmd == "cd /custom/dir && npm start"
+
+    def test_build_command_with_spaces_in_path(self):
+        """Build command quotes paths with spaces."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(command="npm start")
+        project = self.make_project(path="/path with spaces/project")
+
+        cmd = spawner._build_command(template, project)
+
+        assert cmd == 'cd "/path with spaces/project" && npm start'
+
+    def test_build_command_with_env(self):
+        """Build command includes environment variable exports."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="npm start",
+            env={"PORT": "3000", "NODE_ENV": "development"},
+        )
+        project = self.make_project(path="/my/project")
+
+        cmd = spawner._build_command(template, project)
+
+        # Order may vary, so check parts
+        assert cmd.startswith("cd /my/project && export ")
+        assert 'PORT="3000"' in cmd
+        assert 'NODE_ENV="development"' in cmd
+        assert cmd.endswith(" && npm start")
+
+    def test_build_command_empty_command(self):
+        """Build command handles empty template command."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(command="")
+        project = self.make_project(path="/my/project")
+
+        cmd = spawner._build_command(template, project)
+
+        assert cmd == "cd /my/project"
+
+    def test_build_command_escapes_env_values(self):
+        """Build command escapes special characters in env values."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="echo test",
+            env={"MSG": 'Hello "World"'},
+        )
+        project = self.make_project()
+
+        cmd = spawner._build_command(template, project)
+
+        assert r'MSG="Hello \"World\""' in cmd
+
+    @pytest.mark.asyncio
+    async def test_spawn_session_requires_connection(self):
+        """spawn_session raises when not connected."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template()
+        project = self.make_project()
+
+        with pytest.raises(ItermNotConnectedError):
+            await spawner.spawn_session(template, project)
+
+    @pytest.mark.asyncio
+    async def test_spawn_session_uses_provided_window(self):
+        """spawn_session uses provided window."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(command="npm start")
+        project = self.make_project(path="/my/project")
+
+        # Mock window and tab/session
+        mock_session = MagicMock()
+        mock_session.session_id = "session-123"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-456"
+        mock_tab.current_session = mock_session
+
+        mock_window = MagicMock()
+        mock_window.async_create_tab = AsyncMock(return_value=mock_tab)
+
+        result = await spawner.spawn_session(template, project, window=mock_window)
+
+        assert result.success is True
+        assert result.session_id == "session-123"
+        assert result.tab_id == "tab-456"
+        mock_window.async_create_tab.assert_called_once()
+        mock_session.async_send_text.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_spawn_session_uses_current_window(self):
+        """spawn_session uses current window when none provided."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template()
+        project = self.make_project()
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-789"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-101"
+        mock_tab.current_session = mock_session
+
+        mock_current_window = MagicMock()
+        mock_current_window.async_create_tab = AsyncMock(return_value=mock_tab)
+
+        controller.app.current_terminal_window = mock_current_window
+
+        result = await spawner.spawn_session(template, project)
+
+        assert result.success is True
+        mock_current_window.async_create_tab.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_spawn_session_creates_window_if_none_exists(self):
+        """spawn_session creates new window when no current window."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template()
+        project = self.make_project()
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-new"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-new"
+        mock_tab.current_session = mock_session
+
+        mock_new_window = MagicMock()
+        mock_new_window.async_create_tab = AsyncMock(return_value=mock_tab)
+
+        controller.app.current_terminal_window = None
+
+        with patch("iterm2.Window.async_create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_new_window
+
+            result = await spawner.spawn_session(template, project)
+
+        assert result.success is True
+        mock_create.assert_called_once_with(controller.connection)
+
+    @pytest.mark.asyncio
+    async def test_spawn_session_tracks_managed_session(self):
+        """spawn_session registers the session in managed_sessions."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(id="my-template")
+        project = self.make_project(id="my-project")
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-tracked"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-tracked"
+        mock_tab.current_session = mock_session
+
+        mock_window = MagicMock()
+        mock_window.async_create_tab = AsyncMock(return_value=mock_tab)
+
+        await spawner.spawn_session(template, project, window=mock_window)
+
+        assert "session-tracked" in spawner.managed_sessions
+        managed = spawner.managed_sessions["session-tracked"]
+        assert managed.template_id == "my-template"
+        assert managed.project_id == "my-project"
+        assert managed.tab_id == "tab-tracked"
+
+    @pytest.mark.asyncio
+    async def test_spawn_session_sends_correct_command(self):
+        """spawn_session sends the built command to session."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(command="npm run dev")
+        project = self.make_project(path="/code/app")
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-cmd"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-cmd"
+        mock_tab.current_session = mock_session
+
+        mock_window = MagicMock()
+        mock_window.async_create_tab = AsyncMock(return_value=mock_tab)
+
+        await spawner.spawn_session(template, project, window=mock_window)
+
+        mock_session.async_send_text.assert_called_once_with(
+            "cd /code/app && npm run dev\n"
+        )
+
+    @pytest.mark.asyncio
+    async def test_spawn_session_handles_error(self):
+        """spawn_session returns failure result on error."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template()
+        project = self.make_project()
+
+        mock_window = MagicMock()
+        mock_window.async_create_tab = AsyncMock(
+            side_effect=Exception("Tab creation failed")
+        )
+
+        result = await spawner.spawn_session(template, project, window=mock_window)
+
+        assert result.success is False
+        assert result.session_id == ""
+        assert result.tab_id == ""
+        assert "Tab creation failed" in result.error
+
+    @pytest.mark.asyncio
+    async def test_spawn_split_requires_connection(self):
+        """spawn_split raises when not connected."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template()
+        project = self.make_project()
+        parent = MagicMock()
+
+        with pytest.raises(ItermNotConnectedError):
+            await spawner.spawn_split(template, project, parent)
+
+    @pytest.mark.asyncio
+    async def test_spawn_split_creates_vertical_split(self):
+        """spawn_split creates vertical split by default."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(command="tail -f log")
+        project = self.make_project(path="/app")
+
+        mock_new_session = MagicMock()
+        mock_new_session.session_id = "split-session-v"
+        mock_new_session.async_send_text = AsyncMock()
+
+        mock_parent_tab = MagicMock()
+        mock_parent_tab.tab_id = "parent-tab"
+
+        mock_parent_session = MagicMock()
+        mock_parent_session.async_split_pane = AsyncMock(return_value=mock_new_session)
+        mock_parent_session.tab = mock_parent_tab
+
+        result = await spawner.spawn_split(template, project, mock_parent_session)
+
+        assert result.success is True
+        assert result.session_id == "split-session-v"
+        assert result.tab_id == "parent-tab"
+        mock_parent_session.async_split_pane.assert_called_once_with(vertical=True)
+
+    @pytest.mark.asyncio
+    async def test_spawn_split_creates_horizontal_split(self):
+        """spawn_split creates horizontal split when requested."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template()
+        project = self.make_project()
+
+        mock_new_session = MagicMock()
+        mock_new_session.session_id = "split-session-h"
+        mock_new_session.async_send_text = AsyncMock()
+
+        mock_parent_tab = MagicMock()
+        mock_parent_tab.tab_id = "parent-tab-h"
+
+        mock_parent_session = MagicMock()
+        mock_parent_session.async_split_pane = AsyncMock(return_value=mock_new_session)
+        mock_parent_session.tab = mock_parent_tab
+
+        result = await spawner.spawn_split(
+            template, project, mock_parent_session, vertical=False
+        )
+
+        assert result.success is True
+        mock_parent_session.async_split_pane.assert_called_once_with(vertical=False)
+
+    @pytest.mark.asyncio
+    async def test_spawn_split_tracks_managed_session(self):
+        """spawn_split registers the session in managed_sessions."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(id="split-tmpl")
+        project = self.make_project(id="split-proj")
+
+        mock_new_session = MagicMock()
+        mock_new_session.session_id = "split-tracked"
+        mock_new_session.async_send_text = AsyncMock()
+
+        mock_parent_tab = MagicMock()
+        mock_parent_tab.tab_id = "split-tab"
+
+        mock_parent_session = MagicMock()
+        mock_parent_session.async_split_pane = AsyncMock(return_value=mock_new_session)
+        mock_parent_session.tab = mock_parent_tab
+
+        await spawner.spawn_split(template, project, mock_parent_session)
+
+        assert "split-tracked" in spawner.managed_sessions
+        managed = spawner.managed_sessions["split-tracked"]
+        assert managed.template_id == "split-tmpl"
+        assert managed.project_id == "split-proj"
+        assert managed.tab_id == "split-tab"
+
+    @pytest.mark.asyncio
+    async def test_spawn_split_sends_correct_command(self):
+        """spawn_split sends the built command to split session."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="python manage.py runserver",
+            env={"DEBUG": "true"},
+        )
+        project = self.make_project(path="/django/app")
+
+        mock_new_session = MagicMock()
+        mock_new_session.session_id = "split-cmd"
+        mock_new_session.async_send_text = AsyncMock()
+
+        mock_parent_session = MagicMock()
+        mock_parent_session.async_split_pane = AsyncMock(return_value=mock_new_session)
+        mock_parent_session.tab = MagicMock(tab_id="tab")
+
+        await spawner.spawn_split(template, project, mock_parent_session)
+
+        call_args = mock_new_session.async_send_text.call_args[0][0]
+        assert "cd /django/app" in call_args
+        assert 'DEBUG="true"' in call_args
+        assert "python manage.py runserver" in call_args
+        assert call_args.endswith("\n")
+
+    @pytest.mark.asyncio
+    async def test_spawn_split_handles_error(self):
+        """spawn_split returns failure result on error."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template()
+        project = self.make_project()
+
+        mock_parent_session = MagicMock()
+        mock_parent_session.async_split_pane = AsyncMock(
+            side_effect=Exception("Split failed")
+        )
+
+        result = await spawner.spawn_split(template, project, mock_parent_session)
+
+        assert result.success is False
+        assert "Split failed" in result.error
+
+    def test_get_session_found(self):
+        """get_session returns managed session by ID."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+
+        from iterm_controller.models import ManagedSession
+
+        session = ManagedSession(
+            id="test-id",
+            template_id="tmpl",
+            project_id="proj",
+            tab_id="tab",
+        )
+        spawner.managed_sessions["test-id"] = session
+
+        result = spawner.get_session("test-id")
+        assert result is session
+
+    def test_get_session_not_found(self):
+        """get_session returns None for unknown ID."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+
+        result = spawner.get_session("nonexistent")
+        assert result is None
+
+    def test_get_sessions_for_project(self):
+        """get_sessions_for_project returns sessions for a project."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+
+        from iterm_controller.models import ManagedSession
+
+        s1 = ManagedSession(id="s1", template_id="t", project_id="proj-a", tab_id="t1")
+        s2 = ManagedSession(id="s2", template_id="t", project_id="proj-b", tab_id="t2")
+        s3 = ManagedSession(id="s3", template_id="t", project_id="proj-a", tab_id="t3")
+
+        spawner.managed_sessions = {"s1": s1, "s2": s2, "s3": s3}
+
+        result = spawner.get_sessions_for_project("proj-a")
+
+        assert len(result) == 2
+        assert s1 in result
+        assert s3 in result
+        assert s2 not in result
+
+    def test_untrack_session(self):
+        """untrack_session removes session from tracking."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+
+        from iterm_controller.models import ManagedSession
+
+        session = ManagedSession(
+            id="to-remove",
+            template_id="t",
+            project_id="p",
+            tab_id="tab",
+        )
+        spawner.managed_sessions["to-remove"] = session
+
+        spawner.untrack_session("to-remove")
+
+        assert "to-remove" not in spawner.managed_sessions
+
+    def test_untrack_session_nonexistent(self):
+        """untrack_session is safe for nonexistent session."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+
+        # Should not raise
+        spawner.untrack_session("nonexistent")
