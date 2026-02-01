@@ -14,6 +14,12 @@ from iterm_controller.config import load_global_config
 from iterm_controller.github import GitHubIntegration
 from iterm_controller.iterm_api import ItermController
 from iterm_controller.notifications import Notifier
+from iterm_controller.screens.modes import (
+    DocsModeScreen,
+    PlanModeScreen,
+    TestModeScreen,
+    WorkModeScreen,
+)
 from iterm_controller.screens.new_project import NewProjectScreen
 from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 from iterm_controller.screens.project_list import ProjectListScreen
@@ -35,6 +41,16 @@ class ItermControllerApp(App):
         "project_dashboard": ProjectDashboardScreen,
         "new_project": NewProjectScreen,
         "settings": SettingsScreen,
+    }
+
+    # Mode screens require a Project argument and are accessed via ProjectDashboard
+    # using keys 1-4. They are not registered in SCREENS because they need context.
+    # Navigation: ProjectDashboard -> 1/2/3/4 -> Mode Screen -> Esc -> ProjectDashboard
+    MODE_SCREENS = {
+        "plan": PlanModeScreen,
+        "docs": DocsModeScreen,
+        "work": WorkModeScreen,
+        "test": TestModeScreen,
     }
 
     BINDINGS = [

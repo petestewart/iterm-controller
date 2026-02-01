@@ -354,7 +354,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Save/restore last_mode, update on mode change
   - Acceptance: Reopening project restores last mode
 
-- [ ] **Register mode screens in app.py**
+- [x] **Register mode screens in app.py** `[complete]`
   - Scope: Register PlanModeScreen, DocsModeScreen, WorkModeScreen, TestModeScreen
   - Acceptance: All mode screens accessible via navigation
 
