@@ -605,7 +605,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Validate create/delete/rename paths stay in project
   - Acceptance: Cannot create/delete files outside project directory
 
-- [ ] **Fix path traversal in add document modal** `[pending]`
+- [x] **Fix path traversal in add document modal** `[complete]`
   - Scope: Validate filename doesn't contain traversal sequences
   - Location: iterm_controller/screens/modals/add_document.py:165-192
   - Depends: Phase 21 task 1

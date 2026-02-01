@@ -13,6 +13,8 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, Select, Static
 
+from iterm_controller.security import PathTraversalError, validate_filename
+
 
 class AddDocumentModal(ModalScreen[dict | None]):
     """Modal for adding a new document.
@@ -171,6 +173,20 @@ class AddDocumentModal(ModalScreen[dict | None]):
 
         if not filename:
             self.notify("Please enter a filename", severity="warning")
+            return
+
+        # Validate filename to prevent path traversal
+        # Don't allow subdirectories in filename - location selector handles that
+        try:
+            filename = validate_filename(filename, allow_subdirs=False)
+        except PathTraversalError as e:
+            self.notify(
+                f"Invalid filename: {e.args[0]}",
+                severity="error",
+            )
+            return
+        except ValueError as e:
+            self.notify(str(e), severity="error")
             return
 
         # Ensure .md extension

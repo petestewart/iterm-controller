@@ -215,6 +215,215 @@ class TestAddDocumentModalAsync:
                 assert result is not None
                 assert result["path"].endswith(".md")
 
+    async def test_modal_rejects_path_traversal_double_dots(self) -> None:
+        """Test that filenames with '..' are rejected."""
+        from textual.app import App
+        from textual.widgets import Button, Input
+
+        result = "not_set"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            class TestApp(App):
+                async def on_mount(self):
+                    nonlocal result
+
+                    def callback(r):
+                        nonlocal result
+                        result = r
+
+                    modal = AddDocumentModal(project_path=tmpdir)
+                    await self.push_screen(modal, callback)
+
+            app = TestApp()
+            async with app.run_test() as pilot:
+                # Try to enter path traversal sequence
+                filename_input = app.screen.query_one("#filename", Input)
+                filename_input.value = "../../../etc/passwd"
+
+                # Press create
+                app.screen.query_one("#create", Button).press()
+                await pilot.pause()
+
+                # Modal should still be open (not dismissed)
+                assert isinstance(app.screen, AddDocumentModal)
+                # Result should still be initial value (callback not called)
+                assert result == "not_set"
+
+    async def test_modal_rejects_slash_in_filename(self) -> None:
+        """Test that filenames with '/' are rejected."""
+        from textual.app import App
+        from textual.widgets import Button, Input
+
+        result = "not_set"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            class TestApp(App):
+                async def on_mount(self):
+                    nonlocal result
+
+                    def callback(r):
+                        nonlocal result
+                        result = r
+
+                    modal = AddDocumentModal(project_path=tmpdir)
+                    await self.push_screen(modal, callback)
+
+            app = TestApp()
+            async with app.run_test() as pilot:
+                # Try to enter a path with slash
+                filename_input = app.screen.query_one("#filename", Input)
+                filename_input.value = "subdir/file.md"
+
+                # Press create
+                app.screen.query_one("#create", Button).press()
+                await pilot.pause()
+
+                # Modal should still be open (not dismissed)
+                assert isinstance(app.screen, AddDocumentModal)
+                # Result should still be initial value (callback not called)
+                assert result == "not_set"
+
+    async def test_modal_rejects_backslash_in_filename(self) -> None:
+        """Test that filenames with backslash are rejected."""
+        from textual.app import App
+        from textual.widgets import Button, Input
+
+        result = "not_set"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            class TestApp(App):
+                async def on_mount(self):
+                    nonlocal result
+
+                    def callback(r):
+                        nonlocal result
+                        result = r
+
+                    modal = AddDocumentModal(project_path=tmpdir)
+                    await self.push_screen(modal, callback)
+
+            app = TestApp()
+            async with app.run_test() as pilot:
+                # Try to enter a path with backslash
+                filename_input = app.screen.query_one("#filename", Input)
+                filename_input.value = "subdir\\file.md"
+
+                # Press create
+                app.screen.query_one("#create", Button).press()
+                await pilot.pause()
+
+                # Modal should still be open (not dismissed)
+                assert isinstance(app.screen, AddDocumentModal)
+                # Result should still be initial value (callback not called)
+                assert result == "not_set"
+
+    async def test_modal_rejects_home_expansion(self) -> None:
+        """Test that filenames starting with '~' are rejected."""
+        from textual.app import App
+        from textual.widgets import Button, Input
+
+        result = "not_set"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            class TestApp(App):
+                async def on_mount(self):
+                    nonlocal result
+
+                    def callback(r):
+                        nonlocal result
+                        result = r
+
+                    modal = AddDocumentModal(project_path=tmpdir)
+                    await self.push_screen(modal, callback)
+
+            app = TestApp()
+            async with app.run_test() as pilot:
+                # Try to enter a path with home expansion
+                filename_input = app.screen.query_one("#filename", Input)
+                filename_input.value = "~/secret.md"
+
+                # Press create
+                app.screen.query_one("#create", Button).press()
+                await pilot.pause()
+
+                # Modal should still be open (not dismissed)
+                assert isinstance(app.screen, AddDocumentModal)
+                # Result should still be initial value (callback not called)
+                assert result == "not_set"
+
+    async def test_modal_rejects_absolute_path(self) -> None:
+        """Test that absolute paths are rejected."""
+        from textual.app import App
+        from textual.widgets import Button, Input
+
+        result = "not_set"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            class TestApp(App):
+                async def on_mount(self):
+                    nonlocal result
+
+                    def callback(r):
+                        nonlocal result
+                        result = r
+
+                    modal = AddDocumentModal(project_path=tmpdir)
+                    await self.push_screen(modal, callback)
+
+            app = TestApp()
+            async with app.run_test() as pilot:
+                # Try to enter an absolute path
+                filename_input = app.screen.query_one("#filename", Input)
+                filename_input.value = "/etc/passwd"
+
+                # Press create
+                app.screen.query_one("#create", Button).press()
+                await pilot.pause()
+
+                # Modal should still be open (not dismissed)
+                assert isinstance(app.screen, AddDocumentModal)
+                # Result should still be initial value (callback not called)
+                assert result == "not_set"
+
+    async def test_modal_accepts_valid_filename(self) -> None:
+        """Test that valid filenames are accepted."""
+        from textual.app import App
+        from textual.widgets import Button, Input
+
+        result = None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            class TestApp(App):
+                async def on_mount(self):
+                    nonlocal result
+
+                    def callback(r):
+                        nonlocal result
+                        result = r
+
+                    modal = AddDocumentModal(project_path=tmpdir)
+                    await self.push_screen(modal, callback)
+
+            app = TestApp()
+            async with app.run_test() as pilot:
+                # Enter a valid filename
+                filename_input = app.screen.query_one("#filename", Input)
+                filename_input.value = "valid-doc-name_123.md"
+
+                # Press create
+                app.screen.query_one("#create", Button).press()
+                await pilot.pause()
+
+                # Should succeed
+                assert result is not None
+                assert result["path"].endswith("valid-doc-name_123.md")
+
 
 @pytest.mark.asyncio
 class TestDeleteConfirmModalAsync:
