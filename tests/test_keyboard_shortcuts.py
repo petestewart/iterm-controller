@@ -40,7 +40,8 @@ class TestGlobalShortcuts:
         assert "ctrl+c" in binding_keys  # Quit immediate
         assert "?" in binding_keys  # Help
         assert "p" in binding_keys  # Projects
-        assert "s" in binding_keys  # Settings
+        assert "s" in binding_keys  # Sessions/Control Room
+        assert "comma" in binding_keys  # Settings
         assert "h" in binding_keys  # Home
 
 
@@ -139,6 +140,20 @@ class TestHelpModal:
 class TestHelpModalActions:
     """Tests for HelpModal action methods."""
 
+    def test_action_show_help_is_sync(self) -> None:
+        """Test that action_show_help is not async (fix for NoActiveWorker error)."""
+        import asyncio
+
+        from iterm_controller.app import ItermControllerApp
+
+        # The action_show_help method should be synchronous
+        # If it were async with push_screen_wait, it would require a worker context
+        app = ItermControllerApp()
+        method = app.action_show_help
+        assert not asyncio.iscoroutinefunction(method), (
+            "action_show_help should be sync to avoid NoActiveWorker error"
+        )
+
     def test_action_dismiss_dismisses_modal(self) -> None:
         """Test that action_dismiss dismisses the modal."""
         modal = HelpModal()
@@ -178,10 +193,10 @@ class TestShortcutNavigation:
             assert isinstance(app.screen, ProjectListScreen)
 
     async def test_navigation_to_settings(self) -> None:
-        """Test that s navigates to settings."""
+        """Test that comma navigates to settings."""
         app = ItermControllerApp()
         async with app.run_test() as pilot:
-            await pilot.press("s")
+            await pilot.press("comma")
             assert isinstance(app.screen, SettingsScreen)
 
     async def test_escape_returns_from_project_list(self) -> None:
@@ -198,10 +213,25 @@ class TestShortcutNavigation:
         """Test that escape returns from settings."""
         app = ItermControllerApp()
         async with app.run_test() as pilot:
-            await pilot.press("s")
+            await pilot.press("comma")
             assert isinstance(app.screen, SettingsScreen)
 
             await pilot.press("escape")
+            assert isinstance(app.screen, ControlRoomScreen)
+
+    async def test_sessions_shortcut_navigates_to_control_room(self) -> None:
+        """Test that s navigates to sessions (Control Room)."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            # Start on Control Room
+            assert isinstance(app.screen, ControlRoomScreen)
+
+            # Navigate to project list first
+            await pilot.press("p")
+            assert isinstance(app.screen, ProjectListScreen)
+
+            # Press s to go back to sessions (Control Room)
+            await pilot.press("s")
             assert isinstance(app.screen, ControlRoomScreen)
 
 

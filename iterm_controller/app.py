@@ -172,11 +172,11 @@ class ItermControllerApp(App):
         # Exit the application
         self.exit()
 
-    async def action_show_help(self) -> None:
+    def action_show_help(self) -> None:
         """Show help modal with all keyboard shortcuts."""
         from iterm_controller.screens.modals import HelpModal
 
-        await self.push_screen_wait(HelpModal())
+        self.push_screen(HelpModal())
 
     def action_go_home(self) -> None:
         """Navigate to the home screen (Control Room)."""

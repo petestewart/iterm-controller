@@ -317,7 +317,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Update bindings in app.py - change settings to comma, add sessions shortcut with `s`
   - Acceptance: `,` or `ctrl+,` opens Settings, `s` or `ctrl+s` opens Sessions/Control Room
 
-- [ ] **Fix help modal crash (NoActiveWorker error)**
+- [x] **Fix help modal crash (NoActiveWorker error)** `[complete]`
   - Scope: Pressing ? crashes with `NoActiveWorker: push_screen must be run from a worker when wait_for_dismiss is True`
   - Root cause: `action_show_help` uses `await self.push_screen_wait()` which requires a worker context
   - Fix: Use `self.push_screen()` without waiting, or wrap in a worker

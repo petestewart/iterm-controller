@@ -72,7 +72,8 @@ class HelpModal(ModalScreen[None]):
             ("q", "Quit application"),
             ("ctrl+c", "Quit immediately"),
             ("p", "Open project list"),
-            ("s", "Open settings"),
+            ("s", "Open sessions (Control Room)"),
+            (",", "Open settings"),
             ("h", "Go to home (Control Room)"),
         ],
         "Control Room": [
