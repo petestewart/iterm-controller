@@ -11,6 +11,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from iterm_controller.security import PathTraversalError, validate_path_in_project
+
 
 @dataclass
 class SpecValidationResult:
@@ -57,6 +59,9 @@ def validate_spec_ref(project_path: str, spec_ref: str) -> SpecValidationResult:
 
         >>> validate_spec_ref("/path/to/project", "specs/auth.md#missing-section")
         SpecValidationResult(valid=False, error_message="Section 'missing-section' not found")
+
+        >>> validate_spec_ref("/path/to/project", "../../../etc/passwd")
+        SpecValidationResult(valid=False, error_message="Path escapes project directory")
     """
     if not spec_ref:
         return SpecValidationResult(valid=True)
@@ -67,8 +72,14 @@ def validate_spec_ref(project_path: str, spec_ref: str) -> SpecValidationResult:
     else:
         file_path, anchor = spec_ref, None
 
-    # Construct full path
-    full_path = Path(project_path) / file_path
+    # Validate that the path stays within the project directory
+    # This prevents path traversal attacks like "../../../etc/passwd"
+    try:
+        full_path = validate_path_in_project(file_path, project_path)
+    except PathTraversalError:
+        return SpecValidationResult(
+            valid=False, error_message="Path escapes project directory"
+        )
 
     # Check if file exists
     if not full_path.exists():

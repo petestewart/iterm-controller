@@ -591,7 +591,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Function: `validate_path_in_project(path: Path, project_root: Path) -> bool`
   - Acceptance: Reusable validation across all file operations
 
-- [ ] **Fix path traversal in spec validator** `[pending]`
+- [x] **Fix path traversal in spec validator** `[complete]`
   - Scope: Validate spec references don't escape project directory
   - Location: iterm_controller/spec_validator.py:66-71
   - Depends: Phase 21 task 1

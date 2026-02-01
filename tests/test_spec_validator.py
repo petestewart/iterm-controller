@@ -156,6 +156,42 @@ class TestValidateSpecRef:
         result = validate_spec_ref(str(tmp_path), "spec.md#whats-new")
         assert result.valid is True
 
+    def test_path_traversal_with_parent_refs(self, tmp_path):
+        """Rejects spec refs that try to escape project directory."""
+        # Create a file outside the project directory
+        result = validate_spec_ref(str(tmp_path), "../../../etc/passwd")
+        assert result.valid is False
+        assert result.error_message == "Path escapes project directory"
+
+    def test_path_traversal_with_nested_parent_refs(self, tmp_path):
+        """Rejects spec refs with nested parent directory references."""
+        result = validate_spec_ref(str(tmp_path), "specs/../../../etc/passwd")
+        assert result.valid is False
+        assert result.error_message == "Path escapes project directory"
+
+    def test_path_traversal_with_anchor(self, tmp_path):
+        """Rejects path traversal even with anchor."""
+        result = validate_spec_ref(str(tmp_path), "../../../etc/passwd#section")
+        assert result.valid is False
+        assert result.error_message == "Path escapes project directory"
+
+    def test_path_traversal_absolute_path(self, tmp_path):
+        """Rejects absolute paths outside project."""
+        result = validate_spec_ref(str(tmp_path), "/etc/passwd")
+        assert result.valid is False
+        assert result.error_message == "Path escapes project directory"
+
+    def test_valid_relative_path_within_project(self, tmp_path):
+        """Allows valid relative paths that stay within project."""
+        # Create nested structure
+        spec_file = tmp_path / "docs" / "specs" / "auth.md"
+        spec_file.parent.mkdir(parents=True)
+        spec_file.write_text("# Auth\nContent")
+
+        # A path with .. that still resolves within project
+        result = validate_spec_ref(str(tmp_path), "docs/specs/../specs/auth.md")
+        assert result.valid is True
+
 
 class TestValidateTaskSpecRefs:
     """Test batch task spec validation."""
@@ -216,3 +252,12 @@ class TestSpecValidationResult:
         assert result.valid is False
         assert result.is_file_missing is False
         assert result.is_section_missing is True
+
+    def test_path_traversal_result(self):
+        """Path traversal result is correctly identified."""
+        result = SpecValidationResult(
+            valid=False, error_message="Path escapes project directory"
+        )
+        assert result.valid is False
+        assert result.is_file_missing is False
+        assert result.is_section_missing is False
