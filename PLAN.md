@@ -226,7 +226,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Send notifications via terminal-notifier when session enters WAITING
   - Acceptance: Notification fires within 5 seconds of state change
 
-- [ ] **Build health check poller** `[pending]`
+- [x] **Build health check poller** `[complete]`
   - Spec: specs/health-checks.md
   - Scope: Poll HTTP endpoints, resolve env placeholders, update status
   - Acceptance: Health indicators update correctly, handle timeouts/errors
