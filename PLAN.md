@@ -198,7 +198,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Select and run project scripts in new sessions
   - Acceptance: Lists scripts, spawns session with selected command
 
-- [ ] **Implement docs picker modal** `[pending]`
+- [x] **Implement docs picker modal** `[complete]`
   - Scope: Quick access to project documentation files
   - Acceptance: Lists docs, opens selected file in editor
 

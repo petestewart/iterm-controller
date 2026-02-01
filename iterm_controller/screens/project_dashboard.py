@@ -261,9 +261,21 @@ class ProjectDashboardScreen(Screen):
         except Exception as e:
             self.notify(f"Error running script: {e}", severity="error")
 
-    def action_open_docs(self) -> None:
+    async def action_open_docs(self) -> None:
         """Show docs picker modal."""
-        self.notify("Open docs: Not implemented yet")
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        # Get project
+        project = app.state.projects.get(self.project_id)
+        if not project:
+            self.notify("Project not found", severity="error")
+            return
+
+        from iterm_controller.screens.modals import DocsPickerModal
+
+        doc_path = await self.app.push_screen_wait(DocsPickerModal(project.path))
+        if doc_path:
+            self.notify(f"Opened: {doc_path.name}")
 
     def action_github_actions(self) -> None:
         """Show GitHub actions modal."""
