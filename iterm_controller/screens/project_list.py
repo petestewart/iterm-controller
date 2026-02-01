@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container
+from textual.events import ScreenResume
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, Static
 
@@ -51,6 +52,14 @@ class ProjectListScreen(Screen):
 
     async def on_mount(self) -> None:
         """Initialize the project table."""
+        await self._populate_table()
+
+    async def on_screen_resume(self, event: ScreenResume) -> None:
+        """Refresh the project list when returning from another screen.
+
+        This ensures the list is up-to-date after creating, editing, or
+        deleting projects on other screens.
+        """
         await self._populate_table()
 
     async def _populate_table(self) -> None:

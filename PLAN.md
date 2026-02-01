@@ -301,7 +301,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Add optional Jira ticket # field to the Create New Project form
   - Acceptance: Field appears in form, value saved to project configuration
 
-- [ ] **Auto-refresh project list after creating project**
+- [x] **Auto-refresh project list after creating project** `[complete]`
   - Scope: Project list screen should automatically refresh after a new project is created
   - Acceptance: New project appears in list without manual navigation
 

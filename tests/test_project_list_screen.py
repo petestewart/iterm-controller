@@ -339,3 +339,78 @@ class TestProjectListWithMultipleProjects:
                 # We can verify this by checking the table has the project
                 table = app.screen.query_one("#project-table")
                 assert table.row_count == 1
+
+
+@pytest.mark.asyncio
+class TestProjectListScreenResume:
+    """Tests for ProjectListScreen auto-refresh on resume."""
+
+    async def test_screen_refreshes_on_resume_from_new_project(self) -> None:
+        """Test that project list refreshes when returning from NewProjectScreen."""
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            async with app.run_test() as pilot:
+                # Navigate to project list (initially empty)
+                await pilot.press("p")
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Table should be empty
+                table = app.screen.query_one("#project-table")
+                assert table.row_count == 0
+
+                # Navigate to new project screen
+                await pilot.press("n")
+                assert isinstance(app.screen, NewProjectScreen)
+
+                # Simulate a project being created by adding it to state
+                project = make_project()
+                app.state.projects[project.id] = project
+
+                # Press escape to cancel/return to project list
+                await pilot.press("escape")
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Table should now show the project (auto-refreshed on resume)
+                table = app.screen.query_one("#project-table")
+                assert table.row_count == 1
+
+    async def test_screen_refreshes_on_resume_shows_new_project(self) -> None:
+        """Test that newly created project appears after returning from creation screen."""
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add one project initially
+            initial_project = make_project(project_id="initial", name="Initial Project")
+            app.state.projects[initial_project.id] = initial_project
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Should have 1 project
+                table = app.screen.query_one("#project-table")
+                assert table.row_count == 1
+
+                # Navigate to new project screen
+                await pilot.press("n")
+                assert isinstance(app.screen, NewProjectScreen)
+
+                # Simulate creating a new project
+                new_project = make_project(project_id="new", name="New Project")
+                app.state.projects[new_project.id] = new_project
+
+                # Return to project list
+                await pilot.press("escape")
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Table should now show both projects
+                table = app.screen.query_one("#project-table")
+                assert table.row_count == 2
