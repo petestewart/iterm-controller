@@ -594,18 +594,19 @@ class TestNotificationManager:
         with patch.object(notifier, "notify_session_waiting", new_callable=AsyncMock) as mock_notify:
             mock_notify.return_value = True
 
-            with caplog.at_level(logging.DEBUG):
+            caplog.clear()  # Clear any records from previous tests
+            with caplog.at_level(logging.DEBUG, logger="iterm_controller.notifications"):
                 await manager.on_session_state_change(
                     mock_session,
                     AttentionState.IDLE,
                     AttentionState.WAITING,
                 )
 
-            # Verify notification was logged at debug level
-            assert any(
-                "Notification sent" in record.message and mock_session.id in record.message
-                for record in caplog.records
-            )
+                # Verify notification was logged at debug level
+                assert any(
+                    "Notification sent" in record.message and mock_session.id in record.message
+                    for record in caplog.records
+                )
 
     @pytest.mark.asyncio
     async def test_latency_stats_accumulate(self, mock_session, app_state):
