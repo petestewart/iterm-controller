@@ -26,6 +26,10 @@ from iterm_controller.models import (
     TabLayout,
     Task,
     TaskStatus,
+    TestPlan,
+    TestSection,
+    TestStatus,
+    TestStep,
     WindowLayout,
     WorkflowMode,
     WorkflowStage,
@@ -342,6 +346,311 @@ class TestTaskModels:
         restored = model_from_dict(Plan, data)
         assert restored.overview == "Test plan"
         assert restored.phases[0].tasks[0].status == TaskStatus.COMPLETE
+
+
+class TestTestPlanModels:
+    """Test TEST_PLAN.md related dataclasses."""
+
+    def test_test_status_enum_values(self):
+        """Test TestStatus enum values match spec."""
+        assert TestStatus.PENDING.value == "pending"
+        assert TestStatus.IN_PROGRESS.value == "in_progress"
+        assert TestStatus.PASSED.value == "passed"
+        assert TestStatus.FAILED.value == "failed"
+
+    def test_test_step_creation(self):
+        """Test creating a TestStep with all fields."""
+        step = TestStep(
+            id="section-0-1",
+            section="Functional Tests",
+            description="Verify login works",
+            status=TestStatus.PENDING,
+            notes=None,
+            line_number=5,
+        )
+        assert step.id == "section-0-1"
+        assert step.section == "Functional Tests"
+        assert step.description == "Verify login works"
+        assert step.status == TestStatus.PENDING
+        assert step.notes is None
+        assert step.line_number == 5
+
+    def test_test_step_with_failure_notes(self):
+        """Test TestStep with failure notes."""
+        step = TestStep(
+            id="section-0-2",
+            section="Integration",
+            description="API responds correctly",
+            status=TestStatus.FAILED,
+            notes="Connection timeout after 5s",
+            line_number=10,
+        )
+        assert step.status == TestStatus.FAILED
+        assert step.notes == "Connection timeout after 5s"
+
+    def test_test_step_defaults(self):
+        """Test TestStep default values."""
+        step = TestStep(
+            id="test-1",
+            section="Test Section",
+            description="Test step",
+        )
+        assert step.status == TestStatus.PENDING
+        assert step.notes is None
+        assert step.line_number == 0
+
+    def test_test_section_creation(self):
+        """Test creating a TestSection."""
+        section = TestSection(
+            id="section-0",
+            title="Functional Tests",
+            steps=[
+                TestStep(id="section-0-1", section="Functional Tests", description="Step 1"),
+                TestStep(id="section-0-2", section="Functional Tests", description="Step 2"),
+            ],
+        )
+        assert section.id == "section-0"
+        assert section.title == "Functional Tests"
+        assert len(section.steps) == 2
+
+    def test_test_section_completion_count(self):
+        """Test TestSection.completion_count property."""
+        section = TestSection(
+            id="section-0",
+            title="Tests",
+            steps=[
+                TestStep(id="1", section="Tests", description="S1", status=TestStatus.PASSED),
+                TestStep(id="2", section="Tests", description="S2", status=TestStatus.PASSED),
+                TestStep(id="3", section="Tests", description="S3", status=TestStatus.PENDING),
+                TestStep(id="4", section="Tests", description="S4", status=TestStatus.FAILED),
+            ],
+        )
+        passed, total = section.completion_count
+        assert passed == 2
+        assert total == 4
+
+    def test_test_section_completion_count_empty(self):
+        """Test TestSection.completion_count with no steps."""
+        section = TestSection(id="section-0", title="Empty")
+        passed, total = section.completion_count
+        assert passed == 0
+        assert total == 0
+
+    def test_test_section_has_failures(self):
+        """Test TestSection.has_failures property."""
+        section_with_failures = TestSection(
+            id="section-0",
+            title="Tests",
+            steps=[
+                TestStep(id="1", section="Tests", description="S1", status=TestStatus.PASSED),
+                TestStep(id="2", section="Tests", description="S2", status=TestStatus.FAILED),
+            ],
+        )
+        assert section_with_failures.has_failures is True
+
+        section_no_failures = TestSection(
+            id="section-1",
+            title="Tests",
+            steps=[
+                TestStep(id="1", section="Tests", description="S1", status=TestStatus.PASSED),
+                TestStep(id="2", section="Tests", description="S2", status=TestStatus.PENDING),
+            ],
+        )
+        assert section_no_failures.has_failures is False
+
+    def test_test_plan_creation(self):
+        """Test creating a TestPlan."""
+        plan = TestPlan(
+            sections=[
+                TestSection(
+                    id="section-0",
+                    title="Functional",
+                    steps=[TestStep(id="1", section="Functional", description="S1")],
+                ),
+            ],
+            title="My Test Plan",
+            path="/path/to/TEST_PLAN.md",
+        )
+        assert plan.title == "My Test Plan"
+        assert plan.path == "/path/to/TEST_PLAN.md"
+        assert len(plan.sections) == 1
+
+    def test_test_plan_defaults(self):
+        """Test TestPlan default values."""
+        plan = TestPlan()
+        assert plan.sections == []
+        assert plan.title == "Test Plan"
+        assert plan.path == ""
+
+    def test_test_plan_all_steps(self):
+        """Test TestPlan.all_steps property."""
+        plan = TestPlan(
+            sections=[
+                TestSection(
+                    id="s0",
+                    title="Sec1",
+                    steps=[
+                        TestStep(id="s0-1", section="Sec1", description="Step 1"),
+                        TestStep(id="s0-2", section="Sec1", description="Step 2"),
+                    ],
+                ),
+                TestSection(
+                    id="s1",
+                    title="Sec2",
+                    steps=[
+                        TestStep(id="s1-1", section="Sec2", description="Step 3"),
+                    ],
+                ),
+            ],
+        )
+        all_steps = plan.all_steps
+        assert len(all_steps) == 3
+        assert all_steps[0].id == "s0-1"
+        assert all_steps[1].id == "s0-2"
+        assert all_steps[2].id == "s1-1"
+
+    def test_test_plan_all_steps_empty(self):
+        """Test TestPlan.all_steps with no sections."""
+        plan = TestPlan()
+        assert plan.all_steps == []
+
+    def test_test_plan_completion_percentage(self):
+        """Test TestPlan.completion_percentage property."""
+        plan = TestPlan(
+            sections=[
+                TestSection(
+                    id="s0",
+                    title="Tests",
+                    steps=[
+                        TestStep(id="1", section="Tests", description="S1", status=TestStatus.PASSED),
+                        TestStep(id="2", section="Tests", description="S2", status=TestStatus.PASSED),
+                        TestStep(id="3", section="Tests", description="S3", status=TestStatus.PENDING),
+                        TestStep(id="4", section="Tests", description="S4", status=TestStatus.FAILED),
+                    ],
+                ),
+            ],
+        )
+        # 2 passed out of 4 = 50%
+        assert plan.completion_percentage == 50.0
+
+    def test_test_plan_completion_percentage_empty(self):
+        """Test TestPlan.completion_percentage with no steps."""
+        plan = TestPlan()
+        assert plan.completion_percentage == 0.0
+
+    def test_test_plan_completion_percentage_all_passed(self):
+        """Test TestPlan.completion_percentage with all passed."""
+        plan = TestPlan(
+            sections=[
+                TestSection(
+                    id="s0",
+                    title="Tests",
+                    steps=[
+                        TestStep(id="1", section="Tests", description="S1", status=TestStatus.PASSED),
+                        TestStep(id="2", section="Tests", description="S2", status=TestStatus.PASSED),
+                    ],
+                ),
+            ],
+        )
+        assert plan.completion_percentage == 100.0
+
+    def test_test_plan_summary(self):
+        """Test TestPlan.summary property."""
+        plan = TestPlan(
+            sections=[
+                TestSection(
+                    id="s0",
+                    title="Tests",
+                    steps=[
+                        TestStep(id="1", section="Tests", description="S1", status=TestStatus.PASSED),
+                        TestStep(id="2", section="Tests", description="S2", status=TestStatus.PENDING),
+                        TestStep(id="3", section="Tests", description="S3", status=TestStatus.PENDING),
+                        TestStep(id="4", section="Tests", description="S4", status=TestStatus.FAILED),
+                        TestStep(id="5", section="Tests", description="S5", status=TestStatus.IN_PROGRESS),
+                    ],
+                ),
+            ],
+        )
+        summary = plan.summary
+        assert summary["passed"] == 1
+        assert summary["pending"] == 2
+        assert summary["failed"] == 1
+        assert summary["in_progress"] == 1
+
+    def test_test_plan_summary_empty(self):
+        """Test TestPlan.summary with no steps."""
+        plan = TestPlan()
+        summary = plan.summary
+        assert summary["passed"] == 0
+        assert summary["pending"] == 0
+        assert summary["failed"] == 0
+        assert summary["in_progress"] == 0
+
+    def test_test_step_serialization(self):
+        """Test TestStep serializes to/from dict correctly."""
+        step = TestStep(
+            id="test-1",
+            section="Section",
+            description="Test step",
+            status=TestStatus.FAILED,
+            notes="Error message",
+            line_number=15,
+        )
+        data = model_to_dict(step)
+        assert data["id"] == "test-1"
+        assert data["status"] == "failed"
+        assert data["notes"] == "Error message"
+
+        restored = model_from_dict(TestStep, data)
+        assert restored.id == "test-1"
+        assert restored.status == TestStatus.FAILED
+        assert restored.notes == "Error message"
+
+    def test_test_section_serialization(self):
+        """Test TestSection serializes to/from dict correctly."""
+        section = TestSection(
+            id="section-0",
+            title="Test Section",
+            steps=[
+                TestStep(id="s0-1", section="Test Section", description="Step 1", status=TestStatus.PASSED),
+            ],
+        )
+        data = model_to_dict(section)
+        assert data["id"] == "section-0"
+        assert data["title"] == "Test Section"
+        assert len(data["steps"]) == 1
+        assert data["steps"][0]["status"] == "passed"
+
+        restored = model_from_dict(TestSection, data)
+        assert restored.id == "section-0"
+        assert len(restored.steps) == 1
+        assert restored.steps[0].status == TestStatus.PASSED
+
+    def test_test_plan_serialization(self):
+        """Test TestPlan serializes to/from dict correctly."""
+        plan = TestPlan(
+            sections=[
+                TestSection(
+                    id="section-0",
+                    title="Functional Tests",
+                    steps=[
+                        TestStep(id="s0-1", section="Functional Tests", description="Step 1"),
+                    ],
+                ),
+            ],
+            title="My Test Plan",
+            path="/path/to/TEST_PLAN.md",
+        )
+        data = model_to_dict(plan)
+        assert data["title"] == "My Test Plan"
+        assert data["path"] == "/path/to/TEST_PLAN.md"
+        assert len(data["sections"]) == 1
+
+        restored = model_from_dict(TestPlan, data)
+        assert restored.title == "My Test Plan"
+        assert restored.path == "/path/to/TEST_PLAN.md"
+        assert len(restored.sections) == 1
+        assert restored.sections[0].title == "Functional Tests"
 
 
 class TestWorkflowModels:

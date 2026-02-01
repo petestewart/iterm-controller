@@ -414,7 +414,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 15: Test Mode
 
-- [ ] **Create TestStep and TestPlan models**
+- [x] **Create TestStep and TestPlan models** `[complete]`
   - Spec: specs/test-plan-parser.md#parsing
   - Scope: TestStatus enum, TestStep, TestSection, TestPlan dataclasses
   - Acceptance: Models serialize to/from JSON

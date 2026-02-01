@@ -163,6 +163,83 @@ class Plan:
 
 
 # =============================================================================
+# Test Plan Models
+# =============================================================================
+
+
+class TestStatus(Enum):
+    """Status of a test step in TEST_PLAN.md."""
+
+    PENDING = "pending"  # [ ]
+    IN_PROGRESS = "in_progress"  # [~]
+    PASSED = "passed"  # [x]
+    FAILED = "failed"  # [!]
+
+
+@dataclass
+class TestStep:
+    """A single verification step from TEST_PLAN.md."""
+
+    id: str  # Generated ID (e.g., "section-0-1")
+    section: str  # Parent section name
+    description: str  # Step description
+    status: TestStatus = TestStatus.PENDING
+    notes: str | None = None  # Failure notes or details
+    line_number: int = 0  # Line in file (for updates)
+
+
+@dataclass
+class TestSection:
+    """A section in TEST_PLAN.md containing test steps."""
+
+    id: str  # Section identifier
+    title: str  # Section title
+    steps: list[TestStep] = field(default_factory=list)
+
+    @property
+    def completion_count(self) -> tuple[int, int]:
+        """Return (passed, total) step counts."""
+        passed = sum(1 for s in self.steps if s.status == TestStatus.PASSED)
+        return (passed, len(self.steps))
+
+    @property
+    def has_failures(self) -> bool:
+        """Check if section has any failed steps."""
+        return any(s.status == TestStatus.FAILED for s in self.steps)
+
+
+@dataclass
+class TestPlan:
+    """Parsed TEST_PLAN.md document."""
+
+    sections: list[TestSection] = field(default_factory=list)
+    title: str = "Test Plan"
+    path: str = ""  # File path
+
+    @property
+    def all_steps(self) -> list[TestStep]:
+        """Flatten all steps from all sections."""
+        return [step for section in self.sections for step in section.steps]
+
+    @property
+    def completion_percentage(self) -> float:
+        """Return overall completion percentage."""
+        steps = self.all_steps
+        if not steps:
+            return 0.0
+        passed = sum(1 for s in steps if s.status == TestStatus.PASSED)
+        return passed / len(steps) * 100
+
+    @property
+    def summary(self) -> dict[str, int]:
+        """Return summary of step statuses."""
+        result: dict[str, int] = {status.value: 0 for status in TestStatus}
+        for step in self.all_steps:
+            result[step.status.value] += 1
+        return result
+
+
+# =============================================================================
 # Workflow Models
 # =============================================================================
 
