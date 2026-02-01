@@ -9,8 +9,17 @@ focused modules:
 - tracker: Window/tab state tracking (WindowTracker, TabState, WindowState)
 - layout_spawner: Window layout spawning (WindowLayoutSpawner, LayoutSpawnResult)
 - layout_manager: Window layout persistence (WindowLayoutManager)
+- adapter: Protocol adapters for terminal abstraction (ItermTerminalProvider)
 """
 
+from iterm_controller.iterm.adapter import (
+    ItermConnectionAdapter,
+    ItermOutputReaderAdapter,
+    ItermSpawnerAdapter,
+    ItermTerminalProvider,
+    ItermTerminatorAdapter,
+    ItermTrackerAdapter,
+)
 from iterm_controller.iterm.connection import (
     ItermController,
     with_reconnect,
@@ -52,4 +61,11 @@ __all__ = [
     "WindowLayoutSpawner",
     "WindowLayoutManager",
     "LayoutSpawnResult",
+    # Protocol Adapters
+    "ItermTerminalProvider",
+    "ItermConnectionAdapter",
+    "ItermSpawnerAdapter",
+    "ItermTerminatorAdapter",
+    "ItermOutputReaderAdapter",
+    "ItermTrackerAdapter",
 ]

@@ -671,7 +671,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Create ServiceContainer, inject SessionSpawner etc via app
   - Acceptance: Screens don't directly instantiate infrastructure classes
 
-- [ ] **Create iTerm2 abstraction layer** `[pending]`
+- [x] **Create iTerm2 abstraction layer** `[complete]`
   - Scope: Add protocol/interface for terminal operations
   - Location: New file iterm_controller/ports.py with TerminalProvider protocol
   - Acceptance: Can mock iTerm2 operations for testing
