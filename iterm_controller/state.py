@@ -293,16 +293,38 @@ class AppState:
         if self.active_project_id == project_id:
             self.active_project_id = None
 
-    def update_project(self, project: Project) -> None:
+    def update_project(self, project: Project, persist: bool = True) -> None:
         """Update a project in the state.
 
-        This updates the project in the in-memory state without emitting
-        events. Use this for incremental updates like last_mode changes.
+        This updates the project in the in-memory state and optionally
+        persists to the config file. Use this for incremental updates
+        like last_mode changes that should survive app restarts.
 
         Args:
             project: The project with updated fields.
+            persist: If True, save the updated config to disk.
         """
         self.projects[project.id] = project
+
+        # Also update the project in the config and persist
+        if persist and self.config:
+            # Find and update the project in config.projects
+            for i, config_project in enumerate(self.config.projects):
+                if config_project.id == project.id:
+                    self.config.projects[i] = project
+                    break
+            else:
+                # Project not found in config, add it
+                self.config.projects.append(project)
+
+            # Save to disk
+            from iterm_controller.config import save_global_config
+
+            try:
+                save_global_config(self.config)
+            except Exception:
+                # Log but don't crash on save errors
+                pass
 
     def add_session(self, session: ManagedSession) -> None:
         """Add a session to the state.

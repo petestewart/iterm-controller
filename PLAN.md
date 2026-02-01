@@ -349,7 +349,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Shared base with common bindings (1-4 mode switch, Esc back)
   - Acceptance: All mode screens inherit common navigation
 
-- [ ] **Add mode persistence to Project model**
+- [x] **Add mode persistence to Project model** `[complete]`
   - Spec: specs/workflow-modes.md#mode-persistence
   - Scope: Save/restore last_mode, update on mode change
   - Acceptance: Reopening project restores last mode

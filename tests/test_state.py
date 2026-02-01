@@ -1,6 +1,6 @@
 """Tests for the AppState module."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -550,3 +550,92 @@ class TestAppStateAsyncMessages:
         posted = mock_app.post_message.call_args[0][0]
         assert isinstance(posted, ConfigChanged)
         assert state.config is posted.config
+
+
+class TestUpdateProjectPersistence:
+    """Tests for update_project with persistence."""
+
+    def test_update_project_updates_in_memory(self) -> None:
+        """Test that update_project updates in-memory state."""
+        state = AppState()
+        project = Project(id="p1", name="Test", path="/test")
+        state.projects["p1"] = project
+
+        # Update with persist=False to avoid file operations
+        project.name = "Updated Name"
+        state.update_project(project, persist=False)
+
+        assert state.projects["p1"].name == "Updated Name"
+
+    def test_update_project_with_persist_updates_config(self) -> None:
+        """Test that update_project with persist=True updates config.projects."""
+        from iterm_controller.models import AppConfig, WorkflowMode
+
+        state = AppState()
+        # Create config with the project
+        project = Project(id="p1", name="Test", path="/test")
+        state.config = AppConfig(projects=[project])
+        state.projects["p1"] = project
+
+        # Update last_mode
+        project.last_mode = WorkflowMode.WORK
+
+        # Mock save_global_config to avoid file operations
+        with patch("iterm_controller.config.save_global_config") as mock_save:
+            state.update_project(project, persist=True)
+
+            # Config.projects should be updated
+            assert state.config.projects[0].last_mode == WorkflowMode.WORK
+
+            # save_global_config should have been called
+            mock_save.assert_called_once_with(state.config)
+
+    def test_update_project_adds_to_config_if_missing(self) -> None:
+        """Test that update_project adds project to config if not present."""
+        from iterm_controller.models import AppConfig
+
+        state = AppState()
+        # Create config without the project
+        state.config = AppConfig(projects=[])
+        project = Project(id="p1", name="Test", path="/test")
+        state.projects["p1"] = project
+
+        with patch("iterm_controller.config.save_global_config") as mock_save:
+            state.update_project(project, persist=True)
+
+            # Project should be added to config.projects
+            assert len(state.config.projects) == 1
+            assert state.config.projects[0].id == "p1"
+            mock_save.assert_called_once()
+
+    def test_update_project_no_persist_when_no_config(self) -> None:
+        """Test that update_project doesn't error when config is None."""
+        state = AppState()
+        project = Project(id="p1", name="Test", path="/test")
+        state.projects["p1"] = project
+        state.config = None
+
+        # Should not raise even with persist=True
+        state.update_project(project, persist=True)
+
+        assert state.projects["p1"] == project
+
+    def test_update_project_handles_save_error(self) -> None:
+        """Test that update_project handles save errors gracefully."""
+        from iterm_controller.models import AppConfig
+
+        state = AppState()
+        project = Project(id="p1", name="Test", path="/test")
+        state.config = AppConfig(projects=[project])
+        state.projects["p1"] = project
+
+        # Make save_global_config raise an error
+        with patch(
+            "iterm_controller.config.save_global_config",
+            side_effect=Exception("Save failed"),
+        ):
+            # Should not raise - error is caught
+            state.update_project(project, persist=True)
+
+            # In-memory state should still be updated
+            assert state.projects["p1"] == project

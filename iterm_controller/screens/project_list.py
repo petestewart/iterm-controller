@@ -149,7 +149,11 @@ class ProjectListScreen(Screen):
             return None
 
     async def action_open_project(self) -> None:
-        """Open the selected project dashboard."""
+        """Open the selected project dashboard or restore last mode.
+
+        If the project has a last_mode saved, navigates directly to that
+        mode screen. Otherwise, opens the project dashboard.
+        """
         project_id = self._get_selected_project_id()
 
         if not project_id:
@@ -166,10 +170,36 @@ class ProjectListScreen(Screen):
         # Open the project in state
         await app.state.open_project(project_id)
 
-        # Push the project dashboard screen
-        from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
+        # Check if we should restore last mode
+        if project.last_mode:
+            from iterm_controller.models import WorkflowMode
+            from iterm_controller.screens.modes import (
+                DocsModeScreen,
+                PlanModeScreen,
+                TestModeScreen,
+                WorkModeScreen,
+            )
+            from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 
-        self.app.push_screen(ProjectDashboardScreen(project_id))
+            # Push dashboard first, then mode screen
+            # This ensures proper screen stack for "Back" navigation
+            self.app.push_screen(ProjectDashboardScreen(project_id))
+
+            mode_screen_map = {
+                WorkflowMode.PLAN: PlanModeScreen,
+                WorkflowMode.DOCS: DocsModeScreen,
+                WorkflowMode.WORK: WorkModeScreen,
+                WorkflowMode.TEST: TestModeScreen,
+            }
+
+            screen_class = mode_screen_map.get(project.last_mode)
+            if screen_class:
+                self.app.push_screen(screen_class(project))
+        else:
+            # No last mode, just push the dashboard
+            from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
+
+            self.app.push_screen(ProjectDashboardScreen(project_id))
 
     def action_new_project(self) -> None:
         """Create a new project."""

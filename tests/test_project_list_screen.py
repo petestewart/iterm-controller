@@ -458,3 +458,133 @@ class TestProjectListEnterKeySelection:
         # Check that the handler method exists
         assert hasattr(screen, "on_data_table_row_selected")
         assert callable(getattr(screen, "on_data_table_row_selected"))
+
+
+@pytest.mark.asyncio
+class TestProjectListModeRestoration:
+    """Tests for restoring last_mode when opening a project."""
+
+    async def test_open_project_without_last_mode_goes_to_dashboard(self) -> None:
+        """Test that opening a project without last_mode goes to dashboard."""
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add project without last_mode
+            project = make_project()
+            assert project.last_mode is None
+            app.state.projects[project.id] = project
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Open the project
+                await pilot.press("enter")
+
+                # Should be on ProjectDashboardScreen (not a mode screen)
+                assert isinstance(app.screen, ProjectDashboardScreen)
+
+    async def test_open_project_with_plan_mode_goes_to_plan_screen(self) -> None:
+        """Test that opening a project with last_mode=PLAN navigates to Plan screen."""
+        from iterm_controller.models import WorkflowMode
+        from iterm_controller.screens.modes import PlanModeScreen
+
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add project with last_mode=PLAN
+            project = Project(
+                id="project-1",
+                name="Test Project",
+                path="/tmp/test-project",
+                last_mode=WorkflowMode.PLAN,
+            )
+            app.state.projects[project.id] = project
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Open the project
+                await pilot.press("enter")
+
+                # Should be on PlanModeScreen
+                assert isinstance(app.screen, PlanModeScreen)
+
+    async def test_open_project_with_work_mode_goes_to_work_screen(self) -> None:
+        """Test that opening a project with last_mode=WORK navigates to Work screen."""
+        from iterm_controller.models import WorkflowMode
+        from iterm_controller.screens.modes import WorkModeScreen
+
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add project with last_mode=WORK
+            project = Project(
+                id="project-1",
+                name="Test Project",
+                path="/tmp/test-project",
+                last_mode=WorkflowMode.WORK,
+            )
+            app.state.projects[project.id] = project
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Open the project
+                await pilot.press("enter")
+
+                # Should be on WorkModeScreen
+                assert isinstance(app.screen, WorkModeScreen)
+
+    async def test_open_project_with_mode_has_dashboard_in_screen_stack(self) -> None:
+        """Test that dashboard is in screen stack when opening with last_mode.
+
+        This ensures that pressing 'Back' from the mode screen returns to dashboard.
+        """
+        from iterm_controller.models import WorkflowMode
+        from iterm_controller.screens.modes import PlanModeScreen
+
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add project with last_mode=PLAN
+            project = Project(
+                id="project-1",
+                name="Test Project",
+                path="/tmp/test-project",
+                last_mode=WorkflowMode.PLAN,
+            )
+            app.state.projects[project.id] = project
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+
+                # Open the project
+                await pilot.press("enter")
+
+                # Should be on PlanModeScreen
+                assert isinstance(app.screen, PlanModeScreen)
+
+                # Press escape to go back to dashboard
+                await pilot.press("escape")
+
+                # Should now be on ProjectDashboardScreen
+                assert isinstance(app.screen, ProjectDashboardScreen)
