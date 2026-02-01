@@ -27,6 +27,7 @@ from iterm_controller.models import (
     Task,
     TaskStatus,
     WindowLayout,
+    WorkflowMode,
     WorkflowStage,
     WorkflowState,
     load_config,
@@ -65,6 +66,12 @@ class TestEnums:
         assert HealthStatus.HEALTHY.value == "healthy"
         assert HealthStatus.UNHEALTHY.value == "unhealthy"
 
+    def test_workflow_mode_values(self):
+        assert WorkflowMode.PLAN.value == "plan"
+        assert WorkflowMode.DOCS.value == "docs"
+        assert WorkflowMode.WORK.value == "work"
+        assert WorkflowMode.TEST.value == "test"
+
 
 class TestProjectModel:
     """Test Project dataclass."""
@@ -79,9 +86,11 @@ class TestProjectModel:
         assert project.name == "Test Project"
         assert project.path == "/path/to/project"
         assert project.plan_path == "PLAN.md"
+        assert project.test_plan_path == "TEST_PLAN.md"
         assert project.config_path is None
         assert project.template_id is None
         assert project.jira_ticket is None
+        assert project.last_mode is None
         assert project.is_open is False
         assert project.sessions == []
 
@@ -93,6 +102,43 @@ class TestProjectModel:
             jira_ticket="PROJ-123",
         )
         assert project.jira_ticket == "PROJ-123"
+
+    def test_project_with_last_mode(self):
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+            last_mode=WorkflowMode.WORK,
+        )
+        assert project.last_mode == WorkflowMode.WORK
+
+    def test_project_last_mode_serialization(self):
+        """Test that last_mode persists to/from JSON correctly."""
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+            last_mode=WorkflowMode.PLAN,
+        )
+        data = model_to_dict(project)
+        assert data["last_mode"] == "plan"
+
+        restored = model_from_dict(Project, data)
+        assert restored.last_mode == WorkflowMode.PLAN
+
+    def test_project_last_mode_none_serialization(self):
+        """Test that last_mode=None persists correctly."""
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+            last_mode=None,
+        )
+        data = model_to_dict(project)
+        assert data["last_mode"] is None
+
+        restored = model_from_dict(Project, data)
+        assert restored.last_mode is None
 
     def test_full_plan_path_property(self):
         project = Project(

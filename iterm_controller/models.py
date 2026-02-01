@@ -163,6 +163,15 @@ class Plan:
 # =============================================================================
 
 
+class WorkflowMode(Enum):
+    """Project workflow modes for focused views."""
+
+    PLAN = "plan"  # Planning artifacts
+    DOCS = "docs"  # Documentation management
+    WORK = "work"  # Task execution
+    TEST = "test"  # QA and unit testing
+
+
 class WorkflowStage(Enum):
     """Project workflow stages."""
 
@@ -399,9 +408,11 @@ class Project:
     name: str  # Display name
     path: str  # Absolute path to project root
     plan_path: str = "PLAN.md"  # Relative path to plan file
+    test_plan_path: str = "TEST_PLAN.md"  # Relative path to test plan file
     config_path: str | None = None  # Project-local config override
     template_id: str | None = None  # Template used to create project
     jira_ticket: str | None = None  # Optional Jira ticket number (e.g., "PROJ-123")
+    last_mode: WorkflowMode | None = None  # Last active workflow mode (persisted)
 
     # Runtime state (not persisted)
     is_open: bool = field(default=False, repr=False)

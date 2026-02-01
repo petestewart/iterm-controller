@@ -334,7 +334,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 12: Workflow Mode Infrastructure
 
-- [ ] **Add WorkflowMode enum to models**
+- [x] **Add WorkflowMode enum to models** `[complete]`
   - Spec: specs/models.md#workflow-mode-models
   - Scope: Add WorkflowMode enum (PLAN, DOCS, WORK, TEST) and last_mode field to Project
   - Acceptance: Enum importable, Project.last_mode persists to JSON
