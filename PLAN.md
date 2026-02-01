@@ -305,7 +305,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Project list screen should automatically refresh after a new project is created
   - Acceptance: New project appears in list without manual navigation
 
-- [ ] **Fix project selection with Enter key**
+- [x] **Fix project selection with Enter key** `[complete]`
   - Scope: Pressing Enter on a selected project in the project list should open it
   - Affects: Direct project list access AND Control Room "Select a project first" flow when spawning sessions
   - Root cause: Screen binding `Binding("enter", "open_project")` is intercepted by DataTable, which emits `DataTable.RowSelected` instead

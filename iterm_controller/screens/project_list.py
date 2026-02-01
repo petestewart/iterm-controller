@@ -12,7 +12,8 @@ from textual.binding import Binding
 from textual.containers import Container
 from textual.events import ScreenResume
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header, Static
+from textual.widgets import DataTable
+from textual.widgets import Footer, Header, Static
 
 if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
@@ -53,6 +54,15 @@ class ProjectListScreen(Screen):
     async def on_mount(self) -> None:
         """Initialize the project table."""
         await self._populate_table()
+
+    async def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        """Handle Enter key on DataTable row.
+
+        The DataTable widget intercepts Enter key presses and emits RowSelected
+        instead of allowing the screen-level binding to fire. This handler
+        bridges the gap by calling the same action.
+        """
+        await self.action_open_project()
 
     async def on_screen_resume(self, event: ScreenResume) -> None:
         """Refresh the project list when returning from another screen.

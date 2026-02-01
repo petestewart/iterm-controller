@@ -414,3 +414,47 @@ class TestProjectListScreenResume:
                 # Table should now show both projects
                 table = app.screen.query_one("#project-table")
                 assert table.row_count == 2
+
+
+@pytest.mark.asyncio
+class TestProjectListEnterKeySelection:
+    """Tests for Enter key project selection via DataTable."""
+
+    async def test_enter_key_opens_project(self) -> None:
+        """Test that pressing Enter on a project row opens it.
+
+        The DataTable widget intercepts Enter key presses and emits RowSelected
+        instead of allowing screen-level bindings to fire. The screen should
+        handle this event to open the selected project.
+        """
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add a project
+            project = make_project()
+            app.state.projects[project.id] = project
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Focus the table (it should already be focused, but just in case)
+                table = app.screen.query_one("#project-table")
+                table.focus()
+
+                # Press Enter to open the project
+                await pilot.press("enter")
+
+                # Should now be on ProjectDashboardScreen
+                assert isinstance(app.screen, ProjectDashboardScreen)
+
+    async def test_data_table_row_selected_handler_exists(self) -> None:
+        """Test that screen has on_data_table_row_selected handler."""
+        screen = ProjectListScreen()
+        # Check that the handler method exists
+        assert hasattr(screen, "on_data_table_row_selected")
+        assert callable(getattr(screen, "on_data_table_row_selected"))
