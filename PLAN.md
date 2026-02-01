@@ -162,7 +162,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 5: Screens
 
-- [ ] **Build Control Room screen** `[pending]`
+- [x] **Build Control Room screen** `[complete]`
   - Spec: specs/ui.md#control-room-screen
   - Scope: Main dashboard showing all sessions across all projects
   - Acceptance: Lists all active sessions, shows status, supports spawn/kill
