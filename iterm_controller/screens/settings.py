@@ -15,6 +15,7 @@ from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Sele
 
 if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
+    from iterm_controller.models import AutoModeConfig
 
 
 class SettingsScreen(Screen):
@@ -142,7 +143,7 @@ class SettingsScreen(Screen):
         elif event.button.id == "configure-auto-mode":
             await self._open_auto_mode_config()
 
-    async def _open_auto_mode_config(self) -> None:
+    def _open_auto_mode_config(self) -> None:
         """Open the auto mode configuration modal."""
         from iterm_controller.screens.modals import AutoModeConfigModal
 
@@ -153,22 +154,35 @@ class SettingsScreen(Screen):
             return
 
         current_config = app.state.config.auto_mode
-        result = await self.app.push_screen_wait(
-            AutoModeConfigModal(current_config)
+        self.app.push_screen(
+            AutoModeConfigModal(current_config), self._on_auto_mode_config_result
         )
 
-        if result is not None:
-            # Update the config with the new auto mode settings
-            app.state.config.auto_mode = result
+    def _on_auto_mode_config_result(self, result: "AutoModeConfig | None") -> None:
+        """Handle auto mode configuration modal result.
 
-            # Save to disk immediately
-            from iterm_controller.config import save_global_config
+        Args:
+            result: The updated config, or None if cancelled.
+        """
+        if result is None:
+            return
 
-            save_global_config(app.state.config)
-            self.notify("Auto mode settings saved")
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
 
-            # Update the status display
-            self._update_auto_mode_status()
+        if not app.state.config:
+            return
+
+        # Update the config with the new auto mode settings
+        app.state.config.auto_mode = result
+
+        # Save to disk immediately
+        from iterm_controller.config import save_global_config
+
+        save_global_config(app.state.config)
+        self.notify("Auto mode settings saved")
+
+        # Update the status display
+        self._update_auto_mode_status()
 
     def _validate_polling_interval(self, value: str) -> int | None:
         """Validate polling interval input.

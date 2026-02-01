@@ -317,11 +317,20 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Update bindings in app.py - change settings to comma, add sessions shortcut with `s`
   - Acceptance: `,` or `ctrl+,` opens Settings, `s` or `ctrl+s` opens Sessions/Control Room
 
-- [x] **Fix help modal crash (NoActiveWorker error)** `[complete]`
-  - Scope: Pressing ? crashes with `NoActiveWorker: push_screen must be run from a worker when wait_for_dismiss is True`
-  - Root cause: `action_show_help` uses `await self.push_screen_wait()` which requires a worker context
-  - Fix: Use `self.push_screen()` without waiting, or wrap in a worker
-  - Acceptance: Pressing ? shows help modal without crashing
+- [x] **Fix all push_screen_wait crashes (NoActiveWorker errors)** `[complete]`
+  - Scope: Multiple actions crash with `NoActiveWorker: push_screen must be run from a worker when wait_for_dismiss is True`
+  - Root cause: `push_screen_wait()` requires a worker context but action handlers run in the main event loop
+  - Affected locations:
+    - `app.py:86` - `action_quit` → QuitConfirmModal
+    - `app.py:178` - `action_show_help` → HelpModal
+    - `control_room.py:151` - `action_spawn_session` → ScriptPickerModal
+    - `project_dashboard.py:200` - action handler → ScriptPickerModal
+    - `project_dashboard.py:245` - action handler → ScriptPickerModal
+    - `project_dashboard.py:279` - `action_open_docs` → DocsPickerModal
+    - `settings.py:156` - action handler → modal
+    - `auto_mode.py:443` - may need review
+  - Fix: Use `self.app.push_screen()` with callback instead, or use `@work` decorator
+  - Acceptance: All modal-triggering shortcuts work without crashing
 
 ## Open Questions
 

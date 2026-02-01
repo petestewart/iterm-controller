@@ -13,7 +13,7 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
-from iterm_controller.models import ManagedSession
+from iterm_controller.models import ManagedSession, SessionTemplate
 from iterm_controller.state import (
     SessionClosed,
     SessionSpawned,
@@ -114,7 +114,7 @@ class ControlRoomScreen(Screen):
 
         return sessions[0]
 
-    async def action_new_session(self) -> None:
+    def action_new_session(self) -> None:
         """Spawn a new session from template.
 
         Opens the script picker modal to select a session template,
@@ -148,9 +148,23 @@ class ControlRoomScreen(Screen):
         # Show script picker modal to select a template
         from iterm_controller.screens.modals import ScriptPickerModal
 
-        template = await self.app.push_screen_wait(ScriptPickerModal())
+        self.app.push_screen(ScriptPickerModal(), self._on_template_selected)
+
+    async def _on_template_selected(self, template: "SessionTemplate | None") -> None:
+        """Handle template selection from script picker modal.
+
+        Args:
+            template: The selected template, or None if cancelled.
+        """
         if template is None:
             # User cancelled
+            return
+
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+        project = app.state.active_project
+
+        if not project:
+            self.notify("No active project", severity="error")
             return
 
         try:

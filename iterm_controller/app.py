@@ -75,18 +75,22 @@ class ItermControllerApp(App):
 
         self.push_screen(ControlRoomScreen())
 
-    async def action_request_quit(self) -> None:
+    def action_request_quit(self) -> None:
         """Handle quit with confirmation if sessions active."""
         if self.state.has_active_sessions:
-            from iterm_controller.screens.modals.quit_confirm import (
-                QuitAction,
-                QuitConfirmModal,
-            )
+            from iterm_controller.screens.modals.quit_confirm import QuitConfirmModal
 
-            action = await self.push_screen_wait(QuitConfirmModal())
-            await self._handle_quit_action(action)
+            self.push_screen(QuitConfirmModal(), self._on_quit_modal_dismiss)
         else:
-            await self._cleanup_and_exit()
+            self.call_later(self._cleanup_and_exit)
+
+    def _on_quit_modal_dismiss(self, action: "QuitAction") -> None:
+        """Handle the result of the quit confirmation modal.
+
+        Args:
+            action: The action chosen by the user.
+        """
+        self.call_later(self._handle_quit_action, action)
 
     async def _handle_quit_action(self, action: "QuitAction") -> None:
         """Handle the result of the quit confirmation modal.

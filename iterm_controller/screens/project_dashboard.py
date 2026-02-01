@@ -60,7 +60,10 @@ from iterm_controller.widgets import (
 )
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from iterm_controller.app import ItermControllerApp
+    from iterm_controller.models import SessionTemplate
 
 
 class ProjectDashboardScreen(Screen):
@@ -174,7 +177,7 @@ class ProjectDashboardScreen(Screen):
             else:
                 self.notify("No tasks to toggle", severity="warning")
 
-    async def action_spawn_session(self) -> None:
+    def action_spawn_session(self) -> None:
         """Spawn a new session for this project."""
         app: ItermControllerApp = self.app  # type: ignore[assignment]
 
@@ -197,29 +200,17 @@ class ProjectDashboardScreen(Screen):
         # Show script picker modal to select a template
         from iterm_controller.screens.modals import ScriptPickerModal
 
-        template = await self.app.push_screen_wait(ScriptPickerModal())
-        if template is None:
-            # User cancelled
-            return
+        self.app.push_screen(ScriptPickerModal(), self._on_spawn_template_selected)
 
-        try:
-            from iterm_controller.iterm_api import SessionSpawner
+    async def _on_spawn_template_selected(self, template: "SessionTemplate | None") -> None:
+        """Handle template selection from spawn session modal.
 
-            spawner = SessionSpawner(app.iterm)
-            result = await spawner.spawn_session(template, project)
+        Args:
+            template: The selected template, or None if cancelled.
+        """
+        await self._spawn_session_from_template(template, "Spawned session")
 
-            if result.success:
-                # Add session to state
-                managed = spawner.get_session(result.session_id)
-                if managed:
-                    app.state.add_session(managed)
-                self.notify(f"Spawned session: {template.name}")
-            else:
-                self.notify(f"Failed to spawn session: {result.error}", severity="error")
-        except Exception as e:
-            self.notify(f"Error spawning session: {e}", severity="error")
-
-    async def action_run_script(self) -> None:
+    def action_run_script(self) -> None:
         """Show script picker modal and run selected script."""
         app: ItermControllerApp = self.app  # type: ignore[assignment]
 
@@ -242,9 +233,34 @@ class ProjectDashboardScreen(Screen):
         # Show script picker modal to select a template
         from iterm_controller.screens.modals import ScriptPickerModal
 
-        template = await self.app.push_screen_wait(ScriptPickerModal())
+        self.app.push_screen(ScriptPickerModal(), self._on_run_script_template_selected)
+
+    async def _on_run_script_template_selected(self, template: "SessionTemplate | None") -> None:
+        """Handle template selection from run script modal.
+
+        Args:
+            template: The selected template, or None if cancelled.
+        """
+        await self._spawn_session_from_template(template, "Running script")
+
+    async def _spawn_session_from_template(
+        self, template: "SessionTemplate | None", success_prefix: str
+    ) -> None:
+        """Spawn a session from a selected template.
+
+        Args:
+            template: The selected template, or None if cancelled.
+            success_prefix: Prefix for success notification (e.g., "Spawned session", "Running script").
+        """
         if template is None:
             # User cancelled
+            return
+
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+        project = app.state.projects.get(self.project_id)
+
+        if not project:
+            self.notify("Project not found", severity="error")
             return
 
         try:
@@ -258,13 +274,13 @@ class ProjectDashboardScreen(Screen):
                 managed = spawner.get_session(result.session_id)
                 if managed:
                     app.state.add_session(managed)
-                self.notify(f"Running script: {template.name}")
+                self.notify(f"{success_prefix}: {template.name}")
             else:
-                self.notify(f"Failed to run script: {result.error}", severity="error")
+                self.notify(f"Failed: {result.error}", severity="error")
         except Exception as e:
-            self.notify(f"Error running script: {e}", severity="error")
+            self.notify(f"Error: {e}", severity="error")
 
-    async def action_open_docs(self) -> None:
+    def action_open_docs(self) -> None:
         """Show docs picker modal."""
         app: ItermControllerApp = self.app  # type: ignore[assignment]
 
@@ -276,7 +292,14 @@ class ProjectDashboardScreen(Screen):
 
         from iterm_controller.screens.modals import DocsPickerModal
 
-        doc_path = await self.app.push_screen_wait(DocsPickerModal(project.path))
+        self.app.push_screen(DocsPickerModal(project.path), self._on_docs_selected)
+
+    def _on_docs_selected(self, doc_path: "Path | None") -> None:
+        """Handle doc selection from docs picker modal.
+
+        Args:
+            doc_path: The selected document path, or None if cancelled.
+        """
         if doc_path:
             self.notify(f"Opened: {doc_path.name}")
 

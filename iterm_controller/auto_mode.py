@@ -7,6 +7,7 @@ can automatically execute stage commands when advancing.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from dataclasses import dataclass
 from pathlib import Path
@@ -439,9 +440,21 @@ class AutoAdvanceHandler:
         # Import here to avoid circular imports
         from .screens.modals import StageAdvanceModal
 
+        # Use Future + callback pattern to avoid NoActiveWorker error
+        # push_screen_wait requires a worker context, but this method may be called
+        # from various async contexts. Using a Future allows us to await properly.
+        loop = asyncio.get_running_loop()
+        future: asyncio.Future[bool] = loop.create_future()
+
+        def on_modal_dismiss(result: bool | None) -> None:
+            """Handle modal dismiss and set the future result."""
+            if not future.done():
+                future.set_result(bool(result))
+
         modal = StageAdvanceModal(stage, command)
-        result = await self.app.push_screen_wait(modal)
-        return bool(result)
+        self.app.push_screen(modal, on_modal_dismiss)
+
+        return await future
 
     async def _execute_command(
         self,

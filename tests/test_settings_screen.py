@@ -59,7 +59,7 @@ class TestSettingsScreenAsync:
         app = ItermControllerApp()
         async with app.run_test() as pilot:
             # Navigate to settings
-            await pilot.press("s")
+            await pilot.press("comma")
 
             # Should be on SettingsScreen
             assert isinstance(app.screen, SettingsScreen)
@@ -110,7 +110,7 @@ class TestSettingsScreenAsync:
             app = ItermControllerApp()
             async with app.run_test() as pilot:
                 # Navigate to settings
-                await pilot.press("s")
+                await pilot.press("comma")
 
                 assert isinstance(app.screen, SettingsScreen)
 
@@ -135,7 +135,7 @@ class TestSettingsScreenAsync:
         app = ItermControllerApp()
         async with app.run_test() as pilot:
             # Navigate to settings
-            await pilot.press("s")
+            await pilot.press("comma")
             assert isinstance(app.screen, SettingsScreen)
 
             # Press escape
@@ -165,7 +165,7 @@ class TestSettingsScreenAsync:
                 app = ItermControllerApp()
                 async with app.run_test() as pilot:
                     # Navigate to settings
-                    await pilot.press("s")
+                    await pilot.press("comma")
                     assert isinstance(app.screen, SettingsScreen)
 
                     # Modify polling interval
@@ -214,7 +214,7 @@ class TestSettingsScreenAsync:
                     app = ItermControllerApp()
                     async with app.run_test() as pilot:
                         # Navigate to settings
-                        await pilot.press("s")
+                        await pilot.press("comma")
 
                         # Modify a setting
                         polling_input = app.screen.query_one("#polling-input", Input)
