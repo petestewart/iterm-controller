@@ -86,7 +86,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Launch new iTerm2 windows with predefined tab/session layouts
   - Acceptance: WindowLayout configurations spawn correct structure
 
-- [ ] **Implement session termination** `[pending]`
+- [x] **Implement session termination** `[complete]`
   - Spec: specs/iterm.md#session-termination
   - Scope: Graceful session shutdown with SIGTERM, timeout, and SIGKILL fallback
   - Acceptance: Sessions close cleanly, forced close works after timeout

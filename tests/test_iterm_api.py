@@ -5,11 +5,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from iterm_controller.iterm_api import (
+    CloseResult,
     ItermConnectionError,
     ItermController,
     ItermNotConnectedError,
     LayoutSpawnResult,
     SessionSpawner,
+    SessionTerminator,
     SpawnResult,
     TabState,
     WindowLayoutSpawner,
@@ -1482,3 +1484,391 @@ class TestWindowLayoutSpawner:
         assert result.success is True
         assert result.results == []
         mock_tab.async_set_title.assert_called_once_with("Empty")
+
+
+class TestCloseResult:
+    """Test CloseResult dataclass."""
+
+    def test_close_result_success(self):
+        """CloseResult with success state."""
+        result = CloseResult(
+            session_id="session-1",
+            success=True,
+        )
+        assert result.session_id == "session-1"
+        assert result.success is True
+        assert result.force_required is False
+        assert result.error is None
+
+    def test_close_result_force_required(self):
+        """CloseResult when force was required."""
+        result = CloseResult(
+            session_id="session-2",
+            success=True,
+            force_required=True,
+        )
+        assert result.success is True
+        assert result.force_required is True
+
+    def test_close_result_failure(self):
+        """CloseResult with failure state."""
+        result = CloseResult(
+            session_id="session-3",
+            success=False,
+            error="Session not found",
+        )
+        assert result.success is False
+        assert result.error == "Session not found"
+
+
+class TestSessionTerminator:
+    """Test SessionTerminator session termination functionality."""
+
+    def make_connected_controller(self) -> ItermController:
+        """Create a controller in connected state."""
+        controller = ItermController()
+        controller._connected = True
+        controller.connection = MagicMock()
+        controller.app = MagicMock()
+        return controller
+
+    def make_mock_session(self, session_id: str = "session-1") -> MagicMock:
+        """Create a mock iTerm2 session."""
+        session = MagicMock()
+        session.session_id = session_id
+        session.async_send_text = AsyncMock()
+        session.async_close = AsyncMock()
+        session.async_get_screen_contents = AsyncMock()
+        return session
+
+    def test_init(self):
+        """SessionTerminator initializes correctly."""
+        controller = ItermController()
+        terminator = SessionTerminator(controller)
+        assert terminator.controller is controller
+        assert terminator.SIGTERM_TIMEOUT == 5.0
+        assert terminator.POLL_INTERVAL == 0.1
+
+    @pytest.mark.asyncio
+    async def test_close_session_force(self):
+        """close_session with force=True closes immediately."""
+        controller = self.make_connected_controller()
+        terminator = SessionTerminator(controller)
+
+        mock_session = self.make_mock_session("force-session")
+
+        result = await terminator.close_session(mock_session, force=True)
+
+        assert result.success is True
+        assert result.session_id == "force-session"
+        assert result.force_required is True
+        mock_session.async_close.assert_called_once_with(force=True)
+        # Should not send exit command when force=True
+        mock_session.async_send_text.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_close_session_graceful_success(self):
+        """close_session gracefully closes when session exits on its own."""
+        controller = self.make_connected_controller()
+        terminator = SessionTerminator(controller)
+
+        mock_session = self.make_mock_session("graceful-session")
+
+        # Session closes after exit command
+        call_count = {"count": 0}
+
+        async def mock_get_contents():
+            call_count["count"] += 1
+            if call_count["count"] >= 2:
+                raise Exception("Session closed")
+            return MagicMock()
+
+        mock_session.async_get_screen_contents = mock_get_contents
+
+        result = await terminator.close_session(mock_session, force=False)
+
+        assert result.success is True
+        assert result.force_required is False
+        assert result.session_id == "graceful-session"
+
+        # Should send Ctrl+C and exit
+        calls = mock_session.async_send_text.call_args_list
+        assert len(calls) == 2
+        assert calls[0][0][0] == "\x03"  # Ctrl+C
+        assert calls[1][0][0] == "exit\n"
+
+    @pytest.mark.asyncio
+    async def test_close_session_graceful_timeout_then_force(self):
+        """close_session force-closes after timeout."""
+        controller = self.make_connected_controller()
+        terminator = SessionTerminator(controller)
+        terminator.SIGTERM_TIMEOUT = 0.2  # Short timeout for testing
+
+        mock_session = self.make_mock_session("timeout-session")
+
+        # Session never closes gracefully
+        mock_session.async_get_screen_contents = AsyncMock(return_value=MagicMock())
+
+        result = await terminator.close_session(mock_session, force=False)
+
+        assert result.success is True
+        assert result.force_required is True
+        assert result.session_id == "timeout-session"
+
+        # Should have called force close after timeout
+        mock_session.async_close.assert_called_once_with(force=True)
+
+    @pytest.mark.asyncio
+    async def test_close_session_error_handling(self):
+        """close_session handles errors gracefully."""
+        controller = self.make_connected_controller()
+        terminator = SessionTerminator(controller)
+
+        mock_session = self.make_mock_session("error-session")
+        mock_session.async_send_text = AsyncMock(side_effect=Exception("Send failed"))
+
+        result = await terminator.close_session(mock_session, force=False)
+
+        assert result.success is False
+        assert result.session_id == "error-session"
+        assert "Send failed" in result.error
+
+    @pytest.mark.asyncio
+    async def test_close_session_force_error(self):
+        """close_session handles force close errors."""
+        controller = self.make_connected_controller()
+        terminator = SessionTerminator(controller)
+
+        mock_session = self.make_mock_session("force-error")
+        mock_session.async_close = AsyncMock(side_effect=Exception("Close failed"))
+
+        result = await terminator.close_session(mock_session, force=True)
+
+        assert result.success is False
+        assert "Close failed" in result.error
+
+    @pytest.mark.asyncio
+    async def test_close_tab_success(self):
+        """close_tab closes the tab successfully."""
+        controller = self.make_connected_controller()
+        terminator = SessionTerminator(controller)
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-1"
+        mock_tab.async_close = AsyncMock()
+
+        result = await terminator.close_tab(mock_tab)
+
+        assert result is True
+        mock_tab.async_close.assert_called_once_with(force=False)
+
+    @pytest.mark.asyncio
+    async def test_close_tab_force(self):
+        """close_tab with force=True passes force to async_close."""
+        controller = self.make_connected_controller()
+        terminator = SessionTerminator(controller)
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-force"
+        mock_tab.async_close = AsyncMock()
+
+        result = await terminator.close_tab(mock_tab, force=True)
+
+        assert result is True
+        mock_tab.async_close.assert_called_once_with(force=True)
+
+    @pytest.mark.asyncio
+    async def test_close_tab_error(self):
+        """close_tab handles errors gracefully."""
+        controller = self.make_connected_controller()
+        terminator = SessionTerminator(controller)
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-error"
+        mock_tab.async_close = AsyncMock(side_effect=Exception("Tab close failed"))
+
+        result = await terminator.close_tab(mock_tab)
+
+        assert result is False
+
+    @pytest.mark.asyncio
+    async def test_close_all_managed_empty_list(self):
+        """close_all_managed handles empty session list."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        terminator = SessionTerminator(controller)
+
+        closed, results = await terminator.close_all_managed([], spawner)
+
+        assert closed == 0
+        assert results == []
+
+    @pytest.mark.asyncio
+    async def test_close_all_managed_requires_connection(self):
+        """close_all_managed raises when not connected."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        terminator = SessionTerminator(controller)
+
+        from iterm_controller.models import ManagedSession
+
+        sessions = [
+            ManagedSession(id="s1", template_id="t", project_id="p", tab_id="tab")
+        ]
+
+        with pytest.raises(ItermNotConnectedError):
+            await terminator.close_all_managed(sessions, spawner)
+
+    @pytest.mark.asyncio
+    async def test_close_all_managed_success(self):
+        """close_all_managed closes all sessions successfully."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        terminator = SessionTerminator(controller)
+
+        from iterm_controller.models import ManagedSession
+
+        # Track sessions in spawner
+        s1 = ManagedSession(id="s1", template_id="t", project_id="p", tab_id="tab")
+        s2 = ManagedSession(id="s2", template_id="t", project_id="p", tab_id="tab")
+        spawner.managed_sessions = {"s1": s1, "s2": s2}
+
+        # Mock iTerm sessions
+        mock_session1 = self.make_mock_session("s1")
+        mock_session2 = self.make_mock_session("s2")
+
+        # Sessions close immediately
+        mock_session1.async_get_screen_contents = AsyncMock(
+            side_effect=Exception("Closed")
+        )
+        mock_session2.async_get_screen_contents = AsyncMock(
+            side_effect=Exception("Closed")
+        )
+
+        async def get_session(session_id):
+            if session_id == "s1":
+                return mock_session1
+            elif session_id == "s2":
+                return mock_session2
+            return None
+
+        controller.app.async_get_session_by_id = AsyncMock(side_effect=get_session)
+
+        closed, results = await terminator.close_all_managed([s1, s2], spawner)
+
+        assert closed == 2
+        assert len(results) == 2
+        assert all(r.success for r in results)
+
+        # Sessions should be untracked
+        assert "s1" not in spawner.managed_sessions
+        assert "s2" not in spawner.managed_sessions
+
+    @pytest.mark.asyncio
+    async def test_close_all_managed_partial_failure(self):
+        """close_all_managed handles partial failures."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        terminator = SessionTerminator(controller)
+
+        from iterm_controller.models import ManagedSession
+
+        s1 = ManagedSession(id="s1", template_id="t", project_id="p", tab_id="tab")
+        s2 = ManagedSession(id="s2", template_id="t", project_id="p", tab_id="tab")
+        spawner.managed_sessions = {"s1": s1, "s2": s2}
+
+        mock_session1 = self.make_mock_session("s1")
+        mock_session1.async_get_screen_contents = AsyncMock(
+            side_effect=Exception("Closed")
+        )
+
+        mock_session2 = self.make_mock_session("s2")
+        mock_session2.async_send_text = AsyncMock(side_effect=Exception("Send failed"))
+
+        async def get_session(session_id):
+            if session_id == "s1":
+                return mock_session1
+            elif session_id == "s2":
+                return mock_session2
+            return None
+
+        controller.app.async_get_session_by_id = AsyncMock(side_effect=get_session)
+
+        closed, results = await terminator.close_all_managed([s1, s2], spawner)
+
+        assert closed == 1
+        assert len(results) == 2
+
+        # s1 succeeded, s2 failed
+        s1_result = next(r for r in results if r.session_id == "s1")
+        s2_result = next(r for r in results if r.session_id == "s2")
+
+        assert s1_result.success is True
+        assert s2_result.success is False
+
+        # Only s1 should be untracked
+        assert "s1" not in spawner.managed_sessions
+        assert "s2" in spawner.managed_sessions
+
+    @pytest.mark.asyncio
+    async def test_close_all_managed_session_not_found(self):
+        """close_all_managed handles sessions that no longer exist."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        terminator = SessionTerminator(controller)
+
+        from iterm_controller.models import ManagedSession
+
+        s1 = ManagedSession(id="s1", template_id="t", project_id="p", tab_id="tab")
+        spawner.managed_sessions = {"s1": s1}
+
+        # Session not found (already closed)
+        controller.app.async_get_session_by_id = AsyncMock(return_value=None)
+
+        closed, results = await terminator.close_all_managed([s1], spawner)
+
+        assert closed == 1
+        assert len(results) == 1
+        assert results[0].success is True
+        assert "already closed" in results[0].error
+
+        # Should still be untracked
+        assert "s1" not in spawner.managed_sessions
+
+    @pytest.mark.asyncio
+    async def test_close_all_managed_with_force(self):
+        """close_all_managed with force=True force-closes all sessions."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        terminator = SessionTerminator(controller)
+
+        from iterm_controller.models import ManagedSession
+
+        s1 = ManagedSession(id="s1", template_id="t", project_id="p", tab_id="tab")
+        spawner.managed_sessions = {"s1": s1}
+
+        mock_session = self.make_mock_session("s1")
+        controller.app.async_get_session_by_id = AsyncMock(return_value=mock_session)
+
+        closed, results = await terminator.close_all_managed([s1], spawner, force=True)
+
+        assert closed == 1
+        assert results[0].force_required is True
+        mock_session.async_close.assert_called_once_with(force=True)
+
+    @pytest.mark.asyncio
+    async def test_close_all_managed_no_app(self):
+        """close_all_managed handles missing app gracefully."""
+        controller = self.make_connected_controller()
+        controller.app = None
+        spawner = SessionSpawner(controller)
+        terminator = SessionTerminator(controller)
+
+        from iterm_controller.models import ManagedSession
+
+        s1 = ManagedSession(id="s1", template_id="t", project_id="p", tab_id="tab")
+
+        closed, results = await terminator.close_all_managed([s1], spawner)
+
+        assert closed == 0
+        assert results == []
