@@ -1,11 +1,15 @@
 """Template management for project creation.
 
-Provides CRUD operations and validation for project templates.
+Provides CRUD operations, validation, and setup script execution for project templates.
 """
 
 from __future__ import annotations
 
-from .models import AppConfig, ProjectTemplate
+import asyncio
+import re
+from pathlib import Path
+
+from .models import AppConfig, Project, ProjectTemplate
 
 
 class TemplateValidationError(Exception):
@@ -14,6 +18,15 @@ class TemplateValidationError(Exception):
     def __init__(self, errors: list[str]):
         self.errors = errors
         super().__init__(f"Template validation failed: {', '.join(errors)}")
+
+
+class SetupScriptError(Exception):
+    """Raised when a template setup script fails."""
+
+    def __init__(self, message: str, returncode: int | None = None, stderr: str = ""):
+        self.returncode = returncode
+        self.stderr = stderr
+        super().__init__(message)
 
 
 class TemplateManager:
@@ -159,3 +172,122 @@ class TemplateManager:
         if errors:
             raise TemplateValidationError(errors)
         self.update_template(template)
+
+
+class TemplateRunner:
+    """Runs template setup during project creation.
+
+    Handles:
+    - Creating project directory and files
+    - Variable substitution in file content and scripts
+    - Executing setup scripts in the project directory
+    """
+
+    # Pattern for {{variable}} placeholders
+    VAR_PATTERN = re.compile(r"\{\{(\w+)\}\}")
+
+    async def create_from_template(
+        self,
+        template: ProjectTemplate,
+        project_path: str,
+        form_values: dict[str, str],
+    ) -> Project:
+        """Create a new project from a template.
+
+        Args:
+            template: The template to use
+            project_path: Path where the project should be created
+            form_values: User-provided values for variable substitution
+
+        Returns:
+            The created Project object
+
+        Raises:
+            SetupScriptError: If the setup script fails
+            OSError: If file/directory operations fail
+        """
+        path = Path(project_path)
+
+        # Create project directory
+        path.mkdir(parents=True, exist_ok=True)
+
+        # Create additional files from template
+        for filename, content in template.files.items():
+            file_path = path / filename
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Substitute template variables
+            content = self._substitute_vars(content, form_values)
+            file_path.write_text(content)
+
+        # Create default PLAN.md if specified
+        if template.default_plan:
+            plan_content = self._substitute_vars(template.default_plan, form_values)
+            (path / "PLAN.md").write_text(plan_content)
+
+        # Run setup script if specified
+        if template.setup_script:
+            await self._run_setup_script(template.setup_script, path, form_values)
+
+        # Create project object
+        project = Project(
+            id=form_values.get("name", path.name),
+            name=form_values.get("name", path.name),
+            path=str(path.resolve()),
+            template_id=template.id,
+        )
+
+        return project
+
+    def _substitute_vars(self, content: str, values: dict[str, str]) -> str:
+        """Substitute {{var}} placeholders in content.
+
+        Args:
+            content: String containing {{variable}} placeholders
+            values: Dictionary of variable names to values
+
+        Returns:
+            Content with placeholders replaced
+        """
+
+        def replace(match: re.Match[str]) -> str:
+            var_name = match.group(1)
+            return values.get(var_name, match.group(0))
+
+        return self.VAR_PATTERN.sub(replace, content)
+
+    async def _run_setup_script(
+        self,
+        script: str,
+        path: Path,
+        values: dict[str, str],
+    ) -> None:
+        """Run template setup script in the project directory.
+
+        Args:
+            script: The script content to execute
+            path: Working directory for the script
+            values: Variable values for substitution
+
+        Raises:
+            SetupScriptError: If the script exits with non-zero status
+        """
+        # Substitute variables in script
+        script = self._substitute_vars(script, values)
+
+        # Run script
+        process = await asyncio.create_subprocess_shell(
+            script,
+            cwd=path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        stdout, stderr = await process.communicate()
+
+        if process.returncode != 0:
+            raise SetupScriptError(
+                f"Setup script failed with exit code {process.returncode}: {stderr.decode()}",
+                returncode=process.returncode,
+                stderr=stderr.decode(),
+            )

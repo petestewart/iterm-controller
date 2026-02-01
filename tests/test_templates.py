@@ -1,10 +1,14 @@
 """Tests for template management."""
 
+from pathlib import Path
+
 import pytest
 
-from iterm_controller.models import AppConfig, ProjectTemplate, SessionTemplate
+from iterm_controller.models import AppConfig, Project, ProjectTemplate, SessionTemplate
 from iterm_controller.templates import (
+    SetupScriptError,
     TemplateManager,
+    TemplateRunner,
     TemplateValidationError,
 )
 
@@ -391,3 +395,324 @@ class TestTemplateWithOptionalFields:
         assert result.setup_script == "npm install && npm run setup"
         assert len(result.files) == 2
         assert result.required_fields == ["name", "description"]
+
+
+# =============================================================================
+# TemplateRunner Tests
+# =============================================================================
+
+
+@pytest.fixture
+def runner() -> TemplateRunner:
+    """Create a template runner instance."""
+    return TemplateRunner()
+
+
+class TestSubstituteVars:
+    """Test variable substitution in content."""
+
+    def test_substitute_simple_var(self, runner: TemplateRunner):
+        """Simple variable substitution works."""
+        content = "Hello, {{name}}!"
+        result = runner._substitute_vars(content, {"name": "World"})
+        assert result == "Hello, World!"
+
+    def test_substitute_multiple_vars(self, runner: TemplateRunner):
+        """Multiple variables are substituted."""
+        content = "Project: {{name}}, Author: {{author}}"
+        result = runner._substitute_vars(
+            content, {"name": "MyProject", "author": "Alice"}
+        )
+        assert result == "Project: MyProject, Author: Alice"
+
+    def test_substitute_same_var_multiple_times(self, runner: TemplateRunner):
+        """Same variable appearing multiple times is substituted."""
+        content = "{{name}}: Hello {{name}}, goodbye {{name}}"
+        result = runner._substitute_vars(content, {"name": "Bob"})
+        assert result == "Bob: Hello Bob, goodbye Bob"
+
+    def test_substitute_preserves_unknown_vars(self, runner: TemplateRunner):
+        """Unknown variables are preserved as-is."""
+        content = "Known: {{known}}, Unknown: {{unknown}}"
+        result = runner._substitute_vars(content, {"known": "value"})
+        assert result == "Known: value, Unknown: {{unknown}}"
+
+    def test_substitute_empty_values(self, runner: TemplateRunner):
+        """Empty values are substituted correctly."""
+        content = "Value: {{empty}}"
+        result = runner._substitute_vars(content, {"empty": ""})
+        assert result == "Value: "
+
+    def test_substitute_in_multiline(self, runner: TemplateRunner):
+        """Substitution works in multiline content."""
+        content = """# {{title}}
+
+By {{author}}
+
+## Description
+This project is named {{title}}.
+"""
+        result = runner._substitute_vars(
+            content, {"title": "MyApp", "author": "Dev Team"}
+        )
+        assert "# MyApp" in result
+        assert "By Dev Team" in result
+        assert "named MyApp" in result
+
+
+class TestCreateFromTemplate:
+    """Test project creation from templates."""
+
+    @pytest.mark.asyncio
+    async def test_creates_project_directory(self, runner: TemplateRunner, tmp_path: Path):
+        """Creates project directory if it doesn't exist."""
+        template = ProjectTemplate(id="test", name="Test")
+        project_path = tmp_path / "new-project"
+
+        project = await runner.create_from_template(
+            template, str(project_path), {"name": "new-project"}
+        )
+
+        assert project_path.exists()
+        assert project_path.is_dir()
+
+    @pytest.mark.asyncio
+    async def test_creates_nested_project_directory(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Creates nested directories for project path."""
+        template = ProjectTemplate(id="test", name="Test")
+        project_path = tmp_path / "a" / "b" / "c" / "project"
+
+        await runner.create_from_template(
+            template, str(project_path), {"name": "project"}
+        )
+
+        assert project_path.exists()
+
+    @pytest.mark.asyncio
+    async def test_creates_files_from_template(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Creates files specified in template."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            files={
+                "README.md": "# Project",
+                ".env": "PORT=3000",
+            },
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(template, str(project_path), {})
+
+        assert (project_path / "README.md").read_text() == "# Project"
+        assert (project_path / ".env").read_text() == "PORT=3000"
+
+    @pytest.mark.asyncio
+    async def test_creates_nested_files(self, runner: TemplateRunner, tmp_path: Path):
+        """Creates files in nested directories."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            files={
+                "src/index.py": "# Entry point",
+                "config/settings.json": '{"debug": true}',
+            },
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(template, str(project_path), {})
+
+        assert (project_path / "src" / "index.py").read_text() == "# Entry point"
+        assert (project_path / "config" / "settings.json").read_text() == '{"debug": true}'
+
+    @pytest.mark.asyncio
+    async def test_substitutes_vars_in_files(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Substitutes variables in file content."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            files={
+                "README.md": "# {{name}}\n\nBy {{author}}",
+            },
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(
+            template, str(project_path), {"name": "MyProject", "author": "Alice"}
+        )
+
+        content = (project_path / "README.md").read_text()
+        assert "# MyProject" in content
+        assert "By Alice" in content
+
+    @pytest.mark.asyncio
+    async def test_creates_plan_md(self, runner: TemplateRunner, tmp_path: Path):
+        """Creates PLAN.md from default_plan."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            default_plan="# Plan for {{name}}\n\n- [ ] Setup",
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(
+            template, str(project_path), {"name": "MyProject"}
+        )
+
+        plan_content = (project_path / "PLAN.md").read_text()
+        assert "# Plan for MyProject" in plan_content
+        assert "- [ ] Setup" in plan_content
+
+    @pytest.mark.asyncio
+    async def test_returns_project_object(self, runner: TemplateRunner, tmp_path: Path):
+        """Returns a properly configured Project object."""
+        template = ProjectTemplate(id="test-template", name="Test")
+        project_path = tmp_path / "my-project"
+
+        project = await runner.create_from_template(
+            template, str(project_path), {"name": "MyProject"}
+        )
+
+        assert isinstance(project, Project)
+        assert project.id == "MyProject"
+        assert project.name == "MyProject"
+        assert project.template_id == "test-template"
+        assert str(project_path.resolve()) in project.path
+
+    @pytest.mark.asyncio
+    async def test_uses_dir_name_when_no_name_provided(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Uses directory name as project name when not provided."""
+        template = ProjectTemplate(id="test", name="Test")
+        project_path = tmp_path / "fallback-name"
+
+        project = await runner.create_from_template(template, str(project_path), {})
+
+        assert project.id == "fallback-name"
+        assert project.name == "fallback-name"
+
+
+class TestSetupScriptExecution:
+    """Test setup script execution during project creation."""
+
+    @pytest.mark.asyncio
+    async def test_runs_setup_script(self, runner: TemplateRunner, tmp_path: Path):
+        """Setup script is executed in project directory."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="echo 'hello' > setup_ran.txt",
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(template, str(project_path), {})
+
+        assert (project_path / "setup_ran.txt").exists()
+        assert "hello" in (project_path / "setup_ran.txt").read_text()
+
+    @pytest.mark.asyncio
+    async def test_substitutes_vars_in_script(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Variables are substituted in setup script."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="echo '{{project_name}}' > name.txt",
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(
+            template, str(project_path), {"project_name": "MyProject"}
+        )
+
+        content = (project_path / "name.txt").read_text().strip()
+        assert content == "MyProject"
+
+    @pytest.mark.asyncio
+    async def test_script_error_raises(self, runner: TemplateRunner, tmp_path: Path):
+        """Failed setup script raises SetupScriptError."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="exit 1",
+        )
+        project_path = tmp_path / "project"
+
+        with pytest.raises(SetupScriptError) as exc_info:
+            await runner.create_from_template(template, str(project_path), {})
+
+        assert exc_info.value.returncode == 1
+
+    @pytest.mark.asyncio
+    async def test_script_error_contains_stderr(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """SetupScriptError contains stderr output."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="echo 'error message' >&2 && exit 1",
+        )
+        project_path = tmp_path / "project"
+
+        with pytest.raises(SetupScriptError) as exc_info:
+            await runner.create_from_template(template, str(project_path), {})
+
+        assert "error message" in exc_info.value.stderr
+
+    @pytest.mark.asyncio
+    async def test_script_runs_in_project_dir(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Setup script runs in the project directory."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="pwd > current_dir.txt",
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(template, str(project_path), {})
+
+        cwd_content = (project_path / "current_dir.txt").read_text().strip()
+        assert cwd_content == str(project_path.resolve())
+
+    @pytest.mark.asyncio
+    async def test_multiline_script(self, runner: TemplateRunner, tmp_path: Path):
+        """Multiline setup scripts work correctly."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="""echo 'line1' > output.txt
+echo 'line2' >> output.txt
+echo 'line3' >> output.txt""",
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(template, str(project_path), {})
+
+        content = (project_path / "output.txt").read_text()
+        assert "line1" in content
+        assert "line2" in content
+        assert "line3" in content
+
+    @pytest.mark.asyncio
+    async def test_no_script_no_error(self, runner: TemplateRunner, tmp_path: Path):
+        """Template without setup script works fine."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script=None,
+        )
+        project_path = tmp_path / "project"
+
+        # Should not raise
+        project = await runner.create_from_template(template, str(project_path), {})
+        assert project is not None

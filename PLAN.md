@@ -54,7 +54,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Template CRUD operations, schema validation, required field checking
   - Acceptance: Can list/add/update/delete templates, validation catches errors
 
-- [ ] **Add template setup script runner** `[pending]`
+- [x] **Add template setup script runner** `[complete]`
   - Spec: specs/config.md#running-setup-scripts
   - Scope: Execute template setup scripts during project creation with variable substitution
   - Acceptance: Scripts run in project directory, variables substituted, errors handled
