@@ -585,7 +585,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 21: Path Traversal Security (High)
 
-- [ ] **Add centralized path validation utility** `[pending]`
+- [x] **Add centralized path validation utility** `[complete]`
   - Scope: Create utility function to validate paths stay within project directory
   - Location: New file iterm_controller/security.py
   - Function: `validate_path_in_project(path: Path, project_root: Path) -> bool`
