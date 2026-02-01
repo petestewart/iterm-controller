@@ -155,7 +155,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Display Planning → Execute → Review → PR → Done stages
   - Acceptance: Current stage highlighted, progress visible
 
-- [ ] **Implement task progress aggregation** `[pending]`
+- [x] **Implement task progress aggregation** `[complete]`
   - Spec: specs/models.md#task-models
   - Scope: Calculate task completion percentages per phase and overall
   - Acceptance: Dashboard shows accurate progress stats (e.g., "3/5 tasks complete")
