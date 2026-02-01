@@ -61,7 +61,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 2: iTerm2 Integration
 
-- [ ] **Establish iTerm2 connection** `[pending]`
+- [x] **Establish iTerm2 connection** `[complete]`
   - Spec: specs/iterm.md#connection-management
   - Scope: Connect to iTerm2 Python API, handle connection lifecycle
   - Acceptance: Can connect, verify iTerm2 version, gracefully handle disconnection
