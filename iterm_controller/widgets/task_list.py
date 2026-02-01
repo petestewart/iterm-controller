@@ -1,1 +1,345 @@
-"""PLAN.md task display with dependencies."""
+"""Task list widget with phases and dependencies.
+
+Displays tasks from PLAN.md grouped by phases with status indicators
+and dependency-based blocked state rendering.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Iterable
+
+from rich.text import Text
+from textual.widgets import Static
+
+from iterm_controller.models import Phase, Plan, Task, TaskStatus
+from iterm_controller.state import PlanReloaded, TaskStatusChanged
+
+if TYPE_CHECKING:
+    pass
+
+
+class TaskListWidget(Static):
+    """Displays tasks with phases and dependencies.
+
+    This widget shows all tasks from a PLAN.md file organized by phase:
+    - ✓ Complete: Task is finished
+    - ● In Progress: Task is currently being worked on
+    - ○ Pending: Task is waiting to be started
+    - ⊖ Skipped: Task was skipped
+    - ⊘ Blocked: Task is blocked by incomplete dependencies
+
+    Phases are collapsible and show completion progress (e.g., "3/4").
+    Blocked tasks are dimmed and show "blocked by X, Y" suffix.
+
+    Example display:
+        ▼ Phase 1: Setup                    3/4
+          ✓ 1.1 Create package         Done
+          ✓ 1.2 Add models             Done
+          ● 1.3 Add API           In Progress
+          ○ 1.4 Add tests           Pending
+        ▼ Phase 2: Features                 0/2
+          ⊘ 2.1 Add auth        blocked by 1.3
+          ⊘ 2.2 Add login       blocked by 2.1
+    """
+
+    DEFAULT_CSS = """
+    TaskListWidget {
+        height: auto;
+        min-height: 3;
+        padding: 0 1;
+    }
+    """
+
+    STATUS_ICONS = {
+        TaskStatus.PENDING: "○",
+        TaskStatus.IN_PROGRESS: "●",
+        TaskStatus.COMPLETE: "✓",
+        TaskStatus.SKIPPED: "⊖",
+        TaskStatus.BLOCKED: "⊘",
+    }
+
+    STATUS_COLORS = {
+        TaskStatus.PENDING: "white",
+        TaskStatus.IN_PROGRESS: "yellow",
+        TaskStatus.COMPLETE: "green",
+        TaskStatus.SKIPPED: "dim",
+        TaskStatus.BLOCKED: "dim",
+    }
+
+    def __init__(
+        self,
+        plan: Plan | None = None,
+        collapsed_phases: set[str] | None = None,
+        **kwargs,
+    ) -> None:
+        """Initialize the task list widget.
+
+        Args:
+            plan: Initial plan to display.
+            collapsed_phases: Set of phase IDs that should be collapsed.
+            **kwargs: Additional arguments passed to Static.
+        """
+        super().__init__(**kwargs)
+        self._plan = plan or Plan()
+        self._collapsed_phases: set[str] = collapsed_phases or set()
+        self._task_lookup: dict[str, Task] = {}
+        self._rebuild_task_lookup()
+
+    @property
+    def plan(self) -> Plan:
+        """Get the current plan."""
+        return self._plan
+
+    def _rebuild_task_lookup(self) -> None:
+        """Rebuild the task lookup dictionary for dependency resolution."""
+        self._task_lookup = {}
+        for task in self._plan.all_tasks:
+            self._task_lookup[task.id] = task
+
+    def refresh_plan(self, plan: Plan) -> None:
+        """Update the displayed plan.
+
+        Args:
+            plan: New plan to display.
+        """
+        self._plan = plan
+        self._rebuild_task_lookup()
+        self.update(self._render_plan())
+
+    def toggle_phase(self, phase_id: str) -> None:
+        """Toggle collapse state of a phase.
+
+        Args:
+            phase_id: The phase ID to toggle.
+        """
+        if phase_id in self._collapsed_phases:
+            self._collapsed_phases.discard(phase_id)
+        else:
+            self._collapsed_phases.add(phase_id)
+        self.update(self._render_plan())
+
+    def is_task_blocked(self, task: Task) -> bool:
+        """Check if a task is blocked by incomplete dependencies.
+
+        A task is blocked if any of its dependencies are not complete or skipped.
+
+        Args:
+            task: The task to check.
+
+        Returns:
+            True if the task is blocked, False otherwise.
+        """
+        if task.status == TaskStatus.BLOCKED:
+            return True
+        if not task.depends:
+            return False
+        for dep_id in task.depends:
+            dep_task = self._task_lookup.get(dep_id)
+            if dep_task and dep_task.status not in (
+                TaskStatus.COMPLETE,
+                TaskStatus.SKIPPED,
+            ):
+                return True
+        return False
+
+    def get_blocking_tasks(self, task: Task) -> list[str]:
+        """Get the IDs of tasks blocking this task.
+
+        Args:
+            task: The task to check.
+
+        Returns:
+            List of task IDs that are blocking this task.
+        """
+        blockers = []
+        for dep_id in task.depends:
+            dep_task = self._task_lookup.get(dep_id)
+            if dep_task and dep_task.status not in (
+                TaskStatus.COMPLETE,
+                TaskStatus.SKIPPED,
+            ):
+                blockers.append(dep_id)
+        return blockers
+
+    def _get_status_icon(self, status: TaskStatus) -> str:
+        """Get the icon for a given task status.
+
+        Args:
+            status: The task status.
+
+        Returns:
+            Unicode icon representing the status.
+        """
+        return self.STATUS_ICONS.get(status, "○")
+
+    def _get_status_color(self, status: TaskStatus) -> str:
+        """Get the color for a given task status.
+
+        Args:
+            status: The task status.
+
+        Returns:
+            Color name for Rich markup.
+        """
+        return self.STATUS_COLORS.get(status, "white")
+
+    def _render_phase_header(self, phase: Phase) -> Text:
+        """Render a phase header with completion progress.
+
+        Args:
+            phase: The phase to render.
+
+        Returns:
+            Rich Text object for the phase header.
+        """
+        is_collapsed = phase.id in self._collapsed_phases
+        collapse_icon = "▶" if is_collapsed else "▼"
+        completed, total = phase.completion_count
+
+        text = Text()
+        text.append(f"{collapse_icon} ", style="bold")
+        text.append(f"{phase.title}", style="bold")
+
+        # Right-align the progress
+        progress = f"{completed}/{total}"
+        padding = 40 - len(phase.title) - 2  # Account for icon and space
+        if padding > 0:
+            text.append(" " * padding)
+        text.append(progress, style="dim")
+
+        return text
+
+    def _render_task(self, task: Task) -> Text:
+        """Render a single task row.
+
+        Args:
+            task: The task to render.
+
+        Returns:
+            Rich Text object for the task row.
+        """
+        is_blocked = self.is_task_blocked(task)
+        blockers = self.get_blocking_tasks(task) if is_blocked else []
+
+        # Use blocked status if task has incomplete dependencies
+        effective_status = TaskStatus.BLOCKED if is_blocked else task.status
+        icon = self._get_status_icon(effective_status)
+        color = self._get_status_color(effective_status)
+
+        text = Text()
+
+        if is_blocked:
+            # Render entire task line as dimmed
+            text.append(f"  {icon} ", style="dim")
+            text.append(f"{task.id} {task.title}", style="dim")
+            if blockers:
+                blocker_str = ", ".join(blockers)
+                text.append(f"  blocked by {blocker_str}", style="dim italic")
+        else:
+            # Normal rendering
+            text.append(f"  {icon} ", style=color)
+            text.append(f"{task.id} {task.title}")
+
+            # Add status suffix for in-progress tasks
+            if task.status == TaskStatus.IN_PROGRESS:
+                text.append("  ", style="default")
+                text.append("In Progress", style="yellow")
+            elif task.status == TaskStatus.COMPLETE:
+                text.append("  ", style="default")
+                text.append("Done", style="green")
+
+        return text
+
+    def _render_plan(self) -> Text:
+        """Render the entire plan with phases and tasks.
+
+        Returns:
+            Rich Text object containing all phases and tasks.
+        """
+        if not self._plan.phases:
+            return Text("No tasks", style="dim italic")
+
+        lines: list[Text] = []
+
+        for phase in self._plan.phases:
+            # Render phase header
+            lines.append(self._render_phase_header(phase))
+
+            # Render tasks if not collapsed
+            if phase.id not in self._collapsed_phases:
+                for task in phase.tasks:
+                    lines.append(self._render_task(task))
+
+        result = Text()
+        for i, line in enumerate(lines):
+            if i > 0:
+                result.append("\n")
+            result.append_text(line)
+
+        return result
+
+    def render(self) -> Text:
+        """Render the widget content.
+
+        Returns:
+            Rich Text object to display.
+        """
+        return self._render_plan()
+
+    def on_plan_reloaded(self, message: PlanReloaded) -> None:
+        """Handle plan reloaded event.
+
+        Args:
+            message: The plan reloaded message.
+        """
+        self.refresh_plan(message.plan)
+
+    def on_task_status_changed(self, message: TaskStatusChanged) -> None:
+        """Handle task status changed event.
+
+        Args:
+            message: The task status changed message.
+        """
+        # Just re-render, the plan should have been updated
+        self.update(self._render_plan())
+
+    def get_task_by_id(self, task_id: str) -> Task | None:
+        """Get a task by its ID.
+
+        Args:
+            task_id: The task ID to look up.
+
+        Returns:
+            The task if found, None otherwise.
+        """
+        return self._task_lookup.get(task_id)
+
+    def get_pending_tasks(self) -> list[Task]:
+        """Get all pending tasks that are not blocked.
+
+        Returns:
+            List of tasks in PENDING state that have no incomplete dependencies.
+        """
+        return [
+            task
+            for task in self._plan.all_tasks
+            if task.status == TaskStatus.PENDING and not self.is_task_blocked(task)
+        ]
+
+    def get_in_progress_tasks(self) -> list[Task]:
+        """Get all tasks currently in progress.
+
+        Returns:
+            List of tasks in IN_PROGRESS state.
+        """
+        return [
+            task for task in self._plan.all_tasks if task.status == TaskStatus.IN_PROGRESS
+        ]
+
+    def get_blocked_tasks(self) -> list[Task]:
+        """Get all blocked tasks.
+
+        Returns:
+            List of tasks that are blocked by incomplete dependencies.
+        """
+        return [task for task in self._plan.all_tasks if self.is_task_blocked(task)]

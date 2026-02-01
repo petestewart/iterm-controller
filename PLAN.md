@@ -145,7 +145,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Display sessions with status indicators (Working/Waiting/Idle icons)
   - Acceptance: Session status updates reflected in real-time
 
-- [ ] **Build task list widget** `[pending]`
+- [x] **Build task list widget** `[complete]`
   - Spec: specs/ui.md#task-list-widget
   - Scope: Display tasks with phases, dependencies, blocked state dimming
   - Acceptance: Blocked tasks show "blocked by X" and are dimmed
