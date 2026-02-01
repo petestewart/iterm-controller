@@ -277,7 +277,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Test full workflows with mocked iTerm2 API
   - Acceptance: CI passes, core paths covered
 
-- [ ] **Create installation script** `[pending]`
+- [x] **Create installation script** `[complete]`
   - Scope: Script to install dependencies, configure iTerm2 settings
   - Acceptance: New user can get running with single command
 
