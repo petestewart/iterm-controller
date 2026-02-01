@@ -655,7 +655,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - New structure: iterm_controller/iterm/connection.py, spawner.py, terminator.py, tracker.py, layout_spawner.py, layout_manager.py
   - Acceptance: Each module < 300 lines with single responsibility
 
-- [ ] **Refactor AppState into focused state managers** `[pending]`
+- [x] **Refactor AppState into focused state managers** `[complete]`
   - Scope: Split 571-line god class into smaller managers
   - Components: ProjectStateManager, SessionStateManager, PlanStateManager
   - Acceptance: Each manager has single responsibility

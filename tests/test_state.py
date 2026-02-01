@@ -639,3 +639,200 @@ class TestUpdateProjectPersistence:
 
             # In-memory state should still be updated
             assert state.projects["p1"] == project
+
+
+class TestStateManagers:
+    """Tests for the focused state managers."""
+
+    def test_project_manager_load_projects(self) -> None:
+        """Test ProjectStateManager.load_projects()."""
+        from iterm_controller.state.project_manager import ProjectStateManager
+
+        manager = ProjectStateManager()
+        projects = [
+            Project(id="p1", name="Project 1", path="/test1"),
+            Project(id="p2", name="Project 2", path="/test2"),
+        ]
+
+        manager.load_projects(projects)
+
+        assert len(manager.projects) == 2
+        assert "p1" in manager.projects
+        assert "p2" in manager.projects
+        assert manager.projects["p1"].name == "Project 1"
+
+    def test_project_manager_active_project(self) -> None:
+        """Test ProjectStateManager.active_project property."""
+        from iterm_controller.state.project_manager import ProjectStateManager
+
+        manager = ProjectStateManager()
+        project = Project(id="p1", name="Test", path="/test")
+        manager.projects["p1"] = project
+
+        # Initially no active project
+        assert manager.active_project is None
+
+        # Set active project
+        manager.active_project_id = "p1"
+        assert manager.active_project == project
+
+    def test_session_manager_operations(self) -> None:
+        """Test SessionStateManager add/remove/update operations."""
+        from iterm_controller.state.session_manager import SessionStateManager
+
+        manager = SessionStateManager()
+        session = ManagedSession(
+            id="s1",
+            template_id="t1",
+            project_id="p1",
+            tab_id="tab1",
+            attention_state=AttentionState.IDLE,
+        )
+
+        # Add session
+        manager.add_session(session)
+        assert "s1" in manager.sessions
+        assert manager.has_active_sessions  # Default is_active=True
+
+        # Update session status
+        manager.update_session_status("s1", attention_state=AttentionState.WAITING)
+        assert manager.sessions["s1"].attention_state == AttentionState.WAITING
+
+        # Remove session
+        manager.remove_session("s1")
+        assert "s1" not in manager.sessions
+
+    def test_session_manager_get_sessions_for_project(self) -> None:
+        """Test SessionStateManager.get_sessions_for_project()."""
+        from iterm_controller.state.session_manager import SessionStateManager
+
+        manager = SessionStateManager()
+
+        session1 = ManagedSession(id="s1", template_id="t1", project_id="p1", tab_id="t1")
+        session2 = ManagedSession(id="s2", template_id="t2", project_id="p1", tab_id="t2")
+        session3 = ManagedSession(id="s3", template_id="t3", project_id="p2", tab_id="t3")
+
+        manager.sessions["s1"] = session1
+        manager.sessions["s2"] = session2
+        manager.sessions["s3"] = session3
+
+        p1_sessions = manager.get_sessions_for_project("p1")
+        assert len(p1_sessions) == 2
+        assert session1 in p1_sessions
+        assert session2 in p1_sessions
+
+    def test_plan_manager_operations(self) -> None:
+        """Test PlanStateManager plan operations."""
+        from iterm_controller.state.plan_manager import PlanStateManager
+
+        manager = PlanStateManager()
+        plan = Plan()
+
+        # Set and get plan
+        manager.set_plan("p1", plan)
+        assert manager.get_plan("p1") is plan
+        assert manager.get_plan("nonexistent") is None
+
+    def test_plan_manager_test_plan_operations(self) -> None:
+        """Test PlanStateManager test plan operations."""
+        from iterm_controller.models import TestPlan
+        from iterm_controller.state.plan_manager import PlanStateManager
+
+        manager = PlanStateManager()
+        test_plan = TestPlan()
+
+        # Set and get test plan
+        manager.set_test_plan("p1", test_plan)
+        assert manager.get_test_plan("p1") is test_plan
+
+        # Clear test plan
+        manager.clear_test_plan("p1")
+        assert manager.get_test_plan("p1") is None
+
+    def test_health_manager_operations(self) -> None:
+        """Test HealthStateManager operations."""
+        from iterm_controller.state.health_manager import HealthStateManager
+
+        manager = HealthStateManager()
+
+        # Update health status
+        manager.update_health_status("p1", "api", HealthStatus.HEALTHY)
+        manager.update_health_status("p1", "db", HealthStatus.UNHEALTHY)
+
+        # Get health statuses
+        statuses = manager.get_health_statuses("p1")
+        assert statuses["api"] == HealthStatus.HEALTHY
+        assert statuses["db"] == HealthStatus.UNHEALTHY
+
+        # Clear health statuses
+        manager.clear_health_statuses("p1")
+        assert manager.get_health_statuses("p1") == {}
+
+    def test_app_state_composes_managers(self) -> None:
+        """Test that AppState properly composes the state managers."""
+        state = AppState()
+
+        # Access through AppState should work
+        project = Project(id="p1", name="Test", path="/test")
+        state.projects["p1"] = project
+
+        session = ManagedSession(
+            id="s1", template_id="t1", project_id="p1", tab_id="tab1"
+        )
+        state.add_session(session)
+
+        plan = Plan()
+        state.set_plan("p1", plan)
+
+        state.update_health_status("p1", "api", HealthStatus.HEALTHY)
+
+        # Verify all data is accessible
+        assert state.projects["p1"] == project
+        assert state.sessions["s1"] == session
+        assert state.get_plan("p1") is plan
+        assert state.get_health_statuses("p1")["api"] == HealthStatus.HEALTHY
+
+    def test_state_snapshot_with_managers(self) -> None:
+        """Test that to_snapshot() works correctly with composed managers."""
+        state = AppState()
+
+        project = Project(id="p1", name="Test", path="/test")
+        state.projects["p1"] = project
+        state.active_project_id = "p1"
+
+        session = ManagedSession(
+            id="s1", template_id="t1", project_id="p1", tab_id="tab1"
+        )
+        state.add_session(session)
+
+        plan = Plan()
+        state.set_plan("p1", plan)
+
+        state.update_health_status("p1", "api", HealthStatus.HEALTHY)
+
+        # Create snapshot
+        snapshot = state.to_snapshot()
+
+        assert snapshot.projects["p1"] == project
+        assert snapshot.active_project_id == "p1"
+        assert snapshot.sessions["s1"] == session
+        assert snapshot.plans["p1"] is plan
+        assert snapshot.health_statuses["p1"]["api"] == HealthStatus.HEALTHY
+
+    def test_manager_emit_callback_integration(self) -> None:
+        """Test that manager emit callbacks properly dispatch to subscribers."""
+        state = AppState()
+        received_events = []
+
+        def callback(**kwargs):
+            received_events.append(kwargs)
+
+        state.subscribe(StateEvent.SESSION_SPAWNED, callback)
+
+        session = ManagedSession(
+            id="s1", template_id="t1", project_id="p1", tab_id="tab1"
+        )
+        state.add_session(session)
+
+        assert len(received_events) == 1
+        assert received_events[0]["session"] is session
