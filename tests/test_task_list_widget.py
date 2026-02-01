@@ -1,5 +1,7 @@
 """Tests for the TaskListWidget."""
 
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -551,3 +553,187 @@ class TestHelperMethods:
         blocked_tasks = widget.get_blocked_tasks()
 
         assert blocked_tasks == []
+
+
+class TestSpecValidation:
+    """Tests for spec reference validation in task list."""
+
+    def test_init_without_project_path(self) -> None:
+        """Test widget initializes without project path."""
+        widget = TaskListWidget()
+
+        assert widget.project_path is None
+        assert widget._spec_validations == {}
+
+    def test_init_with_project_path(self, tmp_path) -> None:
+        """Test widget initializes with project path."""
+        widget = TaskListWidget(project_path=str(tmp_path))
+
+        assert widget.project_path == str(tmp_path)
+
+    def test_set_project_path_triggers_validation(self, tmp_path) -> None:
+        """Test setting project path triggers spec validation."""
+        # Create spec file
+        spec_file = tmp_path / "specs" / "auth.md"
+        spec_file.parent.mkdir(parents=True)
+        spec_file.write_text("# Auth Spec\nContent")
+
+        # Create task with spec ref
+        task = Task(id="1.1", title="Task", spec_ref="specs/auth.md")
+        phase = make_phase(tasks=[task])
+        plan = make_plan(phases=[phase])
+        widget = TaskListWidget(plan=plan)
+
+        with patch.object(widget, "update"):
+            widget.set_project_path(str(tmp_path))
+
+        assert widget.project_path == str(tmp_path)
+        validation = widget.get_spec_validation("1.1")
+        assert validation is not None
+        assert validation.valid is True
+
+    def test_refresh_plan_validates_specs(self, tmp_path) -> None:
+        """Test refreshing plan validates spec references."""
+        # Create spec file
+        spec_file = tmp_path / "specs" / "auth.md"
+        spec_file.parent.mkdir(parents=True)
+        spec_file.write_text("# Auth Spec\nContent")
+
+        # Create task with spec ref
+        task = Task(id="1.1", title="Task", spec_ref="specs/auth.md")
+        phase = make_phase(tasks=[task])
+        plan = make_plan(phases=[phase])
+
+        widget = TaskListWidget()
+        with patch.object(widget, "update"):
+            widget.refresh_plan(plan, project_path=str(tmp_path))
+
+        validation = widget.get_spec_validation("1.1")
+        assert validation is not None
+        assert validation.valid is True
+
+    def test_missing_file_shows_warning(self, tmp_path) -> None:
+        """Test missing spec file is detected."""
+        task = Task(id="1.1", title="Task", spec_ref="specs/missing.md")
+        phase = make_phase(tasks=[task])
+        plan = make_plan(phases=[phase])
+        widget = TaskListWidget(plan=plan)
+
+        with patch.object(widget, "update"):
+            widget.set_project_path(str(tmp_path))
+
+        validation = widget.get_spec_validation("1.1")
+        assert validation is not None
+        assert validation.valid is False
+        assert validation.error_message == "File not found"
+
+    def test_missing_anchor_shows_warning(self, tmp_path) -> None:
+        """Test missing anchor is detected."""
+        # Create spec file without the expected section
+        spec_file = tmp_path / "specs" / "auth.md"
+        spec_file.parent.mkdir(parents=True)
+        spec_file.write_text("# Auth Spec\nContent")
+
+        task = Task(id="1.1", title="Task", spec_ref="specs/auth.md#login")
+        phase = make_phase(tasks=[task])
+        plan = make_plan(phases=[phase])
+        widget = TaskListWidget(plan=plan)
+
+        with patch.object(widget, "update"):
+            widget.set_project_path(str(tmp_path))
+
+        validation = widget.get_spec_validation("1.1")
+        assert validation is not None
+        assert validation.valid is False
+        assert "Section 'login' not found" in validation.error_message
+
+    def test_render_task_shows_spec_warning(self, tmp_path) -> None:
+        """Test task rendering includes spec warning indicator."""
+        task = Task(id="1.1", title="Task", spec_ref="specs/missing.md")
+        phase = make_phase(tasks=[task])
+        plan = make_plan(phases=[phase])
+        widget = TaskListWidget(plan=plan, project_path=str(tmp_path))
+
+        text = widget._render_task(task)
+
+        # Should include warning indicator and error message
+        text_str = str(text)
+        assert "⚠" in text_str
+        assert "File not found" in text_str
+
+    def test_render_task_no_warning_when_valid(self, tmp_path) -> None:
+        """Test task rendering has no warning for valid spec."""
+        # Create spec file
+        spec_file = tmp_path / "specs" / "auth.md"
+        spec_file.parent.mkdir(parents=True)
+        spec_file.write_text("# Auth Spec\nContent")
+
+        task = Task(id="1.1", title="Task", spec_ref="specs/auth.md")
+        phase = make_phase(tasks=[task])
+        plan = make_plan(phases=[phase])
+        widget = TaskListWidget(plan=plan, project_path=str(tmp_path))
+
+        text = widget._render_task(task)
+
+        # Should NOT include warning indicator
+        assert "⚠" not in str(text)
+
+    def test_get_tasks_with_spec_warnings(self, tmp_path) -> None:
+        """Test getting tasks with spec validation warnings."""
+        # Create one valid spec
+        spec_file = tmp_path / "specs" / "valid.md"
+        spec_file.parent.mkdir(parents=True)
+        spec_file.write_text("# Valid Spec\nContent")
+
+        tasks = [
+            Task(id="1.1", title="Valid", spec_ref="specs/valid.md"),
+            Task(id="1.2", title="Missing", spec_ref="specs/missing.md"),
+            Task(id="1.3", title="No Spec"),  # No spec_ref
+        ]
+        phase = make_phase(tasks=tasks)
+        plan = make_plan(phases=[phase])
+        widget = TaskListWidget(plan=plan, project_path=str(tmp_path))
+
+        warnings = widget.get_tasks_with_spec_warnings()
+
+        assert len(warnings) == 1
+        assert warnings[0][0].id == "1.2"
+        assert warnings[0][1].error_message == "File not found"
+
+    def test_has_spec_warnings(self, tmp_path) -> None:
+        """Test checking if any tasks have spec warnings."""
+        task = Task(id="1.1", title="Task", spec_ref="specs/missing.md")
+        phase = make_phase(tasks=[task])
+        plan = make_plan(phases=[phase])
+        widget = TaskListWidget(plan=plan, project_path=str(tmp_path))
+
+        assert widget.has_spec_warnings() is True
+
+    def test_no_spec_warnings(self, tmp_path) -> None:
+        """Test no warnings when all specs are valid."""
+        # Create spec file
+        spec_file = tmp_path / "specs" / "auth.md"
+        spec_file.parent.mkdir(parents=True)
+        spec_file.write_text("# Auth Spec\nContent")
+
+        task = Task(id="1.1", title="Task", spec_ref="specs/auth.md")
+        phase = make_phase(tasks=[task])
+        plan = make_plan(phases=[phase])
+        widget = TaskListWidget(plan=plan, project_path=str(tmp_path))
+
+        assert widget.has_spec_warnings() is False
+
+    def test_clearing_project_path_clears_validations(self, tmp_path) -> None:
+        """Test setting project path to None clears validations."""
+        task = Task(id="1.1", title="Task", spec_ref="specs/missing.md")
+        phase = make_phase(tasks=[task])
+        plan = make_plan(phases=[phase])
+        widget = TaskListWidget(plan=plan, project_path=str(tmp_path))
+
+        # Should have validation
+        assert widget.has_spec_warnings() is True
+
+        with patch.object(widget, "update"):
+            widget.set_project_path(None)
+
+        assert widget._spec_validations == {}

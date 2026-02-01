@@ -1,17 +1,19 @@
 """Task list widget with phases and dependencies.
 
 Displays tasks from PLAN.md grouped by phases with status indicators
-and dependency-based blocked state rendering.
+and dependency-based blocked state rendering. Also validates spec
+references and shows warnings for missing files/sections.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING
 
 from rich.text import Text
 from textual.widgets import Static
 
 from iterm_controller.models import Phase, Plan, Task, TaskStatus
+from iterm_controller.spec_validator import SpecValidationResult, validate_spec_ref
 from iterm_controller.state import PlanReloaded, TaskStatusChanged
 
 if TYPE_CHECKING:
@@ -70,6 +72,7 @@ class TaskListWidget(Static):
         self,
         plan: Plan | None = None,
         collapsed_phases: set[str] | None = None,
+        project_path: str | None = None,
         **kwargs,
     ) -> None:
         """Initialize the task list widget.
@@ -77,18 +80,42 @@ class TaskListWidget(Static):
         Args:
             plan: Initial plan to display.
             collapsed_phases: Set of phase IDs that should be collapsed.
+            project_path: Project root path for spec validation.
             **kwargs: Additional arguments passed to Static.
         """
         super().__init__(**kwargs)
         self._plan = plan or Plan()
         self._collapsed_phases: set[str] = collapsed_phases or set()
         self._task_lookup: dict[str, Task] = {}
+        self._project_path: str | None = project_path
+        self._spec_validations: dict[str, SpecValidationResult] = {}
         self._rebuild_task_lookup()
+        # Validate specs if project path is provided
+        if self._project_path:
+            self._validate_all_specs()
 
     @property
     def plan(self) -> Plan:
         """Get the current plan."""
         return self._plan
+
+    @property
+    def project_path(self) -> str | None:
+        """Get the project path for spec validation."""
+        return self._project_path
+
+    def set_project_path(self, path: str | None) -> None:
+        """Set the project path for spec validation.
+
+        Args:
+            path: Project root path, or None to disable validation.
+        """
+        self._project_path = path
+        if path:
+            self._validate_all_specs()
+        else:
+            self._spec_validations.clear()
+        self.update(self._render_plan())
 
     def _rebuild_task_lookup(self) -> None:
         """Rebuild the task lookup dictionary for dependency resolution."""
@@ -96,14 +123,46 @@ class TaskListWidget(Static):
         for task in self._plan.all_tasks:
             self._task_lookup[task.id] = task
 
-    def refresh_plan(self, plan: Plan) -> None:
+    def _validate_all_specs(self) -> None:
+        """Validate all spec references in the current plan."""
+        self._spec_validations.clear()
+        if not self._project_path:
+            return
+
+        for task in self._plan.all_tasks:
+            if task.spec_ref:
+                self._spec_validations[task.id] = validate_spec_ref(
+                    self._project_path, task.spec_ref
+                )
+
+    def get_spec_validation(self, task_id: str) -> SpecValidationResult | None:
+        """Get the spec validation result for a task.
+
+        Args:
+            task_id: The task ID to look up.
+
+        Returns:
+            The validation result, or None if no spec_ref or not validated.
+        """
+        return self._spec_validations.get(task_id)
+
+    def refresh_plan(self, plan: Plan, project_path: str | None = None) -> None:
         """Update the displayed plan.
 
         Args:
             plan: New plan to display.
+            project_path: Project root path for spec validation. If None,
+                uses the previously set project path.
         """
         self._plan = plan
         self._rebuild_task_lookup()
+
+        # Update project path if provided
+        if project_path is not None:
+            self._project_path = project_path
+
+        # Validate specs
+        self._validate_all_specs()
         self.update(self._render_plan())
 
     def toggle_phase(self, phase_id: str) -> None:
@@ -226,6 +285,10 @@ class TaskListWidget(Static):
         icon = self._get_status_icon(effective_status)
         color = self._get_status_color(effective_status)
 
+        # Check for spec validation issues
+        spec_validation = self._spec_validations.get(task.id)
+        has_spec_warning = spec_validation is not None and not spec_validation.valid
+
         text = Text()
 
         if is_blocked:
@@ -247,6 +310,12 @@ class TaskListWidget(Static):
             elif task.status == TaskStatus.COMPLETE:
                 text.append("  ", style="default")
                 text.append("Done", style="green")
+
+        # Add spec warning if applicable
+        if has_spec_warning and spec_validation:
+            text.append("  ")
+            text.append("⚠", style="bold yellow")
+            text.append(f" ({spec_validation.error_message})", style="dim yellow")
 
         return text
 
@@ -343,3 +412,26 @@ class TaskListWidget(Static):
             List of tasks that are blocked by incomplete dependencies.
         """
         return [task for task in self._plan.all_tasks if self.is_task_blocked(task)]
+
+    def get_tasks_with_spec_warnings(self) -> list[tuple[Task, SpecValidationResult]]:
+        """Get all tasks that have spec validation warnings.
+
+        Returns:
+            List of (task, validation_result) tuples for tasks with invalid spec refs.
+        """
+        result = []
+        for task in self._plan.all_tasks:
+            validation = self._spec_validations.get(task.id)
+            if validation and not validation.valid:
+                result.append((task, validation))
+        return result
+
+    def has_spec_warnings(self) -> bool:
+        """Check if any tasks have spec validation warnings.
+
+        Returns:
+            True if any tasks have invalid spec references.
+        """
+        return any(
+            not v.valid for v in self._spec_validations.values()
+        )

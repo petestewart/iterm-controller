@@ -382,9 +382,14 @@ class ProjectDashboardScreen(Screen):
     def on_plan_reloaded(self, event: PlanReloaded) -> None:
         """Handle plan reloaded event."""
         if event.project_id == self.project_id:
-            # Update task list widget directly
+            app: ItermControllerApp = self.app  # type: ignore[assignment]
+            project = app.state.projects.get(self.project_id)
+
+            # Update task list widget directly with project path for spec validation
             task_widget = self.query_one("#tasks", TaskListWidget)
-            task_widget.refresh_plan(event.plan)
+            project_path = project.path if project else None
+            task_widget.refresh_plan(event.plan, project_path=project_path)
+
             # Update progress widget
             progress_widget = self.query_one("#task-progress", TaskProgressWidget)
             progress_widget.refresh_plan(event.plan)
@@ -428,12 +433,14 @@ class ProjectDashboardScreen(Screen):
         """Refresh the task list display."""
         app: ItermControllerApp = self.app  # type: ignore[assignment]
         plan = app.state.get_plan(self.project_id)
+        project = app.state.projects.get(self.project_id)
 
         task_widget = self.query_one("#tasks", TaskListWidget)
         progress_widget = self.query_one("#task-progress", TaskProgressWidget)
 
         if plan:
-            task_widget.refresh_plan(plan)
+            project_path = project.path if project else None
+            task_widget.refresh_plan(plan, project_path=project_path)
             progress_widget.refresh_plan(plan)
 
     async def _refresh_health(self) -> None:

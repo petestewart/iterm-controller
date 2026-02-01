@@ -260,7 +260,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 10: Polish & Validation
 
-- [ ] **Add spec file validation** `[pending]`
+- [x] **Add spec file validation** `[complete]`
   - Spec: specs/README.md#spec-file-validation
   - Scope: Validate spec references in tasks, show warnings for missing files
   - Acceptance: Invalid refs show warning indicator in task list
