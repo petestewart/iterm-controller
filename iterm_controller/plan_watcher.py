@@ -18,7 +18,7 @@ from .models import Plan, TaskStatus
 from .plan_parser import PlanParser
 
 if TYPE_CHECKING:
-    pass
+    from .screens.modals import PlanConflictModal
 
 
 class StateEvent(Enum):
@@ -310,3 +310,41 @@ class PlanWatcher:
         This just clears any queued reload without changing the plan.
         """
         self.queued_reload = None
+
+    def create_conflict_modal(
+        self,
+        new_plan: Plan,
+        changes: list[PlanChange],
+    ) -> "PlanConflictModal":
+        """Create a conflict resolution modal.
+
+        Args:
+            new_plan: The newly parsed plan from disk
+            changes: List of detected changes
+
+        Returns:
+            A PlanConflictModal instance ready to be pushed onto the app
+        """
+        from .screens.modals import PlanConflictModal
+
+        if self.plan is None:
+            raise ValueError("Cannot create conflict modal without current plan")
+
+        return PlanConflictModal(
+            current_plan=self.plan,
+            new_plan=new_plan,
+            changes=changes,
+        )
+
+    def handle_conflict_resolution(self, result: str, new_plan: Plan) -> None:
+        """Handle the result of the conflict resolution modal.
+
+        Args:
+            result: The modal result ("reload", "keep", or "later")
+            new_plan: The new plan that was in conflict
+        """
+        if result == "reload":
+            self.accept_external_changes(new_plan)
+        elif result == "keep":
+            self.keep_current()
+        # "later" means do nothing - the modal was dismissed without action

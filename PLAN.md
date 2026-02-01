@@ -118,7 +118,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Use watchfiles to detect external changes, trigger reload/conflict resolution
   - Acceptance: External edits detected within 1 second
 
-- [ ] **Implement conflict resolution UI** `[pending]`
+- [x] **Implement conflict resolution UI** `[complete]`
   - Spec: specs/plan-parser.md#conflict-resolution
   - Scope: Show diff and prompt for reload/keep decision
   - Acceptance: Modal displays changes, user can choose action
