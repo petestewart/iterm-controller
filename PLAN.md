@@ -520,7 +520,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Find/replace all usages across codebase
   - Acceptance: No shadowing of Python's built-in `ConnectionError`
 
-- [ ] **Fix callable type hint to Callable** `[pending]`
+- [x] **Fix callable type hint to Callable** `[complete]`
   - Scope: Change `-> callable` to proper `-> Callable[[re.Match[str]], str]` return type
   - Location: iterm_controller/plan_parser.py:278
   - Fix: Import `Callable` from typing, use correct generic type

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from pathlib import Path
 
 from .exceptions import PlanParseError, PlanWriteError, record_error
@@ -275,7 +276,7 @@ class PlanUpdater:
         phase_content = content[phase_start:phase_end]
 
         # Create a replacer function that tracks task count
-        def make_replacer() -> callable:
+        def make_replacer() -> Callable[[re.Match[str]], str]:
             count = [0]  # Use list for mutable closure
 
             def replacer(match: re.Match[str]) -> str:
