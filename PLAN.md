@@ -556,7 +556,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Functions: spawn_session, kill_session, open_project, claim_task, toggle_test_step, etc.
   - Acceptance: All 28 UI actions have programmatic equivalents
 
-- [ ] **Add CLI subcommands for headless operation** `[pending]`
+- [x] **Add CLI subcommands for headless operation** `[complete]`
   - Scope: Add argparse subparsers to __main__.py for command-line operations
   - Depends: Phase 20 task 1
   - Commands: spawn, kill, list-projects, list-sessions, task claim, task done
