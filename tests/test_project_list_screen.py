@@ -1,16 +1,23 @@
 """Tests for the Project List screen."""
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from iterm_controller.app import ItermControllerApp
 from iterm_controller.models import (
+    AppConfig,
     Project,
 )
 from iterm_controller.screens.project_list import ProjectListScreen
 from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 from iterm_controller.screens.new_project import NewProjectScreen
+
+
+# Empty config fixture for isolated tests
+def get_empty_config():
+    """Return an empty AppConfig for testing."""
+    return AppConfig()
 
 
 def make_project(
@@ -49,167 +56,203 @@ class TestProjectListScreenAsync:
 
     async def test_screen_shows_empty_message_when_no_projects(self) -> None:
         """Test that screen shows helpful message when no projects exist."""
-        app = ItermControllerApp()
-        async with app.run_test() as pilot:
-            # Navigate to project list
-            await pilot.press("p")
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
 
-            # Should be on ProjectListScreen
-            assert isinstance(app.screen, ProjectListScreen)
+                # Should be on ProjectListScreen
+                assert isinstance(app.screen, ProjectListScreen)
 
-            # Empty message should be visible when no projects
-            empty_message = app.screen.query_one("#empty-message")
-            assert empty_message.display is True
+                # Empty message should be visible when no projects
+                empty_message = app.screen.query_one("#empty-message")
+                assert empty_message.display is True
 
     async def test_screen_displays_projects(self) -> None:
         """Test that screen displays projects from state."""
-        app = ItermControllerApp()
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
 
-        # Add a project to state before running
-        project = make_project()
-        app.state.projects[project.id] = project
-
-        async with app.run_test() as pilot:
-            # Navigate to project list
-            await pilot.press("p")
-
-            assert isinstance(app.screen, ProjectListScreen)
-
-            # Table should be visible
-            table = app.screen.query_one("#project-table")
-            assert table.display is True
-
-            # Empty message should be hidden
-            empty_message = app.screen.query_one("#empty-message")
-            assert empty_message.display is False
-
-    async def test_screen_shows_project_details(self) -> None:
-        """Test that screen shows project name, path, session count, and status."""
-        app = ItermControllerApp()
-
-        # Add project
-        project = make_project(name="My Project", path="/path/to/project")
-        app.state.projects[project.id] = project
-
-        async with app.run_test() as pilot:
-            await pilot.press("p")
-
-            assert isinstance(app.screen, ProjectListScreen)
-
-            # Table should have the project data
-            table = app.screen.query_one("#project-table")
-            assert table.row_count == 1
-
-    async def test_open_project_navigates_to_dashboard(self) -> None:
-        """Test that opening a project pushes ProjectDashboardScreen."""
-        app = ItermControllerApp()
-
-        # Add project
-        project = make_project()
-        app.state.projects[project.id] = project
-
-        async with app.run_test() as pilot:
-            # Navigate to project list
-            await pilot.press("p")
-
-            assert isinstance(app.screen, ProjectListScreen)
-
-            # Call the action directly to avoid async timing issues
-            screen = app.screen
-            assert isinstance(screen, ProjectListScreen)
-
-            # Verify the action can get the project ID
-            project_id = screen._get_selected_project_id()
-            assert project_id == project.id
-
-            # Verify the action implementation is correct by checking it would push the screen
-            # We can't easily test the full flow because ProjectDashboardScreen has
-            # dependencies on state (plans, sessions) that require more setup
-
-    async def test_open_project_marks_project_open(self) -> None:
-        """Test that opening a project sets is_open to True via state."""
-        app = ItermControllerApp()
-
-        # Add project
-        project = make_project(is_open=False)
-        app.state.projects[project.id] = project
-
-        async with app.run_test():
-            # Directly call open_project on state (which is what the action does)
-            await app.state.open_project(project.id)
-
-            # Project should be marked as open
-            assert app.state.projects[project.id].is_open is True
-            assert app.state.active_project_id == project.id
-
-    async def test_new_project_navigates_to_new_project_screen(self) -> None:
-        """Test that pressing 'n' opens the new project screen."""
-        app = ItermControllerApp()
-        async with app.run_test() as pilot:
-            # Navigate to project list
-            await pilot.press("p")
-
-            # Press 'n' for new project
-            await pilot.press("n")
-
-            # Should be on NewProjectScreen
-            assert isinstance(app.screen, NewProjectScreen)
-
-    async def test_delete_requires_project_to_be_closed(self) -> None:
-        """Test that delete shows error for open projects."""
-        app = ItermControllerApp()
-
-        # Add a closed project (delete should work differently for open ones)
-        project = make_project(is_open=False)
-        app.state.projects[project.id] = project
-
-        async with app.run_test() as pilot:
-            # Navigate to project list
-            await pilot.press("p")
-
-            # Try to delete - should show notification (not implemented yet)
-            await pilot.press("d")
-
-            # Project should still exist (delete not implemented yet)
-            assert project.id in app.state.projects
-
-    async def test_refresh_updates_table(self) -> None:
-        """Test that pressing 'r' refreshes the table."""
-        app = ItermControllerApp()
-
-        async with app.run_test() as pilot:
-            # Navigate to project list
-            await pilot.press("p")
-
-            assert isinstance(app.screen, ProjectListScreen)
-
-            # Add a project after the screen is mounted
+            # Add a project to state before running
             project = make_project()
             app.state.projects[project.id] = project
 
-            # Press 'r' to refresh
-            await pilot.press("r")
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
 
-            # Table should now have the project
-            table = app.screen.query_one("#project-table")
-            assert table.row_count == 1
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Table should be visible
+                table = app.screen.query_one("#project-table")
+                assert table.display is True
+
+                # Empty message should be hidden
+                empty_message = app.screen.query_one("#empty-message")
+                assert empty_message.display is False
+
+    async def test_screen_shows_project_details(self) -> None:
+        """Test that screen shows project name, path, session count, and status."""
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add project
+            project = make_project(name="My Project", path="/path/to/project")
+            app.state.projects[project.id] = project
+
+            async with app.run_test() as pilot:
+                await pilot.press("p")
+
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Table should have the project data
+                table = app.screen.query_one("#project-table")
+                assert table.row_count == 1
+
+    async def test_open_project_navigates_to_dashboard(self) -> None:
+        """Test that opening a project pushes ProjectDashboardScreen."""
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add project
+            project = make_project()
+            app.state.projects[project.id] = project
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Call the action directly to avoid async timing issues
+                screen = app.screen
+                assert isinstance(screen, ProjectListScreen)
+
+                # Verify the action can get the project ID
+                project_id = screen._get_selected_project_id()
+                assert project_id == project.id
+
+                # Verify the action implementation is correct by checking it would push the screen
+                # We can't easily test the full flow because ProjectDashboardScreen has
+                # dependencies on state (plans, sessions) that require more setup
+
+    async def test_open_project_marks_project_open(self) -> None:
+        """Test that opening a project sets is_open to True via state."""
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add project
+            project = make_project(is_open=False)
+            app.state.projects[project.id] = project
+
+            async with app.run_test():
+                # Directly call open_project on state (which is what the action does)
+                await app.state.open_project(project.id)
+
+                # Project should be marked as open
+                assert app.state.projects[project.id].is_open is True
+                assert app.state.active_project_id == project.id
+
+    async def test_new_project_navigates_to_new_project_screen(self) -> None:
+        """Test that pressing 'n' opens the new project screen."""
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+
+                # Press 'n' for new project
+                await pilot.press("n")
+
+                # Should be on NewProjectScreen
+                assert isinstance(app.screen, NewProjectScreen)
+
+    async def test_delete_requires_project_to_be_closed(self) -> None:
+        """Test that delete shows error for open projects."""
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            # Add a closed project (delete should work differently for open ones)
+            project = make_project(is_open=False)
+            app.state.projects[project.id] = project
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+
+                # Try to delete - should show notification (not implemented yet)
+                await pilot.press("d")
+
+                # Project should still exist (delete not implemented yet)
+                assert project.id in app.state.projects
+
+    async def test_refresh_updates_table(self) -> None:
+        """Test that pressing 'r' refreshes the table."""
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
+
+                assert isinstance(app.screen, ProjectListScreen)
+
+                # Add a project after the screen is mounted
+                project = make_project()
+                app.state.projects[project.id] = project
+
+                # Press 'r' to refresh
+                await pilot.press("r")
+
+                # Table should now have the project
+                table = app.screen.query_one("#project-table")
+                assert table.row_count == 1
 
     async def test_escape_returns_to_previous_screen(self) -> None:
         """Test that pressing 'escape' pops the screen."""
-        app = ItermControllerApp()
-        async with app.run_test() as pilot:
-            # Navigate to project list
-            await pilot.press("p")
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                # Navigate to project list
+                await pilot.press("p")
 
-            assert isinstance(app.screen, ProjectListScreen)
+                assert isinstance(app.screen, ProjectListScreen)
 
-            # Press escape to go back
-            await pilot.press("escape")
+                # Press escape to go back
+                await pilot.press("escape")
 
-            # Should be back on control room
-            from iterm_controller.screens.control_room import ControlRoomScreen
+                # Should be back on control room
+                from iterm_controller.screens.control_room import ControlRoomScreen
 
-            assert isinstance(app.screen, ControlRoomScreen)
+                assert isinstance(app.screen, ControlRoomScreen)
 
     async def test_truncate_path_short_path(self) -> None:
         """Test that short paths are not truncated."""
@@ -233,58 +276,66 @@ class TestProjectListWithMultipleProjects:
 
     async def test_displays_multiple_projects(self) -> None:
         """Test that all projects are displayed."""
-        app = ItermControllerApp()
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
 
-        # Add multiple projects
-        project1 = make_project(project_id="p1", name="Project 1")
-        project2 = make_project(project_id="p2", name="Project 2")
-        project3 = make_project(project_id="p3", name="Project 3")
+            # Add multiple projects
+            project1 = make_project(project_id="p1", name="Project 1")
+            project2 = make_project(project_id="p2", name="Project 2")
+            project3 = make_project(project_id="p3", name="Project 3")
 
-        app.state.projects[project1.id] = project1
-        app.state.projects[project2.id] = project2
-        app.state.projects[project3.id] = project3
+            app.state.projects[project1.id] = project1
+            app.state.projects[project2.id] = project2
+            app.state.projects[project3.id] = project3
 
-        async with app.run_test() as pilot:
-            await pilot.press("p")
+            async with app.run_test() as pilot:
+                await pilot.press("p")
 
-            assert isinstance(app.screen, ProjectListScreen)
+                assert isinstance(app.screen, ProjectListScreen)
 
-            table = app.screen.query_one("#project-table")
-            assert table.row_count == 3
+                table = app.screen.query_one("#project-table")
+                assert table.row_count == 3
 
     async def test_shows_correct_session_counts(self) -> None:
         """Test that session counts are displayed correctly."""
-        app = ItermControllerApp()
+        with patch(
+            "iterm_controller.config.load_global_config",
+            return_value=get_empty_config(),
+        ):
+            app = ItermControllerApp()
 
-        # Add project
-        project = make_project()
-        app.state.projects[project.id] = project
+            # Add project
+            project = make_project()
+            app.state.projects[project.id] = project
 
-        # Add sessions for the project
-        from iterm_controller.models import ManagedSession, AttentionState
+            # Add sessions for the project
+            from iterm_controller.models import ManagedSession, AttentionState
 
-        session1 = ManagedSession(
-            id="s1",
-            template_id="t1",
-            project_id=project.id,
-            tab_id="tab-1",
-            attention_state=AttentionState.IDLE,
-        )
-        session2 = ManagedSession(
-            id="s2",
-            template_id="t2",
-            project_id=project.id,
-            tab_id="tab-2",
-            attention_state=AttentionState.WORKING,
-        )
+            session1 = ManagedSession(
+                id="s1",
+                template_id="t1",
+                project_id=project.id,
+                tab_id="tab-1",
+                attention_state=AttentionState.IDLE,
+            )
+            session2 = ManagedSession(
+                id="s2",
+                template_id="t2",
+                project_id=project.id,
+                tab_id="tab-2",
+                attention_state=AttentionState.WORKING,
+            )
 
-        app.state.sessions[session1.id] = session1
-        app.state.sessions[session2.id] = session2
+            app.state.sessions[session1.id] = session1
+            app.state.sessions[session2.id] = session2
 
-        async with app.run_test() as pilot:
-            await pilot.press("p")
+            async with app.run_test() as pilot:
+                await pilot.press("p")
 
-            # The session count column should show "2"
-            # We can verify this by checking the table has the project
-            table = app.screen.query_one("#project-table")
-            assert table.row_count == 1
+                # The session count column should show "2"
+                # We can verify this by checking the table has the project
+                table = app.screen.query_one("#project-table")
+                assert table.row_count == 1
