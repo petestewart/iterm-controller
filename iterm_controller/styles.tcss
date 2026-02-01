@@ -1,0 +1,164 @@
+/* iTerm Controller Styles */
+
+/* Global */
+Screen {
+    background: $surface;
+}
+
+/* Headers */
+.section-header {
+    text-style: bold;
+    padding: 1 0;
+    color: $primary;
+}
+
+.title {
+    text-style: bold;
+    text-align: center;
+    padding: 1;
+    color: $primary;
+}
+
+/* Containers */
+#main {
+    padding: 1 2;
+}
+
+/* Session Status */
+.session-waiting {
+    color: $warning;
+}
+
+.session-working {
+    color: $success;
+}
+
+.session-idle {
+    color: $text-muted;
+}
+
+/* Task Status */
+.task-blocked {
+    color: $text-disabled;
+}
+
+.task-complete {
+    color: $success;
+}
+
+.task-in-progress {
+    color: $primary;
+}
+
+/* Health Status */
+.health-healthy {
+    color: $success;
+}
+
+.health-unhealthy {
+    color: $error;
+}
+
+/* Sessions List */
+.sessions-list {
+    padding: 0 1;
+    height: auto;
+}
+
+/* Status Bar */
+#status-bar {
+    height: 3;
+    dock: bottom;
+    padding: 0 1;
+}
+
+#workflow {
+    width: 50%;
+}
+
+#health {
+    width: 50%;
+    text-align: right;
+}
+
+/* Panels (Project Dashboard) */
+#panels {
+    height: 1fr;
+}
+
+#left-panel {
+    width: 60%;
+    padding-right: 1;
+}
+
+#right-panel {
+    width: 40%;
+    padding-left: 1;
+    border-left: solid $surface-darken-2;
+}
+
+/* Forms */
+#form {
+    max-width: 80;
+    padding: 2;
+}
+
+#form Label {
+    margin-top: 1;
+}
+
+#buttons {
+    margin-top: 2;
+}
+
+#buttons Button {
+    margin-right: 1;
+}
+
+/* Data Tables */
+DataTable {
+    height: 1fr;
+}
+
+/* Modals */
+QuitConfirmModal {
+    align: center middle;
+}
+
+QuitConfirmModal #dialog {
+    width: 50;
+    height: auto;
+    padding: 1 2;
+    background: $surface;
+    border: thick $primary;
+}
+
+QuitConfirmModal #title {
+    text-style: bold;
+    text-align: center;
+    padding-bottom: 1;
+}
+
+QuitConfirmModal #content {
+    padding: 1 0;
+}
+
+QuitConfirmModal #session-list {
+    padding-left: 2;
+}
+
+QuitConfirmModal #buttons {
+    margin-top: 1;
+}
+
+QuitConfirmModal #buttons Button {
+    width: 100%;
+    margin-bottom: 1;
+}
+
+/* Workflow Bar */
+#workflow-bar {
+    text-align: center;
+    padding: 1;
+    border-top: solid $surface-darken-2;
+}

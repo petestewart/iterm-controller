@@ -130,7 +130,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 4: Core TUI Framework
 
-- [ ] **Create main Textual app** `[pending]`
+- [x] **Create main Textual app** `[complete]`
   - Spec: specs/app.md#main-application-class
   - Scope: Set up Textual app with screen navigation, CSS styling
   - Acceptance: App launches, can navigate between placeholder screens

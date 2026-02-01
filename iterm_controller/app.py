@@ -1,1 +1,86 @@
-"""Main Textual app class."""
+"""Main Textual app class.
+
+This module provides the main iTerm Controller TUI application.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from textual.app import App
+from textual.binding import Binding
+
+from iterm_controller.config import load_global_config
+from iterm_controller.github import GitHubIntegration
+from iterm_controller.iterm_api import ItermController
+from iterm_controller.notifications import Notifier
+from iterm_controller.screens.new_project import NewProjectScreen
+from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
+from iterm_controller.screens.project_list import ProjectListScreen
+from iterm_controller.screens.settings import SettingsScreen
+from iterm_controller.state import AppState
+
+if TYPE_CHECKING:
+    pass
+
+
+class ItermControllerApp(App):
+    """Main iTerm2 Controller TUI application."""
+
+    CSS_PATH = "styles.tcss"
+    TITLE = "iTerm Controller"
+
+    SCREENS = {
+        "project_list": ProjectListScreen,
+        "project_dashboard": ProjectDashboardScreen,
+        "new_project": NewProjectScreen,
+        "settings": SettingsScreen,
+    }
+
+    BINDINGS = [
+        Binding("q", "request_quit", "Quit"),
+        Binding("ctrl+c", "request_quit", "Quit", show=False),
+        Binding("?", "show_help", "Help"),
+        Binding("p", "push_screen('project_list')", "Projects"),
+        Binding("s", "push_screen('settings')", "Settings"),
+    ]
+
+    def __init__(self) -> None:
+        """Initialize the application."""
+        super().__init__()
+        self.state = AppState()
+        self.iterm = ItermController()
+        self.github = GitHubIntegration()
+        self.notifier = Notifier()
+
+    async def on_mount(self) -> None:
+        """Initialize services when app starts."""
+        # Load configuration
+        await self.state.load_config()
+
+        # Try to connect to iTerm2 (non-blocking)
+        try:
+            await self.iterm.connect()
+        except Exception as e:
+            self.notify(f"iTerm2 connection failed: {e}", severity="warning")
+
+        # Initialize GitHub (non-blocking)
+        await self.github.initialize()
+
+        # Push the initial screen
+        from iterm_controller.screens.control_room import ControlRoomScreen
+
+        self.push_screen(ControlRoomScreen())
+
+    async def action_request_quit(self) -> None:
+        """Handle quit with confirmation if sessions active."""
+        if self.state.has_active_sessions:
+            from iterm_controller.screens.modals.quit_confirm import QuitConfirmModal
+
+            await self.push_screen(QuitConfirmModal())
+        else:
+            self.exit()
+
+    def action_show_help(self) -> None:
+        """Show help information."""
+        self.notify("Help: q=Quit, p=Projects, s=Settings, ?=Help")
