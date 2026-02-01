@@ -41,7 +41,7 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
-from iterm_controller.models import ManagedSession
+from iterm_controller.models import ManagedSession, WorkflowMode
 from iterm_controller.state import (
     HealthStatusChanged,
     PlanReloaded,
@@ -90,6 +90,10 @@ class ProjectDashboardScreen(Screen):
         Binding("f", "focus_session", "Focus"),
         Binding("k", "kill_session", "Kill"),
         Binding("a", "toggle_auto_mode", "Auto Mode"),
+        Binding("1", "enter_mode('plan')", "Plan"),
+        Binding("2", "enter_mode('docs')", "Docs Mode"),
+        Binding("3", "enter_mode('work')", "Work"),
+        Binding("4", "enter_mode('test')", "Test"),
         Binding("escape", "app.pop_screen", "Back"),
     ]
 
@@ -306,6 +310,45 @@ class ProjectDashboardScreen(Screen):
     def action_github_actions(self) -> None:
         """Show GitHub actions modal."""
         self.notify("GitHub actions: Not implemented yet")
+
+    def action_enter_mode(self, mode: str) -> None:
+        """Navigate to a workflow mode screen.
+
+        This action is triggered by pressing 1-4 keys to switch between
+        Plan, Docs, Work, and Test modes.
+
+        Args:
+            mode: The mode to enter ('plan', 'docs', 'work', or 'test').
+        """
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+        project = app.state.projects.get(self.project_id)
+
+        if not project:
+            self.notify("Project not found", severity="error")
+            return
+
+        try:
+            workflow_mode = WorkflowMode(mode)
+        except ValueError:
+            self.notify(f"Invalid mode: {mode}", severity="error")
+            return
+
+        # Update project's last_mode
+        project.last_mode = workflow_mode
+
+        # Push the appropriate mode screen
+        mode_screen_map = {
+            WorkflowMode.PLAN: "PlanModeScreen",
+            WorkflowMode.DOCS: "DocsModeScreen",
+            WorkflowMode.WORK: "WorkModeScreen",
+            WorkflowMode.TEST: "TestModeScreen",
+        }
+
+        screen_name = mode_screen_map.get(workflow_mode)
+
+        # Mode screens are not yet implemented (Phase 13-16)
+        # For now, show a notification
+        self.notify(f"Entering {workflow_mode.value.title()} Mode (screen not yet implemented)")
 
     async def action_toggle_auto_mode(self) -> None:
         """Toggle auto mode enabled/disabled or open config modal."""

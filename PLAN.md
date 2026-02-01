@@ -339,7 +339,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Add WorkflowMode enum (PLAN, DOCS, WORK, TEST) and last_mode field to Project
   - Acceptance: Enum importable, Project.last_mode persists to JSON
 
-- [ ] **Add mode navigation bindings to ProjectDashboard**
+- [x] **Add mode navigation bindings to ProjectDashboard** `[complete]`
   - Spec: specs/ui.md#workflow-modes
   - Scope: Add 1-4 keybindings to navigate to mode screens from Project Dashboard
   - Acceptance: Pressing 1-4 pushes appropriate mode screen

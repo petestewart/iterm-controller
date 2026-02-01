@@ -13,6 +13,7 @@ from iterm_controller.models import (
     Project,
     Task,
     TaskStatus,
+    WorkflowMode,
     WorkflowStage,
     WorkflowState,
 )
@@ -486,3 +487,140 @@ class TestGetSelectedSession:
             screen = app.screen
             assert isinstance(screen, ProjectDashboardScreen)
             assert screen._get_selected_session() is None
+
+
+class TestModeNavigationBindings:
+    """Tests for mode navigation keybindings (1-4)."""
+
+    def test_screen_has_mode_bindings(self) -> None:
+        """Test that screen has keybindings for mode navigation."""
+        screen = ProjectDashboardScreen(project_id="project-1")
+        binding_keys = [b.key for b in screen.BINDINGS]
+
+        assert "1" in binding_keys  # Plan Mode
+        assert "2" in binding_keys  # Docs Mode
+        assert "3" in binding_keys  # Work Mode
+        assert "4" in binding_keys  # Test Mode
+
+    def test_bindings_have_correct_actions(self) -> None:
+        """Test that mode bindings are mapped to correct actions."""
+        screen = ProjectDashboardScreen(project_id="project-1")
+        binding_map = {b.key: b.action for b in screen.BINDINGS}
+
+        assert binding_map["1"] == "enter_mode('plan')"
+        assert binding_map["2"] == "enter_mode('docs')"
+        assert binding_map["3"] == "enter_mode('work')"
+        assert binding_map["4"] == "enter_mode('test')"
+
+
+@pytest.mark.asyncio
+class TestModeNavigationActions:
+    """Tests for action_enter_mode method."""
+
+    async def test_enter_plan_mode_updates_last_mode(self) -> None:
+        """Test that pressing 1 updates project's last_mode to PLAN."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            project = make_project()
+            app.state.projects[project.id] = project
+
+            await app.push_screen(ProjectDashboardScreen(project.id))
+
+            # Initially no last_mode
+            assert project.last_mode is None
+
+            # Press 1 to enter Plan Mode
+            await pilot.press("1")
+
+            # last_mode should be updated
+            assert project.last_mode == WorkflowMode.PLAN
+
+    async def test_enter_docs_mode_updates_last_mode(self) -> None:
+        """Test that pressing 2 updates project's last_mode to DOCS."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            project = make_project()
+            app.state.projects[project.id] = project
+
+            await app.push_screen(ProjectDashboardScreen(project.id))
+
+            await pilot.press("2")
+
+            assert project.last_mode == WorkflowMode.DOCS
+
+    async def test_enter_work_mode_updates_last_mode(self) -> None:
+        """Test that pressing 3 updates project's last_mode to WORK."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            project = make_project()
+            app.state.projects[project.id] = project
+
+            await app.push_screen(ProjectDashboardScreen(project.id))
+
+            await pilot.press("3")
+
+            assert project.last_mode == WorkflowMode.WORK
+
+    async def test_enter_test_mode_updates_last_mode(self) -> None:
+        """Test that pressing 4 updates project's last_mode to TEST."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            project = make_project()
+            app.state.projects[project.id] = project
+
+            await app.push_screen(ProjectDashboardScreen(project.id))
+
+            await pilot.press("4")
+
+            assert project.last_mode == WorkflowMode.TEST
+
+    async def test_enter_mode_with_invalid_mode_shows_error(self) -> None:
+        """Test that invalid mode shows error notification."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+
+            await app.push_screen(ProjectDashboardScreen(project.id))
+
+            screen = app.screen
+            assert isinstance(screen, ProjectDashboardScreen)
+
+            # Call action directly with invalid mode
+            screen.action_enter_mode("invalid")
+
+            # last_mode should remain unchanged
+            assert project.last_mode is None
+
+    async def test_enter_mode_with_missing_project_shows_error(self) -> None:
+        """Test that missing project shows error notification."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            # Create screen with non-existent project
+            await app.push_screen(ProjectDashboardScreen("nonexistent"))
+
+            screen = app.screen
+            assert isinstance(screen, ProjectDashboardScreen)
+
+            # Call action - should not crash
+            screen.action_enter_mode("plan")
+
+    async def test_mode_switch_preserves_project_id(self) -> None:
+        """Test that mode switching doesn't lose project context."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            project = make_project(project_id="my-project-123")
+            app.state.projects[project.id] = project
+
+            await app.push_screen(ProjectDashboardScreen(project.id))
+
+            screen = app.screen
+            assert isinstance(screen, ProjectDashboardScreen)
+            original_project_id = screen.project_id
+
+            # Press mode keys in sequence
+            for key in ["1", "2", "3", "4"]:
+                await pilot.press(key)
+
+            # Project ID should remain the same
+            assert screen.project_id == original_project_id
