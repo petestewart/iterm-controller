@@ -538,13 +538,13 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Delete duplicate classes, add imports from `exceptions`
   - Acceptance: Single source of truth for exception classes
 
-- [ ] **Remove empty TYPE_CHECKING blocks** `[pending]`
+- [x] **Remove empty TYPE_CHECKING blocks** `[complete]`
   - Scope: Clean up empty `if TYPE_CHECKING: pass` blocks
   - Locations: models.py:17-18, widgets/task_list.py:19-20, widgets/task_queue.py:17-18, app.py:29-30, iterm_api.py:27-28
   - Fix: Remove empty blocks or add actual type imports
   - Acceptance: No empty TYPE_CHECKING blocks in codebase
 
-- [ ] **Remove unused import load_global_config from app.py** `[pending]`
+- [x] **Remove unused import load_global_config from app.py** `[complete]`
   - Scope: Remove unused import
   - Location: iterm_controller/app.py:13
   - Acceptance: No unused imports in app.py

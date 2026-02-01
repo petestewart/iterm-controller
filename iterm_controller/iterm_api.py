@@ -13,7 +13,7 @@ import logging
 import re
 import shlex
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Callable, TypeVar
+from typing import Callable, TypeVar
 
 import iterm2
 
@@ -34,9 +34,6 @@ from iterm_controller.models import (
     TabLayout,
     WindowLayout,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

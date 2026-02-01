@@ -5,16 +5,13 @@ Displays TEST_PLAN.md steps with status indicators and selection.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from rich.text import Text
 from textual.binding import Binding
 from textual.widgets import Static
 
 from iterm_controller.models import TestPlan, TestSection, TestStatus, TestStep
-
-if TYPE_CHECKING:
-    pass
 
 
 class TestPlanWidget(Static, can_focus=True):

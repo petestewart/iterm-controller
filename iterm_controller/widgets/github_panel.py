@@ -6,15 +6,12 @@ Handles unavailable/unauthenticated states gracefully.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from rich.text import Text
 from textual.widgets import Static
 
 from iterm_controller.models import GitHubStatus, PullRequest
-
-if TYPE_CHECKING:
-    pass
 
 
 class GitHubPanelWidget(Static):

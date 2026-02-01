@@ -7,7 +7,7 @@ references and shows warnings for missing files/sections.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from rich.text import Text
 from textual.widgets import Static
@@ -15,9 +15,6 @@ from textual.widgets import Static
 from iterm_controller.models import Phase, Plan, Task, TaskStatus
 from iterm_controller.spec_validator import SpecValidationResult, validate_spec_ref
 from iterm_controller.state import PlanReloaded, TaskStatusChanged
-
-if TYPE_CHECKING:
-    pass
 
 
 class TaskListWidget(Static):

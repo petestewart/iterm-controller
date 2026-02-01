@@ -8,16 +8,13 @@ See specs/plan-mode.md#inline-preview for specification.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Button, Markdown, Static
-
-if TYPE_CHECKING:
-    pass
 
 # Result type for the modal
 ArtifactPreviewResult = Literal["edit", "close"]

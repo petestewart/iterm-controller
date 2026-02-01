@@ -6,16 +6,13 @@ Blocked tasks are shown with dimmed styling and blocked-by information.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from rich.text import Text
 from textual.binding import Binding
 from textual.widgets import Static
 
 from iterm_controller.models import Plan, Task, TaskStatus
-
-if TYPE_CHECKING:
-    pass
 
 
 class TaskQueueWidget(Static, can_focus=True):

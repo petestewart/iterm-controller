@@ -6,16 +6,13 @@ completed, and future stages.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from rich.text import Text
 from textual.widgets import Static
 
 from iterm_controller.models import WorkflowStage, WorkflowState
 from iterm_controller.state import WorkflowStageChanged
-
-if TYPE_CHECKING:
-    pass
 
 
 class WorkflowBarWidget(Static):

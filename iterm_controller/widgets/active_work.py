@@ -6,16 +6,13 @@ Displays tasks currently in progress with their assigned sessions and status.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from rich.text import Text
 from textual.binding import Binding
 from textual.widgets import Static
 
 from iterm_controller.models import AttentionState, ManagedSession, Plan, Task, TaskStatus
-
-if TYPE_CHECKING:
-    pass
 
 
 class ActiveWorkWidget(Static, can_focus=True):

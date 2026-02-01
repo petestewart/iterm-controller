@@ -10,12 +10,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING
-
 import dacite
-
-if TYPE_CHECKING:
-    pass
 
 
 # =============================================================================

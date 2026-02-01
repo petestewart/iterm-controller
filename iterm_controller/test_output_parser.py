@@ -11,11 +11,6 @@ import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    pass
-
 logger = logging.getLogger(__name__)
 
 __all__ = [

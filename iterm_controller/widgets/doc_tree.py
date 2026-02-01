@@ -10,14 +10,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from textual.message import Message
 from textual.widgets import Tree
 from textual.widgets.tree import TreeNode
-
-if TYPE_CHECKING:
-    pass
 
 # Directories to scan for documentation
 DOC_DIRECTORIES = [

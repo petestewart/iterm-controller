@@ -5,12 +5,9 @@ This module provides the main iTerm Controller TUI application.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from textual.app import App
 from textual.binding import Binding
 
-from iterm_controller.config import load_global_config
 from iterm_controller.github import GitHubIntegration
 from iterm_controller.iterm_api import ItermController
 from iterm_controller.notifications import Notifier
@@ -25,9 +22,6 @@ from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 from iterm_controller.screens.project_list import ProjectListScreen
 from iterm_controller.screens.settings import SettingsScreen
 from iterm_controller.state import AppState
-
-if TYPE_CHECKING:
-    pass
 
 
 class ItermControllerApp(App):

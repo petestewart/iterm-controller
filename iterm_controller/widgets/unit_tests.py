@@ -6,16 +6,13 @@ Displays unit test runner results with pass/fail counts.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from rich.text import Text
 from textual.widgets import Static
 
 # Import models from the parser module
 from iterm_controller.test_output_parser import TestResult, UnitTestResults
-
-if TYPE_CHECKING:
-    pass
 
 
 class UnitTestWidget(Static):
