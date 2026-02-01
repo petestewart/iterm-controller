@@ -598,7 +598,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Use centralized path validation before accessing files
   - Acceptance: `../../../etc/passwd` spec refs are rejected
 
-- [ ] **Fix path traversal in document operations** `[pending]`
+- [x] **Fix path traversal in document operations** `[complete]`
   - Scope: Validate all document paths in docs mode
   - Location: iterm_controller/screens/modes/docs_mode.py:477-544
   - Depends: Phase 21 task 1

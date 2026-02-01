@@ -783,3 +783,295 @@ class TestDocsModeScreenCRUD:
 
                         # Modal should be dismissed, back to DocsModeScreen
                         assert isinstance(app.screen, DocsModeScreen)
+
+
+@pytest.mark.asyncio
+class TestDocsModePathTraversalProtection:
+    """Tests for path traversal protection in DocsModeScreen operations."""
+
+    async def test_create_document_rejects_path_traversal(self) -> None:
+        """Test that _create_document rejects path traversal attempts."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Attempt to create a file outside the project
+                screen = app.screen
+                malicious_path = str(Path(tmpdir) / ".." / ".." / "etc" / "cron.d" / "malicious")
+                screen._create_document(malicious_path, "malicious content")
+
+                await pilot.pause()
+
+                # File should NOT be created outside project
+                assert not Path("/etc/cron.d/malicious").exists()
+                # File should NOT be created anywhere
+                assert not Path(malicious_path).exists()
+
+    async def test_create_document_rejects_absolute_path_outside_project(self) -> None:
+        """Test that _create_document rejects absolute paths outside project."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with tempfile.TemporaryDirectory() as other_tmpdir:
+                app = ItermControllerApp()
+                async with app.run_test() as pilot:
+                    project = Project(
+                        id="test-project",
+                        name="Test Project",
+                        path=tmpdir,
+                    )
+                    app.state.projects[project.id] = project
+
+                    await app.push_screen(DocsModeScreen(project))
+
+                    # Attempt to create a file in a different temp directory
+                    screen = app.screen
+                    malicious_path = str(Path(other_tmpdir) / "malicious.md")
+                    screen._create_document(malicious_path, "malicious content")
+
+                    await pilot.pause()
+
+                    # File should NOT be created outside project
+                    assert not Path(malicious_path).exists()
+
+    async def test_create_document_allows_valid_path_inside_project(self) -> None:
+        """Test that _create_document allows valid paths inside project."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Create a valid file inside project
+                screen = app.screen
+                valid_path = str(Path(tmpdir) / "docs" / "new-doc.md")
+                screen._create_document(valid_path, "# Valid Document")
+
+                await pilot.pause()
+
+                # File should be created
+                assert Path(valid_path).exists()
+                assert Path(valid_path).read_text() == "# Valid Document"
+
+    async def test_delete_document_rejects_path_traversal(self) -> None:
+        """Test that _delete_document rejects path traversal attempts."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with tempfile.TemporaryDirectory() as other_tmpdir:
+                # Create a file in the other directory to try to delete
+                target_file = Path(other_tmpdir) / "target.md"
+                target_file.write_text("should not be deleted")
+
+                app = ItermControllerApp()
+                async with app.run_test() as pilot:
+                    project = Project(
+                        id="test-project",
+                        name="Test Project",
+                        path=tmpdir,
+                    )
+                    app.state.projects[project.id] = project
+
+                    await app.push_screen(DocsModeScreen(project))
+
+                    # Attempt to delete a file outside the project
+                    screen = app.screen
+                    screen._delete_document(target_file)
+
+                    await pilot.pause()
+
+                    # File should still exist (not deleted)
+                    assert target_file.exists()
+                    assert target_file.read_text() == "should not be deleted"
+
+    async def test_delete_document_allows_valid_path_inside_project(self) -> None:
+        """Test that _delete_document allows valid paths inside project."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file inside project to delete
+            target_file = Path(tmpdir) / "to-delete.md"
+            target_file.write_text("delete me")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Delete a valid file inside project
+                screen = app.screen
+                screen._delete_document(target_file)
+
+                await pilot.pause()
+
+                # File should be deleted
+                assert not target_file.exists()
+
+    async def test_rename_document_rejects_path_traversal_in_source(self) -> None:
+        """Test that _rename_document rejects path traversal in source."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with tempfile.TemporaryDirectory() as other_tmpdir:
+                # Create a file in the other directory
+                source_file = Path(other_tmpdir) / "source.md"
+                source_file.write_text("should not be renamed")
+
+                app = ItermControllerApp()
+                async with app.run_test() as pilot:
+                    project = Project(
+                        id="test-project",
+                        name="Test Project",
+                        path=tmpdir,
+                    )
+                    app.state.projects[project.id] = project
+
+                    await app.push_screen(DocsModeScreen(project))
+
+                    # Attempt to rename a file outside the project
+                    screen = app.screen
+                    screen._rename_document(source_file, "renamed.md")
+
+                    await pilot.pause()
+
+                    # Source file should still exist with original name
+                    assert source_file.exists()
+                    # Renamed file should not exist in source location
+                    assert not (Path(other_tmpdir) / "renamed.md").exists()
+
+    async def test_rename_document_rejects_traversal_in_new_name(self) -> None:
+        """Test that _rename_document rejects path traversal in new filename."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file inside project
+            source_file = Path(tmpdir) / "source.md"
+            source_file.write_text("original content")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Attempt to rename with traversal in new name
+                screen = app.screen
+                screen._rename_document(source_file, "../../../etc/cron.d/malicious")
+
+                await pilot.pause()
+
+                # Source file should still exist
+                assert source_file.exists()
+                # Malicious file should not be created
+                assert not Path("/etc/cron.d/malicious").exists()
+
+    async def test_rename_document_rejects_slash_in_new_name(self) -> None:
+        """Test that _rename_document rejects slashes in new filename."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file inside project
+            source_file = Path(tmpdir) / "source.md"
+            source_file.write_text("original content")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Attempt to rename with slash in new name
+                screen = app.screen
+                screen._rename_document(source_file, "subdir/newname.md")
+
+                await pilot.pause()
+
+                # Source file should still exist (rename rejected)
+                assert source_file.exists()
+                # Subdirectory should not be created
+                assert not (Path(tmpdir) / "subdir").exists()
+
+    async def test_rename_document_allows_valid_rename(self) -> None:
+        """Test that _rename_document allows valid renames inside project."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file inside project
+            source_file = Path(tmpdir) / "source.md"
+            source_file.write_text("original content")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Rename to a valid new name
+                screen = app.screen
+                screen._rename_document(source_file, "renamed.md")
+
+                await pilot.pause()
+
+                # Source file should no longer exist
+                assert not source_file.exists()
+                # Renamed file should exist
+                new_file = Path(tmpdir) / "renamed.md"
+                assert new_file.exists()
+                assert new_file.read_text() == "original content"

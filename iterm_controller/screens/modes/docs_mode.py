@@ -20,6 +20,11 @@ from textual.widgets import Footer, Header, Static
 
 from iterm_controller.models import WorkflowMode
 from iterm_controller.screens.mode_screen import ModeScreen
+from iterm_controller.security import (
+    PathTraversalError,
+    validate_filename,
+    validate_path_in_project,
+)
 from iterm_controller.widgets.doc_tree import DocTreeWidget
 from iterm_controller.widgets.mode_indicator import ModeIndicatorWidget
 
@@ -484,6 +489,14 @@ class DocsModeScreen(ModeScreen):
         file_path = Path(path)
 
         try:
+            # Validate path stays within project directory
+            validate_path_in_project(file_path, self.project.path)
+        except PathTraversalError as e:
+            logger.warning("Path traversal attempt blocked: %s", e)
+            self.notify("Invalid path: cannot create files outside project", severity="error")
+            return
+
+        try:
             # Create parent directories if needed
             file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -510,6 +523,14 @@ class DocsModeScreen(ModeScreen):
             path: Path to the file to delete.
         """
         try:
+            # Validate path stays within project directory
+            validate_path_in_project(path, self.project.path)
+        except PathTraversalError as e:
+            logger.warning("Path traversal attempt blocked: %s", e)
+            self.notify("Invalid path: cannot delete files outside project", severity="error")
+            return
+
+        try:
             path.unlink()
 
             # Refresh tree and notify
@@ -530,7 +551,32 @@ class DocsModeScreen(ModeScreen):
             new_name: New filename.
         """
         try:
-            new_path = path.parent / new_name
+            # Validate source path stays within project directory
+            validate_path_in_project(path, self.project.path)
+        except PathTraversalError as e:
+            logger.warning("Path traversal attempt blocked on source: %s", e)
+            self.notify("Invalid path: cannot rename files outside project", severity="error")
+            return
+
+        try:
+            # Validate new filename doesn't contain traversal sequences
+            validate_filename(new_name, allow_subdirs=False)
+        except (PathTraversalError, ValueError) as e:
+            logger.warning("Invalid filename rejected: %s", e)
+            self.notify(f"Invalid filename: {e}", severity="error")
+            return
+
+        new_path = path.parent / new_name
+
+        try:
+            # Validate destination path also stays within project
+            validate_path_in_project(new_path, self.project.path)
+        except PathTraversalError as e:
+            logger.warning("Path traversal attempt blocked on destination: %s", e)
+            self.notify("Invalid path: cannot rename files outside project", severity="error")
+            return
+
+        try:
             path.rename(new_path)
 
             # Refresh tree and notify
