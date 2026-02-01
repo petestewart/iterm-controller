@@ -444,7 +444,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Auto-detect from pytest.ini, package.json, Makefile, etc.
   - Acceptance: Correct test command detected for project type
 
-- [ ] **Add TEST_PLAN.md generation**
+- [x] **Add TEST_PLAN.md generation** `[complete]`
   - Spec: specs/test-mode.md#generate-test_planmd
   - Scope: `g` key launches Claude to generate test plan from PRD/specs
   - Acceptance: Can generate TEST_PLAN.md with verification steps

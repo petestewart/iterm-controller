@@ -67,6 +67,7 @@ class TestPlanWatcher:
     # Callbacks
     on_plan_reloaded: Callable[[TestPlan], None] | None = None
     on_plan_deleted: Callable[[], None] | None = None
+    on_plan_created: Callable[[TestPlan], None] | None = None
     on_conflict_detected: Callable[[TestPlan, list[TestStepChange]], None] | None = None
 
     # Internal state
@@ -114,6 +115,14 @@ class TestPlanWatcher:
     async def _watch_loop(self) -> None:
         """Main watch loop that monitors file changes."""
         if self.plan_path is None:
+            return
+
+        # Don't try to watch if the parent directory doesn't exist
+        if not self.plan_path.parent.exists():
+            logger.debug(
+                "Parent directory %s does not exist, skipping watch",
+                self.plan_path.parent
+            )
             return
 
         try:
@@ -176,6 +185,15 @@ class TestPlanWatcher:
             # Queue reload for after our write completes
             self.queued_reload = new_plan
             logger.debug("Queued TEST_PLAN.md reload (pending writes)")
+        elif self.test_plan is None:
+            # File was created (no previous plan)
+            self.test_plan = new_plan
+            logger.info("TEST_PLAN.md was created")
+            if self.on_plan_created:
+                self.on_plan_created(new_plan)
+            elif self.on_plan_reloaded:
+                # Fall back to reload callback if no creation callback
+                self.on_plan_reloaded(new_plan)
         else:
             # Check for conflicts
             changes = self._compute_changes(new_plan)

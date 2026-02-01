@@ -253,14 +253,28 @@ class TestModeScreen(ModeScreen):
 
         # Set up callbacks
         self._test_plan_watcher.on_plan_reloaded = self._on_plan_reloaded
+        self._test_plan_watcher.on_plan_created = self._on_plan_created
         self._test_plan_watcher.on_conflict_detected = self._on_conflict_detected
         self._test_plan_watcher.on_plan_deleted = self._on_plan_deleted
 
-        # Start watching if file exists
-        if test_plan_path.exists():
-            await self._test_plan_watcher.start_watching(
-                test_plan_path, self._test_plan
-            )
+        # Always start watching (even if file doesn't exist)
+        # This allows us to detect when the file is created by the generator
+        await self._test_plan_watcher.start_watching(
+            test_plan_path, self._test_plan
+        )
+
+    def _on_plan_created(self, plan: TestPlan) -> None:
+        """Handle test plan creation.
+
+        Called when TEST_PLAN.md is created (e.g., by the generator session).
+
+        Args:
+            plan: The newly created test plan.
+        """
+        self._test_plan = plan
+        self._refresh_widgets()
+        self._update_progress_bar()
+        self.notify("TEST_PLAN.md generated successfully", severity="information")
 
     def _on_plan_reloaded(self, plan: TestPlan) -> None:
         """Handle test plan reload.
@@ -484,6 +498,7 @@ class TestModeScreen(ModeScreen):
                     id=template_id,
                     name=template_id.replace("-", " ").title(),
                     command=command,
+                    working_dir=self.project.path,
                     env={},
                 )
 
