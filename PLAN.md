@@ -243,7 +243,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 9: Auto Mode
 
-- [ ] **Implement workflow stage inference** `[pending]`
+- [x] **Implement workflow stage inference** `[complete]`
   - Spec: specs/auto-mode.md#stage-inference
   - Scope: Detect current stage from PLAN.md and project state
   - Acceptance: Stage correctly identified based on completion criteria

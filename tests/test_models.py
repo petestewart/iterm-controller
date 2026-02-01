@@ -358,6 +358,120 @@ class TestWorkflowModels:
         assert state.stage == WorkflowStage.DONE
         assert state.pr_merged is True
 
+    def test_infer_stage_with_prd_exists(self):
+        """Test that prd_exists is stored in state."""
+        plan = Plan(phases=[])
+        state = WorkflowState.infer_stage(plan, None, prd_exists=True)
+        assert state.prd_exists is True
+        assert state.stage == WorkflowStage.PLANNING  # No tasks yet
+
+    def test_infer_stage_with_prd_unneeded(self):
+        """Test that prd_unneeded is stored in state."""
+        plan = Plan(phases=[])
+        state = WorkflowState.infer_stage(plan, None, prd_unneeded=True)
+        assert state.prd_unneeded is True
+        assert state.stage == WorkflowStage.PLANNING  # No tasks yet
+
+    def test_infer_stage_execute_with_tasks(self):
+        """Test EXECUTE stage when tasks exist."""
+        plan = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[
+                        Task(id="1.1", title="Task 1", status=TaskStatus.PENDING),
+                        Task(id="1.2", title="Task 2", status=TaskStatus.IN_PROGRESS),
+                    ],
+                ),
+            ],
+        )
+        state = WorkflowState.infer_stage(plan, None, prd_exists=True)
+        assert state.stage == WorkflowStage.EXECUTE
+        assert state.prd_exists is True
+
+    def test_infer_stage_review_all_skipped(self):
+        """Test REVIEW stage when all tasks are skipped."""
+        plan = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[
+                        Task(id="1.1", title="Task 1", status=TaskStatus.SKIPPED),
+                        Task(id="1.2", title="Task 2", status=TaskStatus.SKIPPED),
+                    ],
+                ),
+            ],
+        )
+        state = WorkflowState.infer_stage(plan, None)
+        assert state.stage == WorkflowStage.REVIEW
+
+    def test_infer_stage_review_mixed_complete_skipped(self):
+        """Test REVIEW stage with mix of complete and skipped tasks."""
+        plan = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[
+                        Task(id="1.1", title="Task 1", status=TaskStatus.COMPLETE),
+                        Task(id="1.2", title="Task 2", status=TaskStatus.SKIPPED),
+                    ],
+                ),
+            ],
+        )
+        state = WorkflowState.infer_stage(plan, None)
+        assert state.stage == WorkflowStage.REVIEW
+
+    def test_infer_stage_pr_takes_priority(self):
+        """Test that PR stage takes priority over review."""
+        plan = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[Task(id="1.1", title="Task 1", status=TaskStatus.COMPLETE)],
+                ),
+            ],
+        )
+        github_status = GitHubStatus(
+            pr=PullRequest(
+                number=123,
+                title="Test PR",
+                url="https://github.com/test/repo/pull/123",
+                state="open",
+                merged=False,
+            ),
+        )
+        state = WorkflowState.infer_stage(plan, github_status)
+        # PR takes priority even if all tasks complete
+        assert state.stage == WorkflowStage.PR
+
+    def test_infer_stage_done_takes_highest_priority(self):
+        """Test that DONE stage takes highest priority when PR merged."""
+        plan = Plan(
+            phases=[
+                Phase(
+                    id="1",
+                    title="Phase 1",
+                    tasks=[Task(id="1.1", title="Task 1", status=TaskStatus.IN_PROGRESS)],
+                ),
+            ],
+        )
+        github_status = GitHubStatus(
+            pr=PullRequest(
+                number=123,
+                title="Test PR",
+                url="https://github.com/test/repo/pull/123",
+                state="closed",
+                merged=True,
+            ),
+        )
+        state = WorkflowState.infer_stage(plan, github_status)
+        # DONE takes highest priority even if tasks incomplete
+        assert state.stage == WorkflowStage.DONE
+
 
 class TestConfigModels:
     """Test configuration-related dataclasses."""

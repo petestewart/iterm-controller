@@ -184,31 +184,68 @@ class WorkflowState:
     pr_merged: bool = False
 
     @classmethod
-    def infer_stage(cls, plan: Plan, github_status: GitHubStatus | None) -> WorkflowState:
-        """Infer workflow stage from plan and GitHub state."""
-        state = cls()
+    def infer_stage(
+        cls,
+        plan: Plan,
+        github_status: GitHubStatus | None,
+        prd_exists: bool = False,
+        prd_unneeded: bool = False,
+    ) -> WorkflowState:
+        """Infer workflow stage from plan and GitHub state.
 
-        # Check PR status
+        Stage progression:
+        1. PLANNING: Default stage, waiting for PRD and tasks
+        2. EXECUTE: PRD exists (or unneeded) AND plan has tasks
+        3. REVIEW: All tasks complete/skipped
+        4. PR: Pull request exists on GitHub
+        5. DONE: PR merged
+
+        Args:
+            plan: The parsed PLAN.md document.
+            github_status: Current GitHub status, if available.
+            prd_exists: Whether a PRD.md file exists.
+            prd_unneeded: Whether PRD has been marked as unnecessary.
+
+        Returns:
+            WorkflowState with inferred stage and metadata.
+        """
+        state = cls()
+        state.prd_exists = prd_exists
+        state.prd_unneeded = prd_unneeded
+
+        # Check PR status first (highest priority)
         if github_status and github_status.pr:
             state.pr_url = github_status.pr.url
             state.pr_merged = github_status.pr.merged
+
             if state.pr_merged:
                 state.stage = WorkflowStage.DONE
                 return state
+
             state.stage = WorkflowStage.PR
             return state
 
         # Check task completion
-        all_done = all(
-            t.status in (TaskStatus.COMPLETE, TaskStatus.SKIPPED) for t in plan.all_tasks
-        )
-        if all_done and plan.all_tasks:
-            state.stage = WorkflowStage.REVIEW
+        all_tasks = plan.all_tasks
+        if all_tasks:
+            all_done = all(
+                t.status in (TaskStatus.COMPLETE, TaskStatus.SKIPPED)
+                for t in all_tasks
+            )
+            if all_done:
+                state.stage = WorkflowStage.REVIEW
+                return state
+
+            # Has tasks = executing
+            state.stage = WorkflowStage.EXECUTE
             return state
 
-        # Check planning completion
-        if plan.all_tasks:
-            state.stage = WorkflowStage.EXECUTE
+        # Check planning completion - PRD exists/unneeded AND has tasks
+        # Note: This condition is only reached if all_tasks is empty,
+        # so we stay in PLANNING if no tasks exist yet
+        if prd_exists or prd_unneeded:
+            # Still need tasks to advance to EXECUTE
+            state.stage = WorkflowStage.PLANNING
             return state
 
         return state
