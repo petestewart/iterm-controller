@@ -253,7 +253,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Trigger stage commands when phase completes
   - Acceptance: Commands execute (with confirmation if configured)
 
-- [ ] **Build auto mode configuration UI** `[pending]`
+- [x] **Build auto mode configuration UI** `[complete]`
   - Spec: specs/auto-mode.md#configuration
   - Scope: Configure stage commands and auto-advance settings
   - Acceptance: Settings persist and affect behavior

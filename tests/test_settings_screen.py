@@ -77,8 +77,9 @@ class TestSettingsScreenAsync:
             notify_checkbox = app.screen.query_one("#notify-checkbox", Checkbox)
             assert notify_checkbox is not None
 
-            auto_advance_checkbox = app.screen.query_one("#auto-advance-checkbox", Checkbox)
-            assert auto_advance_checkbox is not None
+            # Auto mode is now configured via a separate button and modal
+            auto_mode_button = app.screen.query_one("#configure-auto-mode", Button)
+            assert auto_mode_button is not None
 
             save_button = app.screen.query_one("#save", Button)
             assert save_button is not None
@@ -126,8 +127,8 @@ class TestSettingsScreenAsync:
                 notify_checkbox = app.screen.query_one("#notify-checkbox", Checkbox)
                 assert notify_checkbox.value is False
 
-                auto_advance_checkbox = app.screen.query_one("#auto-advance-checkbox", Checkbox)
-                assert auto_advance_checkbox.value is True
+                # Auto mode settings are now shown via status display
+                # The _update_auto_mode_status method updates the display
 
     async def test_escape_pops_screen(self) -> None:
         """Test that escape key returns to previous screen."""
@@ -175,9 +176,8 @@ class TestSettingsScreenAsync:
                     notify_checkbox = app.screen.query_one("#notify-checkbox", Checkbox)
                     notify_checkbox.value = False
 
-                    # Toggle auto-advance
-                    auto_advance_checkbox = app.screen.query_one("#auto-advance-checkbox", Checkbox)
-                    auto_advance_checkbox.value = True
+                    # Note: auto_mode is now configured via the separate modal,
+                    # so we don't test it here
 
                     # Use keyboard shortcut to save (Ctrl+S)
                     await pilot.press("ctrl+s")
@@ -185,7 +185,6 @@ class TestSettingsScreenAsync:
                     # Check config was updated
                     assert app.state.config.settings.polling_interval_ms == 1000
                     assert app.state.config.settings.notification_enabled is False
-                    assert app.state.config.auto_mode.auto_advance is True
 
                     # Check save was called
                     mock_save.assert_called_once()

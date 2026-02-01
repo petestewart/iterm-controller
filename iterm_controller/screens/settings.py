@@ -11,7 +11,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Select
+from textual.widgets import Button, Checkbox, Footer, Header, Input, Label, Select, Static
 
 if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
@@ -25,7 +25,7 @@ class SettingsScreen(Screen):
     - Default shell for new sessions
     - Polling interval for session monitoring
     - Notification preferences
-    - Auto-advance workflow settings
+    - Auto-mode workflow settings (via dedicated modal)
     """
 
     BINDINGS = [
@@ -68,7 +68,13 @@ class SettingsScreen(Screen):
                 Label("Polling Interval (ms)", classes="setting-label"),
                 Input(id="polling-input", value="500"),
                 Checkbox("Enable Notifications", id="notify-checkbox", value=True),
-                Checkbox("Auto-advance Workflow", id="auto-advance-checkbox", value=False),
+                # Auto Mode section
+                Static("Auto Mode", classes="section-header"),
+                Horizontal(
+                    Static("", id="auto-mode-status"),
+                    Button("Configure Auto Mode...", id="configure-auto-mode"),
+                    id="auto-mode-row",
+                ),
                 Horizontal(
                     Button("Cancel", variant="default", id="cancel"),
                     Button("Save Settings", variant="primary", id="save"),
@@ -107,9 +113,25 @@ class SettingsScreen(Screen):
             notify_checkbox = self.query_one("#notify-checkbox", Checkbox)
             notify_checkbox.value = settings.notification_enabled
 
-            # Set auto-advance checkbox from auto_mode config
-            auto_advance_checkbox = self.query_one("#auto-advance-checkbox", Checkbox)
-            auto_advance_checkbox.value = app.state.config.auto_mode.auto_advance
+            # Update auto mode status display
+            self._update_auto_mode_status()
+
+    def _update_auto_mode_status(self) -> None:
+        """Update the auto mode status display."""
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+        status_widget = self.query_one("#auto-mode-status", Static)
+
+        if app.state.config:
+            auto_mode = app.state.config.auto_mode
+            if auto_mode.enabled:
+                num_commands = len(auto_mode.stage_commands)
+                status_widget.update(
+                    f"[green]Enabled[/green] ({num_commands} stage commands)"
+                )
+            else:
+                status_widget.update("[dim]Disabled[/dim]")
+        else:
+            status_widget.update("[dim]No config[/dim]")
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses."""
@@ -117,6 +139,36 @@ class SettingsScreen(Screen):
             self.app.pop_screen()
         elif event.button.id == "save":
             await self.action_save()
+        elif event.button.id == "configure-auto-mode":
+            await self._open_auto_mode_config()
+
+    async def _open_auto_mode_config(self) -> None:
+        """Open the auto mode configuration modal."""
+        from iterm_controller.screens.modals import AutoModeConfigModal
+
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        if not app.state.config:
+            self.notify("No configuration loaded", severity="error")
+            return
+
+        current_config = app.state.config.auto_mode
+        result = await self.app.push_screen_wait(
+            AutoModeConfigModal(current_config)
+        )
+
+        if result is not None:
+            # Update the config with the new auto mode settings
+            app.state.config.auto_mode = result
+
+            # Save to disk immediately
+            from iterm_controller.config import save_global_config
+
+            save_global_config(app.state.config)
+            self.notify("Auto mode settings saved")
+
+            # Update the status display
+            self._update_auto_mode_status()
 
     def _validate_polling_interval(self, value: str) -> int | None:
         """Validate polling interval input.
@@ -153,7 +205,6 @@ class SettingsScreen(Screen):
         shell = self.query_one("#shell-select", Select).value
         polling_str = self.query_one("#polling-input", Input).value
         notify = self.query_one("#notify-checkbox", Checkbox).value
-        auto_advance = self.query_one("#auto-advance-checkbox", Checkbox).value
 
         # Validate polling interval
         polling = self._validate_polling_interval(polling_str)
@@ -176,8 +227,7 @@ class SettingsScreen(Screen):
         app.state.config.settings.polling_interval_ms = polling
         app.state.config.settings.notification_enabled = notify
 
-        # Update auto-mode config
-        app.state.config.auto_mode.auto_advance = auto_advance
+        # Note: auto_mode config is saved separately via the Configure button
 
         # Save to disk
         from iterm_controller.config import save_global_config
