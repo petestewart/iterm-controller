@@ -58,6 +58,19 @@ Build a Python-based TUI application using:
 - **macOS notifications** - System notification center for attention alerts
 - **GitHub** (via `gh` CLI) - Read-only access to branch/PR status
 
+### Workflow Modes
+
+Dedicated screens for focused project activities:
+
+| Mode | Purpose |
+|------|---------|
+| Plan Mode | Planning artifacts (PROBLEM.md, PRD.md, specs/, PLAN.md) |
+| Docs Mode | Tree-based documentation browser |
+| Work Mode | Task execution and session tracking |
+| Test Mode | QA testing (TEST_PLAN.md) and unit test runner |
+
+Navigation via `1-4` keys from Project Dashboard. Mode persistence remembers last mode per project.
+
 ### Dependencies
 
 | Dependency | Purpose | Notes |
@@ -111,6 +124,15 @@ From PROBLEM.md:
 - [ ] Settings screen allows configuring defaults (IDE, shell, notification preferences)
 - [ ] Auto mode can be configured with stage-specific commands that run when a phase completes
 - [ ] Can launch a new window with a predefined set of tabs/sessions
+
+### Workflow Mode Criteria
+
+- [ ] Can navigate to Plan/Docs/Work/Test modes from Project Dashboard using `1-4` keys
+- [ ] Plan Mode shows artifact status (PROBLEM.md, PRD.md, specs/, PLAN.md) and can launch planning sessions
+- [ ] Docs Mode shows tree-based documentation browser with add/edit/delete operations
+- [ ] Work Mode allows claiming tasks and tracking work sessions assigned to tasks
+- [ ] Test Mode displays TEST_PLAN.md steps and can run unit tests
+- [ ] Mode persistence - reopening project restores last active mode
 
 ---
 *Generated from PROBLEM.md on 2026-01-31*

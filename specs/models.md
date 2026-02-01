@@ -18,8 +18,10 @@ class Project:
     name: str                            # Display name
     path: str                            # Absolute path to project root
     plan_path: str = "PLAN.md"           # Relative path to plan file
+    test_plan_path: str = "TEST_PLAN.md" # Relative path to test plan file
     config_path: str | None = None       # Project-local config override
     template_id: str | None = None       # Template used to create project
+    last_mode: "WorkflowMode | None" = None  # Last active workflow mode (persisted)
 
     # Runtime state (not persisted)
     is_open: bool = field(default=False, repr=False)
@@ -165,6 +167,84 @@ class Plan:
         completed = sum(1 for t in tasks
                        if t.status in (TaskStatus.COMPLETE, TaskStatus.SKIPPED))
         return completed / len(tasks) * 100
+```
+
+## Workflow Mode Models
+
+```python
+class WorkflowMode(Enum):
+    """Project workflow modes for focused views."""
+    PLAN = "plan"      # Planning artifacts
+    DOCS = "docs"      # Documentation management
+    WORK = "work"      # Task execution
+    TEST = "test"      # QA and unit testing
+```
+
+## Test Plan Models
+
+```python
+class TestStatus(Enum):
+    """Status of a test step."""
+    PENDING = "pending"         # [ ]
+    IN_PROGRESS = "in_progress" # [~]
+    PASSED = "passed"           # [x]
+    FAILED = "failed"           # [!]
+
+@dataclass
+class TestStep:
+    """A single verification step from TEST_PLAN.md."""
+    id: str                          # Generated ID (e.g., "func-1")
+    section: str                     # Parent section name
+    description: str                 # Step description
+    status: TestStatus = TestStatus.PENDING
+    notes: str | None = None         # Failure notes or details
+    line_number: int = 0             # Line in file (for updates)
+
+@dataclass
+class TestSection:
+    """A section in TEST_PLAN.md containing test steps."""
+    id: str                          # Section identifier
+    title: str                       # Section title
+    steps: list[TestStep] = field(default_factory=list)
+
+    @property
+    def completion_count(self) -> tuple[int, int]:
+        """Return (passed, total) step counts."""
+        passed = sum(1 for s in self.steps if s.status == TestStatus.PASSED)
+        return (passed, len(self.steps))
+
+@dataclass
+class TestPlan:
+    """Parsed TEST_PLAN.md document."""
+    sections: list[TestSection] = field(default_factory=list)
+    title: str = "Test Plan"
+    path: str = ""
+
+    @property
+    def all_steps(self) -> list[TestStep]:
+        return [step for section in self.sections for step in section.steps]
+
+    @property
+    def completion_percentage(self) -> float:
+        steps = self.all_steps
+        if not steps:
+            return 0.0
+        passed = sum(1 for s in steps if s.status == TestStatus.PASSED)
+        return passed / len(steps) * 100
+```
+
+## Documentation Reference Models
+
+```python
+@dataclass
+class DocReference:
+    """External documentation reference/bookmark."""
+    id: str                          # Unique identifier
+    title: str                       # Display title
+    url: str                         # URL to external doc
+    category: str = ""               # Category/grouping
+    notes: str = ""                  # User notes
+    added_at: datetime = field(default_factory=datetime.now)
 ```
 
 ## Workflow Models

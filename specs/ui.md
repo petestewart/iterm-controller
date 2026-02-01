@@ -10,6 +10,15 @@ Textual-based screens that form the user interface. Each screen is a self-contai
 ControlRoomScreen (main)
 ├── ProjectListScreen
 │   └── ProjectDashboardScreen
+│       ├── PlanModeScreen          # Workflow mode
+│       │   └── ArtifactPreviewModal
+│       ├── DocsModeScreen          # Workflow mode
+│       │   ├── AddDocumentModal
+│       │   └── DocPreviewModal
+│       ├── WorkModeScreen          # Workflow mode
+│       │   └── DependencyChainModal
+│       ├── TestModeScreen          # Workflow mode
+│       │   └── TestStepDetailModal
 │       ├── ScriptPickerModal
 │       ├── DocsPickerModal
 │       └── PlanConflictModal
@@ -20,6 +29,19 @@ Modals (can appear from any screen):
 ├── QuitConfirmModal
 └── GitHubActionsModal
 ```
+
+## Workflow Modes
+
+From Project Dashboard, users can enter focused workflow modes:
+
+| Key | Mode | Spec |
+|-----|------|------|
+| `1` | Plan Mode | [plan-mode.md](./plan-mode.md) |
+| `2` | Docs Mode | [docs-mode.md](./docs-mode.md) |
+| `3` | Work Mode | [work-mode.md](./work-mode.md) |
+| `4` | Test Mode | [test-mode.md](./test-mode.md) |
+
+See [workflow-modes.md](./workflow-modes.md) for mode system overview.
 
 ## Control Room Screen
 
@@ -99,6 +121,10 @@ class ProjectDashboardScreen(Screen):
         ("r", "run_script", "Run Script"),
         ("d", "open_docs", "Docs"),
         ("g", "github_actions", "GitHub"),
+        ("1", "enter_mode('plan')", "Plan Mode"),
+        ("2", "enter_mode('docs')", "Docs Mode"),
+        ("3", "enter_mode('work')", "Work Mode"),
+        ("4", "enter_mode('test')", "Test Mode"),
         ("escape", "app.pop_screen", "Back"),
     ]
 
@@ -154,7 +180,7 @@ class ProjectDashboardScreen(Screen):
 │ │ Planning ✓ → [Execute] → Review → PR → Done                │ │
 │ └────────────────────────────────────────────────────────────┘ │
 ├────────────────────────────────────────────────────────────────┤
-│ t Toggle  s Spawn  r Script  d Docs  g GitHub  Esc Back        │
+│ t Toggle  s Spawn  r Script  d Docs  g GitHub  1-4 Modes  Esc  │
 └────────────────────────────────────────────────────────────────┘
 ```
 

@@ -43,6 +43,10 @@ class AutoModeConfig:
     auto_advance: bool = True          # Automatically advance stages
     require_confirmation: bool = True  # Prompt before running stage command
     designated_session: str | None = None  # Session to run commands in
+
+    # Mode-specific commands (run when entering a workflow mode)
+    mode_commands: dict[str, str] = field(default_factory=dict)
+    # e.g., {"plan": "claude /prd", "test": "claude /qa", "work": "claude /plan"}
 ```
 
 ## Stage Inference
@@ -327,10 +331,57 @@ class AutoModeIntegration:
       "planning": "claude /prd",
       "execute": "claude /plan",
       "review": "claude /review"
+    },
+    "mode_commands": {
+      "plan": "claude /prd",
+      "test": "claude /qa",
+      "work": "claude /plan"
     }
   }
 }
 ```
+
+## Mode-Specific Automation
+
+Auto mode can execute commands when users enter workflow modes.
+
+### Mode Command Triggers
+
+```python
+async def on_mode_enter(self, mode: WorkflowMode):
+    """Handle entering a workflow mode."""
+    if not self.config.enabled:
+        return
+
+    command = self.config.mode_commands.get(mode.value)
+    if not command:
+        return
+
+    if self.config.require_confirmation:
+        confirmed = await self._show_mode_command_modal(mode, command)
+        if not confirmed:
+            return
+
+    await self._execute_stage_command(command)
+```
+
+### Mode Command Modal
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│ Entering Plan Mode                                             │
+├────────────────────────────────────────────────────────────────┤
+│ Run planning command?                                          │
+│                                                                │
+│   claude /prd                                                  │
+│                                                                │
+│            [Enter] Run  [Esc] Skip                             │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### Integration with Workflow Modes
+
+See [workflow-modes.md](./workflow-modes.md) for mode navigation and persistence.
 
 ## State Transitions
 

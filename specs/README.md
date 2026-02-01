@@ -16,6 +16,14 @@ A Python-based TUI application that serves as a "control room" for development p
 │  │   Screen    │  │  Dashboard  │  │   Screen    │              │
 │  └──────┬──────┘  └──────┬──────┘  └─────────────┘              │
 │         │                │                                       │
+│         │         ┌──────┴──────────────────────────┐           │
+│         │         │      Workflow Modes             │           │
+│         │         │  ┌────┐┌────┐┌────┐┌────┐      │           │
+│         │         │  │Plan││Docs││Work││Test│      │           │
+│         │         │  │Mode││Mode││Mode││Mode│      │           │
+│         │         │  └────┘└────┘└────┘└────┘      │           │
+│         │         └─────────────────────────────────┘           │
+│         │                │                                       │
 │         └────────┬───────┘                                       │
 │                  ▼                                               │
 │  ┌─────────────────────────────────────────────────────────────┐│
@@ -30,7 +38,9 @@ A Python-based TUI application that serves as a "control room" for development p
 │  iTerm2     │  │  Plan       │  │  GitHub     │  │  Notifier   │
 │  Controller │  │  Parser     │  │  (gh CLI)   │  │  (macOS)    │
 └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘
-         │
+         │              │
+         │              ├── PLAN.md Parser
+         │              └── TEST_PLAN.md Parser
          ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │                     iTerm2 Python API                           │
@@ -55,6 +65,17 @@ A Python-based TUI application that serves as a "control room" for development p
 | Session Monitor | [session-monitor.md](./session-monitor.md) | Output polling, attention state detection patterns |
 | Health Checks | [health-checks.md](./health-checks.md) | HTTP endpoint polling, status display |
 | Auto Mode | [auto-mode.md](./auto-mode.md) | Workflow stage automation, phase completion triggers |
+
+### Workflow Modes
+
+| Component | Spec | Description |
+|-----------|------|-------------|
+| Workflow Modes | [workflow-modes.md](./workflow-modes.md) | Mode system overview, navigation, persistence |
+| Plan Mode | [plan-mode.md](./plan-mode.md) | Planning artifacts screen (PROBLEM.md, PRD.md, specs/, PLAN.md) |
+| Docs Mode | [docs-mode.md](./docs-mode.md) | Documentation tree browser, add/edit/organize docs |
+| Work Mode | [work-mode.md](./work-mode.md) | Task-centric view, claim/assign tasks, session tracking |
+| Test Mode | [test-mode.md](./test-mode.md) | QA testing (TEST_PLAN.md) and unit test runner |
+| TEST_PLAN.md Parser | [test-plan-parser.md](./test-plan-parser.md) | Parsing, updating, watching TEST_PLAN.md files |
 
 ## Technical Decisions
 

@@ -332,6 +332,166 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Use `self.app.push_screen()` with callback instead, or use `@work` decorator
   - Acceptance: All modal-triggering shortcuts work without crashing
 
+### Phase 12: Workflow Mode Infrastructure
+
+- [ ] **Add WorkflowMode enum to models**
+  - Spec: specs/models.md#workflow-mode-models
+  - Scope: Add WorkflowMode enum (PLAN, DOCS, WORK, TEST) and last_mode field to Project
+  - Acceptance: Enum importable, Project.last_mode persists to JSON
+
+- [ ] **Add mode navigation bindings to ProjectDashboard**
+  - Spec: specs/ui.md#workflow-modes
+  - Scope: Add 1-4 keybindings to navigate to mode screens from Project Dashboard
+  - Acceptance: Pressing 1-4 pushes appropriate mode screen
+
+- [ ] **Create ModeScreen base class**
+  - Spec: specs/workflow-modes.md#screen-base-class
+  - Scope: Shared base with common bindings (1-4 mode switch, Esc back)
+  - Acceptance: All mode screens inherit common navigation
+
+- [ ] **Add mode persistence to Project model**
+  - Spec: specs/workflow-modes.md#mode-persistence
+  - Scope: Save/restore last_mode, update on mode change
+  - Acceptance: Reopening project restores last mode
+
+- [ ] **Register mode screens in app.py**
+  - Scope: Register PlanModeScreen, DocsModeScreen, WorkModeScreen, TestModeScreen
+  - Acceptance: All mode screens accessible via navigation
+
+### Phase 13: Plan Mode
+
+- [ ] **Create PlanModeScreen with artifact list**
+  - Spec: specs/plan-mode.md
+  - Scope: Show PROBLEM.md, PRD.md, specs/, PLAN.md with status indicators
+  - Acceptance: Artifact list displays with correct exists/missing status
+
+- [ ] **Implement artifact existence checking**
+  - Spec: specs/plan-mode.md#artifact-existence-check
+  - Scope: Check file/directory existence, count specs, count tasks
+  - Acceptance: Status indicators accurate for all artifacts
+
+- [ ] **Add create/edit actions for artifacts**
+  - Spec: specs/plan-mode.md#actions
+  - Scope: `c` creates missing artifact via Claude, `e` opens in editor
+  - Acceptance: Can create PRD.md and open it for editing
+
+- [ ] **Add inline artifact preview**
+  - Spec: specs/plan-mode.md#inline-preview
+  - Scope: Enter key shows markdown preview modal
+  - Acceptance: Can preview PRD.md content inline
+
+- [ ] **Integrate with Auto Mode planning commands**
+  - Spec: specs/auto-mode.md#mode-specific-automation
+  - Scope: Trigger mode_commands.plan when entering Plan Mode
+  - Acceptance: Configured command runs on mode entry
+
+### Phase 14: Work Mode
+
+- [ ] **Create WorkModeScreen with task queue**
+  - Spec: specs/work-mode.md
+  - Scope: Two-panel layout: task queue (pending) and active work (in_progress)
+  - Acceptance: Tasks displayed in correct panels by status
+
+- [ ] **Implement task claiming (claim/unclaim)**
+  - Spec: specs/work-mode.md#claim-workflow
+  - Scope: `c` claims task (sets in_progress), `u` unclaims (back to pending)
+  - Acceptance: Task status changes persist to PLAN.md
+
+- [ ] **Add task-session linking**
+  - Spec: specs/work-mode.md#task-session-linking
+  - Scope: When spawning for task, link session to task, show in active work
+  - Acceptance: Session shows which task it's working on
+
+- [ ] **Show active work with session status**
+  - Spec: specs/work-mode.md#active-work-panel
+  - Scope: Display task with assigned session, started time, attention state
+  - Acceptance: Active tasks show linked session status
+
+- [ ] **Add blocked task visualization**
+  - Spec: specs/work-mode.md#blocked-task-view
+  - Scope: Show dependency chain, `v` key for detailed view
+  - Acceptance: Blocked tasks dimmed with "blocked by" suffix
+
+### Phase 15: Test Mode
+
+- [ ] **Create TestStep and TestPlan models**
+  - Spec: specs/test-plan-parser.md#parsing
+  - Scope: TestStatus enum, TestStep, TestSection, TestPlan dataclasses
+  - Acceptance: Models serialize to/from JSON
+
+- [ ] **Implement TEST_PLAN.md parser**
+  - Spec: specs/test-plan-parser.md
+  - Scope: Parse markdown checkboxes with [ ]/[~]/[x]/[!] markers
+  - Acceptance: Parses sections, steps, statuses, notes
+
+- [ ] **Create TestPlanWatcher for file changes**
+  - Spec: specs/test-plan-parser.md#file-watching
+  - Scope: Watch TEST_PLAN.md, emit events on change, handle conflicts
+  - Acceptance: External edits detected within 1 second
+
+- [ ] **Create TestModeScreen with step list**
+  - Spec: specs/test-mode.md
+  - Scope: Two-panel layout: TEST_PLAN.md steps and unit test results
+  - Acceptance: Test steps displayed with status indicators
+
+- [ ] **Add unit test runner integration**
+  - Spec: specs/test-mode.md#secondary-unit-test-runner
+  - Scope: Detect test command, `r` runs tests, display results
+  - Acceptance: Can run pytest/npm test and see results
+
+- [ ] **Implement test command detection**
+  - Spec: specs/test-mode.md#test-command-detection
+  - Scope: Auto-detect from pytest.ini, package.json, Makefile, etc.
+  - Acceptance: Correct test command detected for project type
+
+- [ ] **Add TEST_PLAN.md generation**
+  - Spec: specs/test-mode.md#generate-test_planmd
+  - Scope: `g` key launches Claude to generate test plan from PRD/specs
+  - Acceptance: Can generate TEST_PLAN.md with verification steps
+
+### Phase 16: Docs Mode
+
+- [ ] **Create DocsModeScreen with tree widget**
+  - Spec: specs/docs-mode.md
+  - Scope: Tree view of docs/, specs/, README.md, CHANGELOG.md
+  - Acceptance: Documentation tree displays with folders collapsible
+
+- [ ] **Implement folder/file tree navigation**
+  - Spec: specs/docs-mode.md#actions
+  - Scope: Arrow keys navigate, Enter opens/expands, Left/Right collapse/expand
+  - Acceptance: Can navigate entire doc tree with keyboard
+
+- [ ] **Add document CRUD operations**
+  - Spec: specs/docs-mode.md#add-document-modal
+  - Scope: `a` adds, `d` deletes (with confirm), `r` renames
+  - Acceptance: Can create docs/new-file.md and delete it
+
+- [ ] **Add inline preview for markdown**
+  - Spec: specs/docs-mode.md#inline-preview
+  - Scope: `p` key shows markdown preview modal
+  - Acceptance: Can preview README.md content inline
+
+### Phase 17: Mode Integration
+
+- [ ] **Extend Auto Mode for mode-specific commands**
+  - Spec: specs/auto-mode.md#mode-specific-automation
+  - Scope: Add mode_commands config, trigger on mode entry
+  - Acceptance: Entering Plan Mode can auto-run "claude /prd"
+
+- [ ] **Add mode indicator to header**
+  - Spec: specs/workflow-modes.md#mode-indicator
+  - Scope: Show current mode and 1-4 shortcuts in header
+  - Acceptance: Header shows "[Plan] 1 2 3 4" with current highlighted
+
+- [ ] **Implement mode persistence (restore on reopen)**
+  - Spec: specs/workflow-modes.md#mode-persistence
+  - Scope: Save last_mode to project, restore on project open
+  - Acceptance: Closing and reopening project returns to last mode
+
+- [ ] **Update help screen with mode shortcuts**
+  - Scope: Add workflow modes section to help modal
+  - Acceptance: Help shows 1-4 key descriptions for modes
+
 ## Open Questions
 
 - [~] **Multi-window support**: Should projects span multiple iTerm2 windows? Current design assumes single window per project.
