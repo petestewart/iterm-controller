@@ -387,7 +387,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 14: Work Mode
 
-- [ ] **Create WorkModeScreen with task queue**
+- [x] **Create WorkModeScreen with task queue** `[complete]`
   - Spec: specs/work-mode.md
   - Scope: Two-panel layout: task queue (pending) and active work (in_progress)
   - Acceptance: Tasks displayed in correct panels by status
