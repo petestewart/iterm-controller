@@ -14,6 +14,7 @@ from iterm_controller.iterm_api import (
     SessionTerminator,
     SpawnResult,
     TabState,
+    WindowLayoutManager,
     WindowLayoutSpawner,
     WindowState,
     WindowTracker,
@@ -1872,3 +1873,417 @@ class TestSessionTerminator:
 
         assert closed == 0
         assert results == []
+
+
+class TestWindowLayoutManager:
+    """Test WindowLayoutManager layout persistence functionality."""
+
+    def make_connected_controller(self) -> ItermController:
+        """Create a controller in connected state."""
+        controller = ItermController()
+        controller._connected = True
+        controller.connection = MagicMock()
+        controller.app = MagicMock()
+        return controller
+
+    def test_init(self):
+        """WindowLayoutManager initializes with empty layouts."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+        assert manager.controller is controller
+        assert manager._layouts == {}
+
+    def test_load_from_config(self):
+        """load_from_config populates layouts from list."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+
+        layouts = [
+            WindowLayout(id="layout-1", name="Layout 1"),
+            WindowLayout(id="layout-2", name="Layout 2"),
+        ]
+        manager.load_from_config(layouts)
+
+        assert len(manager._layouts) == 2
+        assert "layout-1" in manager._layouts
+        assert "layout-2" in manager._layouts
+        assert manager._layouts["layout-1"].name == "Layout 1"
+
+    def test_list_layouts(self):
+        """list_layouts returns all stored layouts."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+
+        layout1 = WindowLayout(id="l1", name="L1")
+        layout2 = WindowLayout(id="l2", name="L2")
+        manager._layouts = {"l1": layout1, "l2": layout2}
+
+        result = manager.list_layouts()
+
+        assert len(result) == 2
+        assert layout1 in result
+        assert layout2 in result
+
+    def test_list_layouts_empty(self):
+        """list_layouts returns empty list when no layouts."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+
+        result = manager.list_layouts()
+
+        assert result == []
+
+    def test_get_layout_found(self):
+        """get_layout returns layout by ID when found."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+
+        layout = WindowLayout(id="test-layout", name="Test Layout")
+        manager._layouts = {"test-layout": layout}
+
+        result = manager.get_layout("test-layout")
+
+        assert result is layout
+
+    def test_get_layout_not_found(self):
+        """get_layout returns None when layout not found."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+
+        result = manager.get_layout("nonexistent")
+
+        assert result is None
+
+    def test_save_layout_new(self):
+        """save_layout adds a new layout."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+
+        layout = WindowLayout(id="new-layout", name="New Layout")
+        manager.save_layout(layout)
+
+        assert "new-layout" in manager._layouts
+        assert manager._layouts["new-layout"] is layout
+
+    def test_save_layout_update(self):
+        """save_layout updates an existing layout."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+
+        old_layout = WindowLayout(id="update-layout", name="Old Name")
+        manager._layouts = {"update-layout": old_layout}
+
+        new_layout = WindowLayout(id="update-layout", name="New Name")
+        manager.save_layout(new_layout)
+
+        assert manager._layouts["update-layout"].name == "New Name"
+        assert manager._layouts["update-layout"] is new_layout
+
+    def test_delete_layout_found(self):
+        """delete_layout removes layout and returns True."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+
+        layout = WindowLayout(id="to-delete", name="Delete Me")
+        manager._layouts = {"to-delete": layout}
+
+        result = manager.delete_layout("to-delete")
+
+        assert result is True
+        assert "to-delete" not in manager._layouts
+
+    def test_delete_layout_not_found(self):
+        """delete_layout returns False when layout not found."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+
+        result = manager.delete_layout("nonexistent")
+
+        assert result is False
+
+    def test_get_layouts_for_config(self):
+        """get_layouts_for_config returns list for saving to config."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+
+        layout1 = WindowLayout(id="l1", name="L1")
+        layout2 = WindowLayout(id="l2", name="L2")
+        manager._layouts = {"l1": layout1, "l2": layout2}
+
+        result = manager.get_layouts_for_config()
+
+        assert len(result) == 2
+        assert layout1 in result
+        assert layout2 in result
+
+    @pytest.mark.asyncio
+    async def test_capture_current_layout_requires_connection(self):
+        """capture_current_layout raises when not connected."""
+        controller = ItermController()
+        manager = WindowLayoutManager(controller)
+
+        with pytest.raises(ItermNotConnectedError):
+            await manager.capture_current_layout("id", "name")
+
+    @pytest.mark.asyncio
+    async def test_capture_current_layout_no_window(self):
+        """capture_current_layout returns None when no window available."""
+        controller = self.make_connected_controller()
+        controller.app.current_terminal_window = None
+        manager = WindowLayoutManager(controller)
+
+        result = await manager.capture_current_layout("id", "name")
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_capture_current_layout_uses_provided_window(self):
+        """capture_current_layout uses provided window."""
+        controller = self.make_connected_controller()
+        manager = WindowLayoutManager(controller)
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-1"
+        mock_session.async_get_property = AsyncMock(return_value=None)
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-1"
+        mock_tab.sessions = [mock_session]
+        mock_tab.async_get_variable = AsyncMock(return_value="Main Tab")
+
+        mock_window = MagicMock()
+        mock_window.window_id = "window-1"
+        mock_window.tabs = [mock_tab]
+
+        result = await manager.capture_current_layout(
+            "captured", "Captured Layout", window=mock_window
+        )
+
+        assert result is not None
+        assert result.id == "captured"
+        assert result.name == "Captured Layout"
+        assert len(result.tabs) == 1
+        assert result.tabs[0].name == "Main Tab"
+
+    @pytest.mark.asyncio
+    async def test_capture_current_layout_uses_current_window(self):
+        """capture_current_layout uses current window when not provided."""
+        controller = self.make_connected_controller()
+        manager = WindowLayoutManager(controller)
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-1"
+        mock_session.async_get_property = AsyncMock(return_value=None)
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-1"
+        mock_tab.sessions = [mock_session]
+        mock_tab.async_get_variable = AsyncMock(return_value="Current Tab")
+
+        mock_window = MagicMock()
+        mock_window.window_id = "current-window"
+        mock_window.tabs = [mock_tab]
+
+        controller.app.current_terminal_window = mock_window
+
+        result = await manager.capture_current_layout("current", "Current")
+
+        assert result is not None
+        assert len(result.tabs) == 1
+        assert result.tabs[0].name == "Current Tab"
+
+    @pytest.mark.asyncio
+    async def test_capture_current_layout_multiple_tabs(self):
+        """capture_current_layout captures multiple tabs."""
+        controller = self.make_connected_controller()
+        manager = WindowLayoutManager(controller)
+
+        mock_session1 = MagicMock()
+        mock_session1.session_id = "s1"
+        mock_session1.async_get_property = AsyncMock(return_value=None)
+
+        mock_session2 = MagicMock()
+        mock_session2.session_id = "s2"
+        mock_session2.async_get_property = AsyncMock(return_value=None)
+
+        mock_tab1 = MagicMock()
+        mock_tab1.tab_id = "tab-1"
+        mock_tab1.sessions = [mock_session1]
+        mock_tab1.async_get_variable = AsyncMock(return_value="Tab 1")
+
+        mock_tab2 = MagicMock()
+        mock_tab2.tab_id = "tab-2"
+        mock_tab2.sessions = [mock_session2]
+        mock_tab2.async_get_variable = AsyncMock(return_value="Tab 2")
+
+        mock_window = MagicMock()
+        mock_window.window_id = "multi-tab"
+        mock_window.tabs = [mock_tab1, mock_tab2]
+
+        result = await manager.capture_current_layout(
+            "multi", "Multi Tab", window=mock_window
+        )
+
+        assert result is not None
+        assert len(result.tabs) == 2
+        assert result.tabs[0].name == "Tab 1"
+        assert result.tabs[1].name == "Tab 2"
+
+    @pytest.mark.asyncio
+    async def test_capture_current_layout_multiple_sessions(self):
+        """capture_current_layout captures multiple sessions with splits."""
+        controller = self.make_connected_controller()
+        manager = WindowLayoutManager(controller)
+
+        mock_session1 = MagicMock()
+        mock_session1.session_id = "s1"
+        mock_session1.async_get_property = AsyncMock(return_value=None)
+
+        mock_session2 = MagicMock()
+        mock_session2.session_id = "s2"
+        mock_session2.async_get_property = AsyncMock(return_value=None)
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-1"
+        mock_tab.sessions = [mock_session1, mock_session2]
+        mock_tab.async_get_variable = AsyncMock(return_value="Split Tab")
+
+        mock_window = MagicMock()
+        mock_window.window_id = "split-window"
+        mock_window.tabs = [mock_tab]
+
+        result = await manager.capture_current_layout(
+            "split", "Split Layout", window=mock_window
+        )
+
+        assert result is not None
+        assert len(result.tabs) == 1
+        assert len(result.tabs[0].sessions) == 2
+
+        # First session has no split
+        assert result.tabs[0].sessions[0].split == "none"
+        assert result.tabs[0].sessions[0].template_id == "session_0"
+
+        # Second session has a split
+        assert result.tabs[0].sessions[1].split in ("vertical", "horizontal")
+        assert result.tabs[0].sessions[1].template_id == "session_1"
+
+    @pytest.mark.asyncio
+    async def test_capture_current_layout_handles_error(self):
+        """capture_current_layout returns None on error."""
+        controller = self.make_connected_controller()
+        manager = WindowLayoutManager(controller)
+
+        mock_window = MagicMock()
+        mock_window.window_id = "error-window"
+        mock_window.tabs = MagicMock()
+        mock_window.tabs.__iter__ = MagicMock(side_effect=Exception("Tab error"))
+
+        result = await manager.capture_current_layout(
+            "error", "Error", window=mock_window
+        )
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_capture_and_save(self):
+        """capture_and_save captures and saves layout in one step."""
+        controller = self.make_connected_controller()
+        manager = WindowLayoutManager(controller)
+
+        mock_session = MagicMock()
+        mock_session.session_id = "s1"
+        mock_session.async_get_property = AsyncMock(return_value=None)
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-1"
+        mock_tab.sessions = [mock_session]
+        mock_tab.async_get_variable = AsyncMock(return_value="Saved Tab")
+
+        mock_window = MagicMock()
+        mock_window.window_id = "save-window"
+        mock_window.tabs = [mock_tab]
+
+        result = await manager.capture_and_save(
+            "saved-layout", "Saved Layout", window=mock_window
+        )
+
+        assert result is not None
+        assert result.id == "saved-layout"
+        assert result.name == "Saved Layout"
+
+        # Should be saved
+        assert "saved-layout" in manager._layouts
+        assert manager._layouts["saved-layout"] is result
+
+    @pytest.mark.asyncio
+    async def test_capture_and_save_failure(self):
+        """capture_and_save returns None and doesn't save on failure."""
+        controller = self.make_connected_controller()
+        controller.app.current_terminal_window = None
+        manager = WindowLayoutManager(controller)
+
+        result = await manager.capture_and_save("fail", "Fail")
+
+        assert result is None
+        assert "fail" not in manager._layouts
+
+    @pytest.mark.asyncio
+    async def test_infer_split_direction_vertical(self):
+        """_infer_split_direction returns vertical by default."""
+        controller = self.make_connected_controller()
+        manager = WindowLayoutManager(controller)
+
+        mock_session = MagicMock()
+        mock_session.async_get_property = AsyncMock(return_value=None)
+
+        result = await manager._infer_split_direction(mock_session)
+
+        assert result == "vertical"
+
+    @pytest.mark.asyncio
+    async def test_infer_split_direction_horizontal_from_frame(self):
+        """_infer_split_direction infers horizontal from wide aspect ratio."""
+        controller = self.make_connected_controller()
+        manager = WindowLayoutManager(controller)
+
+        mock_session = MagicMock()
+        # Wide aspect ratio suggests horizontal split
+        mock_session.async_get_property = AsyncMock(
+            return_value={"size": {"width": 200, "height": 50}}
+        )
+
+        result = await manager._infer_split_direction(mock_session)
+
+        assert result == "horizontal"
+
+    @pytest.mark.asyncio
+    async def test_infer_split_direction_vertical_from_frame(self):
+        """_infer_split_direction infers vertical from tall aspect ratio."""
+        controller = self.make_connected_controller()
+        manager = WindowLayoutManager(controller)
+
+        mock_session = MagicMock()
+        # Not a wide aspect ratio
+        mock_session.async_get_property = AsyncMock(
+            return_value={"size": {"width": 100, "height": 100}}
+        )
+
+        result = await manager._infer_split_direction(mock_session)
+
+        assert result == "vertical"
+
+    @pytest.mark.asyncio
+    async def test_infer_split_direction_handles_error(self):
+        """_infer_split_direction returns vertical on error."""
+        controller = self.make_connected_controller()
+        manager = WindowLayoutManager(controller)
+
+        mock_session = MagicMock()
+        mock_session.async_get_property = AsyncMock(
+            side_effect=Exception("Property error")
+        )
+
+        result = await manager._infer_split_direction(mock_session)
+
+        assert result == "vertical"

@@ -96,7 +96,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Adjust polling rate based on session activity (faster when active, slower when idle)
   - Acceptance: Polling interval adapts dynamically, no performance degradation
 
-- [ ] **Implement window layout persistence** `[pending]`
+- [x] **Implement window layout persistence** `[complete]`
   - Spec: specs/config.md#window-layout-configuration
   - Scope: Save/load/reuse window layouts to configuration
   - Acceptance: Layouts persist across sessions, can save current layout

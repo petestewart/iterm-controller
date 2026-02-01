@@ -179,3 +179,14 @@ def get_config_dir() -> Path:
 def get_project_config_path(project_path: str | Path) -> Path:
     """Return the path to a project's local config file."""
     return Path(project_path) / PROJECT_CONFIG_FILENAME
+
+
+def save_window_layouts(config: AppConfig, layouts: list) -> None:
+    """Update window layouts in config and save to disk.
+
+    Args:
+        config: The AppConfig to update.
+        layouts: List of WindowLayout objects from the layout manager.
+    """
+    config.window_layouts = layouts
+    save_global_config(config)
