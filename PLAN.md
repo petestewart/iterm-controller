@@ -172,7 +172,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Single project view with tasks, sessions, workflow bar
   - Acceptance: Shows project-specific sessions, PLAN.md tasks, health status
 
-- [ ] **Build Project List screen** `[pending]`
+- [x] **Build Project List screen** `[complete]`
   - Spec: specs/ui.md#project-list-screen
   - Scope: Browse and select projects from config
   - Acceptance: Lists projects, can open project dashboard

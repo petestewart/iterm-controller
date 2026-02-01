@@ -11,56 +11,146 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Container
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header
+from textual.widgets import DataTable, Footer, Header, Static
 
 if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
 
 
 class ProjectListScreen(Screen):
-    """Browse and select projects."""
+    """Browse and select projects.
+
+    Displays a table of all configured projects with their name, path,
+    active session count, and status. Users can select a project to
+    open its dashboard, create new projects, or delete existing ones.
+    """
 
     BINDINGS = [
         Binding("enter", "open_project", "Open"),
         Binding("n", "new_project", "New Project"),
         Binding("d", "delete_project", "Delete"),
+        Binding("r", "refresh", "Refresh"),
         Binding("escape", "app.pop_screen", "Back"),
     ]
+
+    def __init__(self) -> None:
+        """Initialize the screen."""
+        super().__init__()
+        # Map row keys to project IDs for lookup
+        self._row_to_project_id: dict[str, str] = {}
 
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
         yield Header()
         yield Container(
             DataTable(id="project-table"),
+            Static("", id="empty-message"),
             id="main",
         )
         yield Footer()
 
     async def on_mount(self) -> None:
         """Initialize the project table."""
+        await self._populate_table()
+
+    async def _populate_table(self) -> None:
+        """Populate the project table with current project data."""
         table = self.query_one("#project-table", DataTable)
+        empty_message = self.query_one("#empty-message", Static)
+
+        # Clear existing data
+        table.clear(columns=True)
+        self._row_to_project_id.clear()
+
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        if not app.state.projects:
+            # Hide table and show empty message
+            table.display = False
+            empty_message.update(
+                "[dim]No projects configured.\n\n"
+                "Press [bold]n[/bold] to create a new project.[/dim]"
+            )
+            empty_message.display = True
+            return
+
+        # Show table and hide empty message
+        table.display = True
+        empty_message.display = False
+
         table.add_columns("Name", "Path", "Sessions", "Status")
         table.cursor_type = "row"
 
-        app: ItermControllerApp = self.app  # type: ignore[assignment]
         for project in app.state.projects.values():
-            table.add_row(
+            # Count active sessions for this project
+            session_count = len(app.state.get_sessions_for_project(project.id))
+            status = "[green]Open[/green]" if project.is_open else "[dim]Closed[/dim]"
+
+            row_key = table.add_row(
                 project.name,
-                project.path,
-                str(len(project.sessions)),
-                "Open" if project.is_open else "Closed",
+                self._truncate_path(project.path),
+                str(session_count),
+                status,
+                key=project.id,
             )
+            self._row_to_project_id[str(row_key)] = project.id
 
-        if not app.state.projects:
-            table.add_row("[dim]No projects configured[/dim]", "", "", "")
+    def _truncate_path(self, path: str, max_length: int = 40) -> str:
+        """Truncate a path for display, keeping the end visible.
 
-    def action_open_project(self) -> None:
-        """Open the selected project."""
+        Args:
+            path: The path to truncate.
+            max_length: Maximum length before truncation.
+
+        Returns:
+            The truncated path with ellipsis if needed.
+        """
+        if len(path) <= max_length:
+            return path
+        return "..." + path[-(max_length - 3) :]
+
+    def _get_selected_project_id(self) -> str | None:
+        """Get the project ID of the currently selected row.
+
+        Returns:
+            The project ID if a valid row is selected, None otherwise.
+        """
         table = self.query_one("#project-table", DataTable)
-        if table.cursor_row is not None:
-            row = table.get_row_at(table.cursor_row)
-            if row and row[0]:
-                self.notify(f"Would open project: {row[0]}")
+
+        cursor_coordinate = table.cursor_coordinate
+        if cursor_coordinate is None:
+            return None
+
+        # Get the CellKey which contains row_key
+        try:
+            cell_key = table.coordinate_to_cell_key(cursor_coordinate)
+            # The row_key.value is the project ID we passed to add_row
+            return str(cell_key.row_key.value)
+        except Exception:
+            return None
+
+    async def action_open_project(self) -> None:
+        """Open the selected project dashboard."""
+        project_id = self._get_selected_project_id()
+
+        if not project_id:
+            self.notify("No project selected", severity="warning")
+            return
+
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+        project = app.state.projects.get(project_id)
+
+        if not project:
+            self.notify("Project not found", severity="error")
+            return
+
+        # Open the project in state
+        await app.state.open_project(project_id)
+
+        # Push the project dashboard screen
+        from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
+
+        self.app.push_screen(ProjectDashboardScreen(project_id))
 
     def action_new_project(self) -> None:
         """Create a new project."""
@@ -70,4 +160,30 @@ class ProjectListScreen(Screen):
 
     def action_delete_project(self) -> None:
         """Delete the selected project."""
-        self.notify("Delete project: Not implemented yet")
+        project_id = self._get_selected_project_id()
+
+        if not project_id:
+            self.notify("No project selected", severity="warning")
+            return
+
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+        project = app.state.projects.get(project_id)
+
+        if not project:
+            self.notify("Project not found", severity="error")
+            return
+
+        if project.is_open:
+            self.notify(
+                "Cannot delete an open project. Close it first.",
+                severity="error",
+            )
+            return
+
+        # TODO: Add confirmation modal before deleting
+        self.notify(f"Delete project '{project.name}': Not implemented yet")
+
+    async def action_refresh(self) -> None:
+        """Refresh the project list."""
+        await self._populate_table()
+        self.notify("Project list refreshed")
