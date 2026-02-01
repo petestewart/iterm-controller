@@ -312,7 +312,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Add `on_data_table_row_selected` handler instead of relying on the binding
   - Acceptance: Enter key opens the selected project's dashboard
 
-- [ ] **Fix keyboard shortcuts for Settings and Sessions screens**
+- [x] **Fix keyboard shortcuts for Settings and Sessions screens** `[complete]`
   - Scope: Settings uses `s`/`ctrl+s` but should use `,`/`ctrl+,` (standard convention). Sessions/Control Room should use `s`/`ctrl+s`
   - Fix: Update bindings in app.py - change settings to comma, add sessions shortcut with `s`
   - Acceptance: `,` or `ctrl+,` opens Settings, `s` or `ctrl+s` opens Sessions/Control Room

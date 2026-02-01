@@ -31,7 +31,8 @@ class TestItermControllerApp:
         assert "q" in binding_keys
         assert "?" in binding_keys
         assert "p" in binding_keys
-        assert "s" in binding_keys
+        assert "s" in binding_keys  # Sessions
+        assert "comma" in binding_keys  # Settings
 
     def test_app_has_css_path(self) -> None:
         """Test that app has CSS_PATH configured."""
@@ -77,12 +78,29 @@ class TestItermControllerAppAsync:
         """Test navigation to settings screen."""
         app = ItermControllerApp()
         async with app.run_test() as pilot:
-            # Press 's' to go to settings
-            await pilot.press("s")
+            # Press comma to go to settings
+            await pilot.press("comma")
 
             from iterm_controller.screens.settings import SettingsScreen
 
             assert isinstance(app.screen, SettingsScreen)
+
+    async def test_app_navigation_to_sessions(self) -> None:
+        """Test navigation to sessions/control room screen."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            # First go to another screen
+            await pilot.press("p")
+            from iterm_controller.screens.project_list import ProjectListScreen
+
+            assert isinstance(app.screen, ProjectListScreen)
+
+            # Press 's' to go back to sessions/control room
+            await pilot.press("s")
+
+            from iterm_controller.screens.control_room import ControlRoomScreen
+
+            assert isinstance(app.screen, ControlRoomScreen)
 
     async def test_app_escape_returns_from_screen(self) -> None:
         """Test that escape returns from pushed screens."""

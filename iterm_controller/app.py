@@ -42,7 +42,8 @@ class ItermControllerApp(App):
         Binding("ctrl+c", "request_quit", "Quit", show=False),
         Binding("?", "show_help", "Help"),
         Binding("p", "push_screen('project_list')", "Projects"),
-        Binding("s", "push_screen('settings')", "Settings"),
+        Binding("s", "go_home", "Sessions"),
+        Binding("comma", "push_screen('settings')", "Settings"),
         Binding("h", "go_home", "Home", show=False),
     ]
 
