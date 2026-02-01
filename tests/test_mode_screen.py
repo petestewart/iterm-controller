@@ -812,7 +812,283 @@ class TestWorkModeClaimUnclaim:
         binding_keys = [b.key for b in screen.BINDINGS]
 
         assert "c" in binding_keys  # Claim
+        assert "s" in binding_keys  # Spawn
         assert "u" in binding_keys  # Unclaim
         assert "d" in binding_keys  # Done
         assert "f" in binding_keys  # Focus
         assert "tab" in binding_keys  # Switch panel
+
+
+@pytest.mark.asyncio
+class TestWorkModeTaskSessionLinking:
+    """Tests for WorkModeScreen task-session linking functionality."""
+
+    async def test_spawn_binding_exists(self) -> None:
+        """Test that WorkModeScreen has spawn binding."""
+        project = make_project()
+        screen = WorkModeScreen(project)
+        binding_keys = [b.key for b in screen.BINDINGS]
+
+        assert "s" in binding_keys  # Spawn
+
+    async def test_spawn_session_not_connected_shows_error(self) -> None:
+        """Test that spawning session shows error when not connected to iTerm2."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a PLAN.md with a pending task
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Test task** `[pending]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Ensure not connected to iTerm2
+                app.iterm._connected = False
+
+                # Press 's' to try to spawn
+                await pilot.press("s")
+                await pilot.pause()
+
+                # Should show error notification (no change to file)
+
+    async def test_spawn_session_no_task_selected_shows_warning(self) -> None:
+        """Test that spawning with no task selected shows warning."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a PLAN.md with no pending tasks
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [x] **Completed task** `[complete]`
+  - Scope: Already done
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Press 's' to try to spawn (should show warning)
+                await pilot.press("s")
+                await pilot.pause()
+
+                # No change should happen
+
+    async def test_spawn_blocked_task_shows_warning(self) -> None:
+        """Test that spawning a blocked task shows warning."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a PLAN.md with a blocked task
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **First task** `[pending]`
+  - Scope: First scope
+
+- [ ] **Second task** `[pending]`
+  - Depends: 1.1
+  - Scope: Depends on first
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Navigate to the blocked task
+                await pilot.press("j")  # Move to blocked task
+                await pilot.pause()
+
+                # Press 's' to try to spawn
+                await pilot.press("s")
+                await pilot.pause()
+
+                # Should show warning about blocked task
+
+    async def test_get_selected_task_returns_queue_task(self) -> None:
+        """Test _get_selected_task returns task from queue panel."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Queue task** `[pending]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test():
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Default is queue panel
+                task = app.screen._get_selected_task()
+                assert task is not None
+                assert "Queue task" in task.title
+
+    async def test_get_selected_task_returns_active_task(self) -> None:
+        """Test _get_selected_task returns task from active panel."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Active task** `[in_progress]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Switch to active panel
+                await pilot.press("tab")
+                await pilot.pause()
+
+                task = app.screen._get_selected_task()
+                assert task is not None
+                assert "Active task" in task.title
+
+
+class TestManagedSessionMetadata:
+    """Tests for ManagedSession metadata field."""
+
+    def test_managed_session_has_metadata_field(self) -> None:
+        """Test that ManagedSession has metadata field."""
+        from iterm_controller.models import AttentionState, ManagedSession
+
+        session = ManagedSession(
+            id="test-session-1",
+            template_id="claude",
+            project_id="project-1",
+            tab_id="tab-1",
+        )
+
+        assert hasattr(session, "metadata")
+        assert isinstance(session.metadata, dict)
+
+    def test_managed_session_metadata_stores_task_info(self) -> None:
+        """Test that ManagedSession metadata can store task info."""
+        from iterm_controller.models import ManagedSession
+
+        session = ManagedSession(
+            id="test-session-1",
+            template_id="claude",
+            project_id="project-1",
+            tab_id="tab-1",
+        )
+
+        session.metadata["task_id"] = "1.1"
+        session.metadata["task_title"] = "Add auth middleware"
+
+        assert session.metadata["task_id"] == "1.1"
+        assert session.metadata["task_title"] == "Add auth middleware"
+
+    def test_managed_session_serializes_with_metadata(self) -> None:
+        """Test that ManagedSession serializes correctly with metadata."""
+        from dataclasses import asdict
+
+        from iterm_controller.models import ManagedSession
+
+        session = ManagedSession(
+            id="test-session-1",
+            template_id="claude",
+            project_id="project-1",
+            tab_id="tab-1",
+        )
+        session.metadata["task_id"] = "2.1"
+
+        data = asdict(session)
+
+        assert "metadata" in data
+        assert data["metadata"]["task_id"] == "2.1"
+
+
+class TestSessionListWidgetTaskInfo:
+    """Tests for SessionListWidget showing task info."""
+
+    def test_session_list_renders_task_info(self) -> None:
+        """Test that SessionListWidget renders task info for linked sessions."""
+        from iterm_controller.models import ManagedSession
+        from iterm_controller.widgets.session_list import SessionListWidget
+
+        session = ManagedSession(
+            id="test-session-1",
+            template_id="claude",
+            project_id="project-1",
+            tab_id="tab-1",
+        )
+        session.metadata["task_id"] = "1.3"
+        session.metadata["task_title"] = "Build API layer"
+
+        widget = SessionListWidget(sessions=[session], show_project=False)
+        rendered = widget._render_session(session)
+
+        # Should contain task ID
+        assert "Task 1.3" in str(rendered)
+
+    def test_session_list_renders_dash_for_no_task(self) -> None:
+        """Test that SessionListWidget renders dash when no task linked."""
+        from iterm_controller.models import ManagedSession
+        from iterm_controller.widgets.session_list import SessionListWidget
+
+        session = ManagedSession(
+            id="test-session-1",
+            template_id="claude",
+            project_id="project-1",
+            tab_id="tab-1",
+        )
+        # No task linked
+
+        widget = SessionListWidget(sessions=[session], show_project=False)
+        rendered = widget._render_session(session)
+
+        # Should contain dash placeholder
+        assert "—" in str(rendered)

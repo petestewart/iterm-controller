@@ -18,6 +18,7 @@ from textual.widgets import Footer, Header, Static
 from iterm_controller.models import (
     ManagedSession,
     Plan,
+    SessionTemplate,
     Task,
     TaskStatus,
     WorkflowMode,
@@ -64,6 +65,7 @@ class WorkModeScreen(ModeScreen):
         Binding("up", "cursor_up", "Up", show=False),
         Binding("tab", "switch_panel", "Switch Panel"),
         Binding("c", "claim_task", "Claim"),
+        Binding("s", "spawn_session", "Spawn"),
         Binding("u", "unclaim_task", "Unclaim"),
         Binding("d", "mark_done", "Done"),
         Binding("f", "focus_session", "Focus"),
@@ -412,3 +414,181 @@ class WorkModeScreen(ModeScreen):
             self.notify("Refreshed")
 
         self.call_later(_do_refresh)
+
+    def action_spawn_session(self) -> None:
+        """Spawn a session for the selected task.
+
+        Opens the script picker modal to select a session template,
+        then spawns a session linked to the selected task.
+        """
+        # Get the selected task from whichever panel is active
+        task = self._get_selected_task()
+
+        if not task:
+            self.notify("No task selected", severity="warning")
+            return
+
+        # Check if task is blocked (only applies to queue tasks)
+        if self._active_panel == "queue":
+            queue = self.query_one("#task-queue", TaskQueueWidget)
+            if queue.is_task_blocked(task):
+                blockers = queue.get_blocking_tasks(task)
+                self.notify(
+                    f"Task is blocked by: {', '.join(blockers)}",
+                    severity="warning",
+                )
+                return
+
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        # Check if connected to iTerm2
+        if not app.iterm.is_connected:
+            self.notify("Not connected to iTerm2", severity="error")
+            return
+
+        # Get session templates from config
+        if not app.state.config or not app.state.config.session_templates:
+            self.notify("No session templates configured", severity="warning")
+            return
+
+        # Show script picker modal to select a template
+        from iterm_controller.screens.modals import ScriptPickerModal
+
+        def on_template_selected(template: SessionTemplate | None) -> None:
+            if template:
+                self._spawn_for_task_async(task, template)
+
+        self.app.push_screen(ScriptPickerModal(), on_template_selected)
+
+    def _get_selected_task(self) -> Task | None:
+        """Get the currently selected task from the active panel.
+
+        Returns:
+            The selected task, or None if no task is selected.
+        """
+        if self._active_panel == "queue":
+            queue = self.query_one("#task-queue", TaskQueueWidget)
+            return queue.selected_task
+        else:
+            active = self.query_one("#active-work", ActiveWorkWidget)
+            return active.selected_task
+
+    def _spawn_for_task_async(self, task: Task, template: SessionTemplate) -> None:
+        """Spawn a session for a task asynchronously.
+
+        Args:
+            task: The task to spawn a session for.
+            template: The session template to use.
+        """
+
+        async def _do_spawn() -> None:
+            await self._spawn_for_task(task, template)
+
+        self.call_later(_do_spawn)
+
+    async def _spawn_for_task(self, task: Task, template: SessionTemplate) -> None:
+        """Spawn a session linked to a task.
+
+        This method:
+        1. Spawns a new session using the given template
+        2. Links the session to the task (stores task_id in session metadata)
+        3. Updates the task's session_id field
+        4. Sets the task status to IN_PROGRESS
+        5. Optionally sends task context to the session
+
+        Args:
+            task: The task to spawn a session for.
+            template: The session template to use.
+        """
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        try:
+            from iterm_controller.iterm_api import SessionSpawner
+
+            spawner = SessionSpawner(app.iterm)
+            result = await spawner.spawn_session(template, self.project)
+
+            if not result.success:
+                self.notify(f"Failed to spawn session: {result.error}", severity="error")
+                return
+
+            # Get the managed session and set metadata
+            managed = spawner.get_session(result.session_id)
+            if managed:
+                # Link session to task via metadata
+                managed.metadata["task_id"] = task.id
+                managed.metadata["task_title"] = task.title
+
+                # Add session to app state
+                app.state.add_session(managed)
+
+            # Update task with session assignment
+            task.session_id = result.session_id
+
+            # Set task status to IN_PROGRESS if it was PENDING
+            if task.status == TaskStatus.PENDING:
+                await self._update_task_status(task, TaskStatus.IN_PROGRESS)
+            else:
+                # Just update the session_id in PLAN.md
+                await self._update_task_session_id(task, result.session_id)
+
+            # Optionally send task context to session
+            await self._send_task_context(result.session_id, task)
+
+            self.notify(f"Spawned session for task {task.id}")
+
+            # Reload data to show the updated state
+            await self._load_data()
+
+        except Exception as e:
+            self.notify(f"Error spawning session: {e}", severity="error")
+
+    async def _update_task_session_id(self, task: Task, session_id: str) -> None:
+        """Update just the task's session_id in PLAN.md.
+
+        Args:
+            task: The task to update.
+            session_id: The session ID to assign.
+        """
+        # Currently, PLAN.md doesn't store session_id directly in the file.
+        # The session_id is tracked at runtime. For persistence, the linkage
+        # is maintained through the session's metadata which contains task_id.
+        # We keep the task's session_id in memory only.
+        pass
+
+    async def _send_task_context(self, session_id: str, task: Task) -> None:
+        """Send task context to a session.
+
+        Sends the task title and spec reference (if any) to help Claude
+        understand what task the session is working on.
+
+        Args:
+            session_id: The session ID to send context to.
+            task: The task to send context for.
+        """
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        # Check if task context should be sent (could be a config option)
+        # For now, always send context to help Claude understand the task
+
+        try:
+            if not app.iterm.is_connected or not app.iterm.app:
+                return
+
+            session = await app.iterm.app.async_get_session_by_id(session_id)
+            if not session:
+                return
+
+            # Build context message
+            lines = [f"# Working on: {task.id} {task.title}"]
+            if task.spec_ref:
+                lines.append(f"# Spec: {task.spec_ref}")
+            if task.scope:
+                lines.append(f"# Scope: {task.scope}")
+
+            context_text = "\n".join(lines) + "\n"
+            await session.async_send_text(context_text)
+
+        except Exception:
+            # Don't fail the spawn if context sending fails
+            pass

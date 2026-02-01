@@ -397,7 +397,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: `c` claims task (sets in_progress), `u` unclaims (back to pending)
   - Acceptance: Task status changes persist to PLAN.md
 
-- [ ] **Add task-session linking**
+- [x] **Add task-session linking** `[complete]`
   - Spec: specs/work-mode.md#task-session-linking
   - Scope: When spawning for task, link session to task, show in active work
   - Acceptance: Session shows which task it's working on

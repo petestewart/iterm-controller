@@ -130,9 +130,18 @@ class SessionListWidget(Static):
         else:
             name = session.template_id
 
-        # Pad name to align status column
-        name_padded = f"{name:<30}"
+        # Pad name to align columns
+        name_padded = f"{name:<25}"
         text.append(name_padded)
+
+        # Task info if session is linked to a task
+        task_id = session.metadata.get("task_id", "")
+        if task_id:
+            task_display = f"Task {task_id:<8}"
+            text.append(task_display, style="cyan")
+        else:
+            # No task linked - show placeholder
+            text.append(f"{'—':<13}", style="dim")
 
         # Status with color
         text.append(status, style=color)

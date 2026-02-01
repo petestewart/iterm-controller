@@ -62,6 +62,10 @@ class ManagedSession:
     spawned_at: datetime = field(default_factory=datetime.now)
     is_managed: bool = True  # True if we spawned it
 
+    # Task linking metadata
+    metadata: dict[str, str] = field(default_factory=dict)
+    # Common metadata keys: task_id, task_title
+
 
 # =============================================================================
 # Task Models
