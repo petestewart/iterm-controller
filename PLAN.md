@@ -500,7 +500,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Use `shlex.split()` and `create_subprocess_exec()`, validate all user inputs with `shlex.quote()`
   - Acceptance: Setup scripts run safely, malicious variable values cannot inject commands
 
-- [ ] **Fix command injection in session spawning** `[pending]`
+- [x] **Fix command injection in session spawning** `[complete]`
   - Scope: Escape shell metacharacters in `_escape_value()` and validate environment variable keys
   - Location: iterm_controller/iterm_api.py:300-323
   - Fix: Use `shlex.quote()` for all values, validate env keys with regex `^[A-Za-z_][A-Za-z0-9_]*$`

@@ -10,10 +10,16 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
+import shlex
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable, TypeVar
 
 import iterm2
+
+# Valid environment variable key pattern: starts with letter or underscore,
+# followed by letters, digits, or underscores
+_ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 from iterm_controller.models import (
     ManagedSession,
@@ -297,6 +303,21 @@ class SessionSpawner:
         self.controller = controller
         self.managed_sessions: dict[str, ManagedSession] = {}
 
+    def _validate_env_key(self, key: str) -> bool:
+        """Validate that an environment variable key is safe.
+
+        Valid keys must start with a letter or underscore, followed by
+        letters, digits, or underscores. This prevents injection attacks
+        via malicious key names.
+
+        Args:
+            key: The environment variable key to validate.
+
+        Returns:
+            True if the key is valid, False otherwise.
+        """
+        return bool(_ENV_KEY_PATTERN.match(key))
+
     def _build_command(
         self,
         template: SessionTemplate,
@@ -305,16 +326,26 @@ class SessionSpawner:
         """Build the full command string for a session.
 
         Includes cd to working directory, environment exports, and the template command.
+
+        Raises:
+            ValueError: If any environment variable key is invalid.
         """
         working_dir = template.working_dir or project.path
         parts = [f"cd {self._quote_path(working_dir)}"]
 
         # Add environment exports if any
         if template.env:
-            env_exports = " ".join(
-                f'{k}="{self._escape_value(v)}"' for k, v in template.env.items()
-            )
-            parts.append(f"export {env_exports}")
+            env_pairs = []
+            for key, value in template.env.items():
+                # Validate the key to prevent injection via key names
+                if not self._validate_env_key(key):
+                    raise ValueError(
+                        f"Invalid environment variable key: {key!r}. "
+                        "Keys must match ^[A-Za-z_][A-Za-z0-9_]*$"
+                    )
+                # Use shlex.quote for the value (returns single-quoted string)
+                env_pairs.append(f"{key}={self._escape_value(value)}")
+            parts.append(f"export {' '.join(env_pairs)}")
 
         # Add the main command if specified
         if template.command:
@@ -323,15 +354,20 @@ class SessionSpawner:
         return " && ".join(parts)
 
     def _quote_path(self, path: str) -> str:
-        """Quote a path for shell usage if it contains spaces."""
-        if " " in path:
-            return f'"{path}"'
-        return path
+        """Quote a path for safe shell usage.
+
+        Uses shlex.quote() to properly escape all shell metacharacters,
+        preventing command injection attacks via malicious path names.
+        """
+        return shlex.quote(path)
 
     def _escape_value(self, value: str) -> str:
-        """Escape special characters in environment variable values."""
-        # Escape double quotes and backslashes
-        return value.replace("\\", "\\\\").replace('"', '\\"')
+        """Escape special characters in environment variable values.
+
+        Uses shlex.quote() to properly escape all shell metacharacters,
+        preventing command injection attacks.
+        """
+        return shlex.quote(value)
 
     async def spawn_session(
         self,

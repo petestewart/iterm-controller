@@ -554,7 +554,7 @@ class TestSessionSpawner:
         assert cmd == "cd /custom/dir && npm start"
 
     def test_build_command_with_spaces_in_path(self):
-        """Build command quotes paths with spaces."""
+        """Build command quotes paths with spaces using shlex.quote."""
         controller = ItermController()
         spawner = SessionSpawner(controller)
         template = self.make_template(command="npm start")
@@ -562,7 +562,8 @@ class TestSessionSpawner:
 
         cmd = spawner._build_command(template, project)
 
-        assert cmd == 'cd "/path with spaces/project" && npm start'
+        # shlex.quote uses single quotes for paths with spaces
+        assert cmd == "cd '/path with spaces/project' && npm start"
 
     def test_build_command_with_env(self):
         """Build command includes environment variable exports."""
@@ -577,9 +578,10 @@ class TestSessionSpawner:
         cmd = spawner._build_command(template, project)
 
         # Order may vary, so check parts
+        # shlex.quote doesn't add quotes for simple alphanumeric values
         assert cmd.startswith("cd /my/project && export ")
-        assert 'PORT="3000"' in cmd
-        assert 'NODE_ENV="development"' in cmd
+        assert "PORT=3000" in cmd
+        assert "NODE_ENV=development" in cmd
         assert cmd.endswith(" && npm start")
 
     def test_build_command_empty_command(self):
@@ -594,7 +596,7 @@ class TestSessionSpawner:
         assert cmd == "cd /my/project"
 
     def test_build_command_escapes_env_values(self):
-        """Build command escapes special characters in env values."""
+        """Build command escapes special characters in env values using shlex.quote."""
         controller = ItermController()
         spawner = SessionSpawner(controller)
         template = self.make_template(
@@ -605,7 +607,204 @@ class TestSessionSpawner:
 
         cmd = spawner._build_command(template, project)
 
-        assert r'MSG="Hello \"World\""' in cmd
+        # shlex.quote uses single quotes to protect double quotes
+        assert "MSG='Hello \"World\"'" in cmd
+
+    # -------------------------------------------------------------------------
+    # Security Tests - Command Injection Prevention
+    # -------------------------------------------------------------------------
+
+    def test_build_command_prevents_command_injection_via_env_value(self):
+        """Verify env values with command injection attempts are safely quoted."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="echo test",
+            env={"MALICIOUS": "$(rm -rf /)"},
+        )
+        project = self.make_project()
+
+        cmd = spawner._build_command(template, project)
+
+        # The command substitution should be quoted, not executed
+        assert "MALICIOUS='$(rm -rf /)'" in cmd
+        # Ensure it's not unquoted
+        assert "MALICIOUS=$(rm -rf /)" not in cmd
+
+    def test_build_command_prevents_backtick_injection(self):
+        """Verify env values with backtick command substitution are safely quoted."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="echo test",
+            env={"INJECT": "`whoami`"},
+        )
+        project = self.make_project()
+
+        cmd = spawner._build_command(template, project)
+
+        # Backticks should be quoted
+        assert "INJECT='`whoami`'" in cmd
+
+    def test_build_command_prevents_semicolon_injection(self):
+        """Verify env values with semicolons are safely quoted."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="echo test",
+            env={"EVIL": "innocent; rm -rf /"},
+        )
+        project = self.make_project()
+
+        cmd = spawner._build_command(template, project)
+
+        # Semicolons should be quoted
+        assert "EVIL='innocent; rm -rf /'" in cmd
+
+    def test_build_command_prevents_pipe_injection(self):
+        """Verify env values with pipes are safely quoted."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="echo test",
+            env={"PIPE": "test | cat /etc/passwd"},
+        )
+        project = self.make_project()
+
+        cmd = spawner._build_command(template, project)
+
+        # Pipes should be quoted
+        assert "PIPE='test | cat /etc/passwd'" in cmd
+
+    def test_build_command_prevents_env_variable_expansion(self):
+        """Verify env values with variable references are safely quoted."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="echo test",
+            env={"EXPAND": "$HOME"},
+        )
+        project = self.make_project()
+
+        cmd = spawner._build_command(template, project)
+
+        # Variable references should be quoted
+        assert "EXPAND='$HOME'" in cmd
+
+    def test_build_command_prevents_newline_injection(self):
+        """Verify env values with newlines are safely quoted."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="echo test",
+            env={"NEWLINE": "first\nsecond"},
+        )
+        project = self.make_project()
+
+        cmd = spawner._build_command(template, project)
+
+        # The newline should be properly handled by shlex.quote
+        # shlex.quote wraps strings with special chars in single quotes
+        assert "NEWLINE=" in cmd
+        # Verify the value is quoted (single quotes)
+        assert "'" in cmd
+
+    def test_validate_env_key_valid_keys(self):
+        """Verify valid environment variable keys pass validation."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+
+        # Valid keys
+        assert spawner._validate_env_key("PATH") is True
+        assert spawner._validate_env_key("MY_VAR") is True
+        assert spawner._validate_env_key("_PRIVATE") is True
+        assert spawner._validate_env_key("VAR123") is True
+        assert spawner._validate_env_key("a") is True
+        assert spawner._validate_env_key("_") is True
+        assert spawner._validate_env_key("A1_B2_C3") is True
+
+    def test_validate_env_key_invalid_keys(self):
+        """Verify invalid environment variable keys fail validation."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+
+        # Invalid keys
+        assert spawner._validate_env_key("") is False
+        assert spawner._validate_env_key("123") is False  # Starts with digit
+        assert spawner._validate_env_key("1VAR") is False
+        assert spawner._validate_env_key("MY-VAR") is False  # Contains hyphen
+        assert spawner._validate_env_key("MY VAR") is False  # Contains space
+        assert spawner._validate_env_key("VAR=VALUE") is False  # Contains =
+        assert spawner._validate_env_key("$(cmd)") is False
+        assert spawner._validate_env_key("`cmd`") is False
+        assert spawner._validate_env_key("VAR;rm") is False
+
+    def test_build_command_rejects_invalid_env_key(self):
+        """Verify build_command raises for invalid environment variable keys."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="echo test",
+            env={"VALID_KEY": "value", "$(injection)": "bad"},
+        )
+        project = self.make_project()
+
+        with pytest.raises(ValueError) as exc_info:
+            spawner._build_command(template, project)
+
+        assert "Invalid environment variable key" in str(exc_info.value)
+        assert "$(injection)" in str(exc_info.value)
+
+    def test_build_command_rejects_key_with_equals(self):
+        """Verify build_command raises for env key containing equals sign."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        template = self.make_template(
+            command="echo test",
+            env={"KEY=VALUE": "extra"},
+        )
+        project = self.make_project()
+
+        with pytest.raises(ValueError) as exc_info:
+            spawner._build_command(template, project)
+
+        assert "Invalid environment variable key" in str(exc_info.value)
+
+    def test_quote_path_prevents_injection(self):
+        """Verify paths with shell metacharacters are safely quoted."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+
+        # Path with command substitution
+        path = "/path/$(whoami)/project"
+        quoted = spawner._quote_path(path)
+        assert quoted == "'/path/$(whoami)/project'"
+
+        # Path with backticks
+        path = "/path/`id`/project"
+        quoted = spawner._quote_path(path)
+        assert quoted == "'/path/`id`/project'"
+
+        # Path with semicolon
+        path = "/path; rm -rf /"
+        quoted = spawner._quote_path(path)
+        assert quoted == "'/path; rm -rf /'"
+
+    def test_quote_path_simple_paths(self):
+        """Verify simple paths are properly handled."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+
+        # Simple path without special chars - shlex.quote may or may not quote
+        path = "/simple/path"
+        quoted = spawner._quote_path(path)
+        # Either unquoted or quoted is fine as long as it's safe
+        assert quoted == "/simple/path" or quoted == "'/simple/path'"
+
+        # Path with space - must be quoted
+        path = "/path with space"
+        quoted = spawner._quote_path(path)
+        assert quoted == "'/path with space'"
 
     @pytest.mark.asyncio
     async def test_spawn_session_requires_connection(self):
@@ -887,7 +1086,8 @@ class TestSessionSpawner:
 
         call_args = mock_new_session.async_send_text.call_args[0][0]
         assert "cd /django/app" in call_args
-        assert 'DEBUG="true"' in call_args
+        # shlex.quote doesn't add quotes for simple alphanumeric values
+        assert "DEBUG=true" in call_args
         assert "python manage.py runserver" in call_args
         assert call_args.endswith("\n")
 
