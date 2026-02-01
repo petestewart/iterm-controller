@@ -335,20 +335,27 @@ class ProjectDashboardScreen(Screen):
 
         # Update project's last_mode
         project.last_mode = workflow_mode
+        app.state.update_project(project)
 
-        # Push the appropriate mode screen
+        # Import mode screens here to avoid circular imports
+        from iterm_controller.screens.modes import (
+            DocsModeScreen,
+            PlanModeScreen,
+            TestModeScreen,
+            WorkModeScreen,
+        )
+
+        # Get the appropriate screen class
         mode_screen_map = {
-            WorkflowMode.PLAN: "PlanModeScreen",
-            WorkflowMode.DOCS: "DocsModeScreen",
-            WorkflowMode.WORK: "WorkModeScreen",
-            WorkflowMode.TEST: "TestModeScreen",
+            WorkflowMode.PLAN: PlanModeScreen,
+            WorkflowMode.DOCS: DocsModeScreen,
+            WorkflowMode.WORK: WorkModeScreen,
+            WorkflowMode.TEST: TestModeScreen,
         }
 
-        screen_name = mode_screen_map.get(workflow_mode)
-
-        # Mode screens are not yet implemented (Phase 13-16)
-        # For now, show a notification
-        self.notify(f"Entering {workflow_mode.value.title()} Mode (screen not yet implemented)")
+        screen_class = mode_screen_map.get(workflow_mode)
+        if screen_class:
+            self.app.push_screen(screen_class(project))
 
     async def action_toggle_auto_mode(self) -> None:
         """Toggle auto mode enabled/disabled or open config modal."""

@@ -293,6 +293,17 @@ class AppState:
         if self.active_project_id == project_id:
             self.active_project_id = None
 
+    def update_project(self, project: Project) -> None:
+        """Update a project in the state.
+
+        This updates the project in the in-memory state without emitting
+        events. Use this for incremental updates like last_mode changes.
+
+        Args:
+            project: The project with updated fields.
+        """
+        self.projects[project.id] = project
+
     def add_session(self, session: ManagedSession) -> None:
         """Add a session to the state.
 

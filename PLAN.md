@@ -344,7 +344,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Add 1-4 keybindings to navigate to mode screens from Project Dashboard
   - Acceptance: Pressing 1-4 pushes appropriate mode screen
 
-- [ ] **Create ModeScreen base class**
+- [x] **Create ModeScreen base class** `[complete]`
   - Spec: specs/workflow-modes.md#screen-base-class
   - Scope: Shared base with common bindings (1-4 mode switch, Esc back)
   - Acceptance: All mode screens inherit common navigation
