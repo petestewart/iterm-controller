@@ -360,7 +360,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 13: Plan Mode
 
-- [ ] **Create PlanModeScreen with artifact list**
+- [x] **Create PlanModeScreen with artifact list** `[complete]`
   - Spec: specs/plan-mode.md
   - Scope: Show PROBLEM.md, PRD.md, specs/, PLAN.md with status indicators
   - Acceptance: Artifact list displays with correct exists/missing status

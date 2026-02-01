@@ -261,6 +261,23 @@ class WorkflowState:
 
 
 # =============================================================================
+# Planning Artifact Models
+# =============================================================================
+
+
+@dataclass
+class ArtifactStatus:
+    """Status of a planning artifact (file or directory).
+
+    Used by Plan Mode to track existence and provide descriptions
+    of planning artifacts like PROBLEM.md, PRD.md, specs/, and PLAN.md.
+    """
+
+    exists: bool
+    description: str = ""  # e.g., "4 spec files" or "12 tasks"
+
+
+# =============================================================================
 # Configuration Models
 # =============================================================================
 

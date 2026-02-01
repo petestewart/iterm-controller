@@ -62,6 +62,29 @@ class TestPlanModeScreen:
 
         assert screen.CURRENT_MODE == WorkflowMode.PLAN
 
+    def test_plan_mode_has_artifact_bindings(self) -> None:
+        """Test that PlanModeScreen has artifact action bindings."""
+        project = make_project()
+        screen = PlanModeScreen(project)
+        binding_keys = [b.key for b in screen.BINDINGS]
+
+        assert "enter" in binding_keys  # View
+        assert "e" in binding_keys  # Edit
+        assert "c" in binding_keys  # Create
+        assert "s" in binding_keys  # Spawn
+        assert "r" in binding_keys  # Refresh
+
+    def test_plan_mode_has_navigation_bindings(self) -> None:
+        """Test that PlanModeScreen has cursor navigation bindings."""
+        project = make_project()
+        screen = PlanModeScreen(project)
+        binding_keys = [b.key for b in screen.BINDINGS]
+
+        assert "j" in binding_keys  # Down (vim)
+        assert "k" in binding_keys  # Up (vim)
+        assert "down" in binding_keys  # Down arrow
+        assert "up" in binding_keys  # Up arrow
+
 
 class TestDocsModeScreen:
     """Tests for DocsModeScreen."""
@@ -279,3 +302,98 @@ class TestProjectDashboardModeNavigation:
             await pilot.press("escape")  # Go back
 
             assert isinstance(app.screen, ProjectDashboardScreen)
+
+
+@pytest.mark.asyncio
+class TestPlanModeScreenArtifacts:
+    """Tests for PlanModeScreen artifact list functionality."""
+
+    async def test_plan_mode_shows_artifact_list(self) -> None:
+        """Test that PlanModeScreen displays artifact list widget."""
+        import tempfile
+
+        from iterm_controller.widgets.artifact_list import ArtifactListWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test():
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                # Should have an artifact list widget
+                artifact_widget = app.screen.query_one("#artifacts", ArtifactListWidget)
+                assert artifact_widget is not None
+
+    async def test_plan_mode_shows_workflow_bar(self) -> None:
+        """Test that PlanModeScreen displays workflow bar widget."""
+        import tempfile
+
+        from iterm_controller.widgets.workflow_bar import WorkflowBarWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test():
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                # Should have a workflow bar widget
+                workflow_bar = app.screen.query_one("#workflow-bar", WorkflowBarWidget)
+                assert workflow_bar is not None
+
+    async def test_plan_mode_cursor_navigation(self) -> None:
+        """Test cursor navigation with j/k keys in PlanModeScreen."""
+        import tempfile
+
+        from iterm_controller.widgets.artifact_list import ArtifactListWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                artifact_widget = app.screen.query_one("#artifacts", ArtifactListWidget)
+                assert artifact_widget.selected_artifact == "PROBLEM.md"
+
+                # Press 'j' to move down
+                await pilot.press("j")
+                assert artifact_widget.selected_artifact == "PRD.md"
+
+                # Press 'k' to move back up
+                await pilot.press("k")
+                assert artifact_widget.selected_artifact == "PROBLEM.md"
+
+    async def test_plan_mode_refresh_action(self) -> None:
+        """Test refresh action updates artifact status."""
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.widgets.artifact_list import ArtifactListWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                artifact_widget = app.screen.query_one("#artifacts", ArtifactListWidget)
+
+                # Initially no PROBLEM.md
+                assert artifact_widget.artifact_status["PROBLEM.md"].exists is False
+
+                # Create PROBLEM.md
+                (Path(tmpdir) / "PROBLEM.md").write_text("# Problem")
+
+                # Press 'r' to refresh
+                await pilot.press("r")
+
+                # Now should show as existing
+                assert artifact_widget.artifact_status["PROBLEM.md"].exists is True
