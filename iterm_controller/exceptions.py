@@ -300,6 +300,57 @@ class PlanConflictError(PlanError):
 
 
 # =============================================================================
+# Test Plan Parsing Errors
+# =============================================================================
+
+
+class TestPlanError(ItermControllerError):
+    """Base class for TEST_PLAN.md-related errors."""
+
+    pass
+
+
+class TestPlanParseError(TestPlanError):
+    """Raised when TEST_PLAN.md parsing fails."""
+
+    def __init__(
+        self,
+        message: str = "Failed to parse TEST_PLAN.md",
+        *,
+        file_path: str | None = None,
+        line_number: int | None = None,
+        context: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+    ) -> None:
+        ctx = context or {}
+        if file_path:
+            ctx["file_path"] = file_path
+        if line_number is not None:
+            ctx["line_number"] = line_number
+        super().__init__(message, context=ctx, cause=cause)
+
+
+class TestPlanWriteError(TestPlanError):
+    """Raised when TEST_PLAN.md update fails."""
+
+    def __init__(
+        self,
+        message: str = "Failed to update TEST_PLAN.md",
+        *,
+        file_path: str | None = None,
+        step_id: str | None = None,
+        context: dict[str, Any] | None = None,
+        cause: Exception | None = None,
+    ) -> None:
+        ctx = context or {}
+        if file_path:
+            ctx["file_path"] = file_path
+        if step_id:
+            ctx["step_id"] = step_id
+        super().__init__(message, context=ctx, cause=cause)
+
+
+# =============================================================================
 # GitHub Errors
 # =============================================================================
 

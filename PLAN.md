@@ -419,7 +419,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: TestStatus enum, TestStep, TestSection, TestPlan dataclasses
   - Acceptance: Models serialize to/from JSON
 
-- [ ] **Implement TEST_PLAN.md parser**
+- [x] **Implement TEST_PLAN.md parser** `[complete]`
   - Spec: specs/test-plan-parser.md
   - Scope: Parse markdown checkboxes with [ ]/[~]/[x]/[!] markers
   - Acceptance: Parses sections, steps, statuses, notes
