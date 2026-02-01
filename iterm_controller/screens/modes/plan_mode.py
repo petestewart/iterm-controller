@@ -7,6 +7,9 @@ See specs/plan-mode.md for full specification.
 
 from __future__ import annotations
 
+import asyncio
+import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
@@ -14,13 +17,39 @@ from textual.binding import Binding
 from textual.containers import Container, Vertical
 from textual.widgets import Footer, Header, Static
 
-from iterm_controller.models import WorkflowMode
+from iterm_controller.models import SessionTemplate, WorkflowMode
 from iterm_controller.screens.mode_screen import ModeScreen
 from iterm_controller.widgets.artifact_list import ArtifactListWidget
 from iterm_controller.widgets.workflow_bar import WorkflowBarWidget
 
 if TYPE_CHECKING:
+    from iterm_controller.app import ItermControllerApp
     from iterm_controller.models import Project
+
+
+# Claude commands for creating planning artifacts
+# See specs/plan-mode.md#create-artifact-commands
+ARTIFACT_COMMANDS = {
+    "PROBLEM.md": "claude /problem-statement",
+    "PRD.md": "claude /prd",
+    "specs/": "claude /specs",
+    "PLAN.md": "claude /plan",
+}
+
+# Editor command mapping (mirrors docs_picker.py)
+EDITOR_COMMANDS = {
+    "vscode": "code",
+    "code": "code",
+    "cursor": "cursor",
+    "vim": "vim",
+    "nvim": "nvim",
+    "neovim": "nvim",
+    "subl": "subl",
+    "sublime": "subl",
+    "atom": "atom",
+    "nano": "nano",
+    "emacs": "emacs",
+}
 
 
 class PlanModeScreen(ModeScreen):
@@ -170,7 +199,8 @@ class PlanModeScreen(ModeScreen):
     def action_edit_artifact(self) -> None:
         """Edit the selected artifact in configured editor.
 
-        Implementation deferred to Phase 13 task: "Add create/edit actions for artifacts".
+        Opens the selected file in the configured IDE (default: vscode).
+        For directories like specs/, opens the directory in the editor.
         """
         artifact_widget = self.query_one("#artifacts", ArtifactListWidget)
         selected = artifact_widget.selected_artifact
@@ -186,13 +216,23 @@ class PlanModeScreen(ModeScreen):
             self.notify(f"{selected} does not exist. Use 'c' to create it.", severity="warning")
             return
 
-        # TODO: Open in configured editor (Phase 13)
-        self.notify(f"Edit: {selected} (editor integration coming in Phase 13)")
+        # Get configured editor
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+        ide = "code"  # default to VS Code
+        if app.state.config and app.state.config.settings:
+            ide = app.state.config.settings.default_ide
+
+        # Get editor command
+        editor_cmd = EDITOR_COMMANDS.get(ide.lower(), "open")
+
+        # Open file/directory in editor
+        self._open_in_editor(path, editor_cmd, selected)
 
     def action_create_artifact(self) -> None:
         """Create a missing artifact using Claude.
 
-        Implementation deferred to Phase 13 task: "Add create/edit actions for artifacts".
+        Spawns a new iTerm2 session with the appropriate Claude command
+        for creating the selected artifact type.
         """
         artifact_widget = self.query_one("#artifacts", ArtifactListWidget)
         selected = artifact_widget.selected_artifact
@@ -208,18 +248,119 @@ class PlanModeScreen(ModeScreen):
             self.notify(f"{selected} already exists. Use 'e' to edit.", severity="warning")
             return
 
-        # TODO: Launch Claude command (Phase 13)
-        self.notify(f"Create: {selected} (Claude integration coming in Phase 13)")
+        # Get the artifact name (for spec files, use the parent directory key)
+        artifact_key = selected
+        if selected.startswith("specs/") and selected != "specs/":
+            artifact_key = "specs/"
+
+        # Get the Claude command for this artifact
+        command = ARTIFACT_COMMANDS.get(artifact_key)
+        if not command:
+            self.notify(f"No create command configured for {selected}", severity="warning")
+            return
+
+        # Spawn session with Claude command
+        self._spawn_claude_session(command, f"Create {artifact_key}")
 
     def action_spawn_planning(self) -> None:
         """Spawn a planning session.
 
-        Implementation deferred to Phase 13 task: "Integrate with Auto Mode planning commands".
+        Spawns a new iTerm2 session with a generic planning command.
+        Uses the auto mode planning command if configured, otherwise
+        spawns a claude session ready for planning work.
         """
-        # TODO: Spawn session with planning command (Phase 13)
-        self.notify("Spawn planning session (coming in Phase 13)")
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        # Check if auto mode has a configured planning command
+        command = "claude"  # Default to plain claude session
+        if app.state.config and app.state.config.auto_mode:
+            stage_cmd = app.state.config.auto_mode.stage_commands.get("planning")
+            if stage_cmd:
+                command = stage_cmd
+
+        self._spawn_claude_session(command, "Planning Session")
 
     def action_refresh(self) -> None:
         """Refresh artifact status."""
         self._refresh_artifacts()
         self.notify("Artifacts refreshed")
+
+    def _open_in_editor(self, path: Path, editor_cmd: str, display_name: str) -> None:
+        """Open a file or directory in the configured editor.
+
+        Args:
+            path: Path to the file or directory to open.
+            editor_cmd: The editor command to use.
+            display_name: Name to show in notifications.
+        """
+
+        async def _do_open() -> None:
+            try:
+                cmd = [editor_cmd, str(path)]
+                await asyncio.to_thread(
+                    subprocess.Popen,
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                self.notify(f"Opened {display_name} in {editor_cmd}")
+            except FileNotFoundError:
+                # Editor not found, try macOS open command
+                try:
+                    await asyncio.to_thread(
+                        subprocess.Popen,
+                        ["open", str(path)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    self.notify(f"Opened {display_name}")
+                except Exception as e:
+                    self.notify(f"Failed to open {display_name}: {e}", severity="error")
+            except Exception as e:
+                self.notify(f"Failed to open {display_name}: {e}", severity="error")
+
+        self.call_later(_do_open)
+
+    def _spawn_claude_session(self, command: str, session_name: str) -> None:
+        """Spawn a new iTerm2 session with a Claude command.
+
+        Args:
+            command: The command to run (e.g., "claude /prd").
+            session_name: Display name for the session.
+        """
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        # Check if connected to iTerm2
+        if not app.iterm.is_connected:
+            self.notify("Not connected to iTerm2", severity="error")
+            return
+
+        # Create a temporary session template for this command
+        template = SessionTemplate(
+            id=f"plan-mode-{session_name.lower().replace(' ', '-')}",
+            name=session_name,
+            command=command,
+            working_dir=self.project.path,
+        )
+
+        async def _do_spawn() -> None:
+            try:
+                from iterm_controller.iterm_api import SessionSpawner
+
+                spawner = SessionSpawner(app.iterm)
+                result = await spawner.spawn_session(template, self.project)
+
+                if result.success:
+                    # Add session to state
+                    managed = spawner.get_session(result.session_id)
+                    if managed:
+                        app.state.add_session(managed)
+                    self.notify(f"Spawned: {session_name}")
+                    # Refresh artifacts after spawning (in case it creates files)
+                    self._refresh_artifacts()
+                else:
+                    self.notify(f"Failed to spawn session: {result.error}", severity="error")
+            except Exception as e:
+                self.notify(f"Error spawning session: {e}", severity="error")
+
+        self.call_later(_do_spawn)

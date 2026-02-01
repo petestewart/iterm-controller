@@ -370,7 +370,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Check file/directory existence, count specs, count tasks
   - Acceptance: Status indicators accurate for all artifacts
 
-- [ ] **Add create/edit actions for artifacts**
+- [x] **Add create/edit actions for artifacts** `[complete]`
   - Spec: specs/plan-mode.md#actions
   - Scope: `c` creates missing artifact via Claude, `e` opens in editor
   - Acceptance: Can create PRD.md and open it for editing

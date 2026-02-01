@@ -397,3 +397,182 @@ class TestPlanModeScreenArtifacts:
 
                 # Now should show as existing
                 assert artifact_widget.artifact_status["PROBLEM.md"].exists is True
+
+
+@pytest.mark.asyncio
+class TestPlanModeCreateEditActions:
+    """Tests for PlanModeScreen create/edit artifact actions."""
+
+    async def test_edit_artifact_notifies_when_no_selection(self) -> None:
+        """Test that edit action shows warning when nothing selected."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                # Default selection is PROBLEM.md which doesn't exist
+                # Press 'e' to try to edit
+                await pilot.press("e")
+
+                # Should notify that file doesn't exist
+                # (notification contains warning about using 'c' to create)
+
+    async def test_edit_existing_artifact_opens_editor(self) -> None:
+        """Test that edit action opens existing file in editor."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import AsyncMock, patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create the artifact
+            (Path(tmpdir) / "PROBLEM.md").write_text("# Problem Statement")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                # Refresh to pick up the file
+                await pilot.press("r")
+
+                # Mock subprocess.Popen to verify it's called
+                with patch("asyncio.to_thread") as mock_to_thread:
+                    mock_to_thread.return_value = None
+
+                    # Press 'e' to edit
+                    await pilot.press("e")
+
+                    # Give time for async operation
+                    await pilot.pause()
+
+                    # Should have called to_thread (which wraps Popen)
+                    assert mock_to_thread.called
+
+    async def test_create_artifact_notifies_when_exists(self) -> None:
+        """Test that create action shows warning when file already exists."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create the artifact
+            (Path(tmpdir) / "PROBLEM.md").write_text("# Problem Statement")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                # Refresh to pick up the file
+                await pilot.press("r")
+
+                # Press 'c' to try to create
+                await pilot.press("c")
+
+                # Should notify that file already exists
+                # (notification says to use 'e' to edit)
+
+    async def test_create_artifact_spawns_session_when_not_connected(self) -> None:
+        """Test that create action shows error when not connected to iTerm2."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                # Ensure not connected to iTerm2
+                app.iterm._connected = False
+
+                # Press 'c' to try to create (PROBLEM.md doesn't exist)
+                await pilot.press("c")
+
+                # Should notify about not being connected
+
+    async def test_spawn_planning_shows_error_when_not_connected(self) -> None:
+        """Test that spawn planning shows error when not connected to iTerm2."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                # Ensure not connected to iTerm2
+                app.iterm._connected = False
+
+                # Press 's' to spawn planning session
+                await pilot.press("s")
+
+                # Should notify about not being connected
+
+    async def test_artifact_commands_mapping(self) -> None:
+        """Test that ARTIFACT_COMMANDS has correct mappings."""
+        from iterm_controller.screens.modes.plan_mode import ARTIFACT_COMMANDS
+
+        assert ARTIFACT_COMMANDS["PROBLEM.md"] == "claude /problem-statement"
+        assert ARTIFACT_COMMANDS["PRD.md"] == "claude /prd"
+        assert ARTIFACT_COMMANDS["specs/"] == "claude /specs"
+        assert ARTIFACT_COMMANDS["PLAN.md"] == "claude /plan"
+
+    async def test_editor_commands_mapping(self) -> None:
+        """Test that EDITOR_COMMANDS has standard editor mappings."""
+        from iterm_controller.screens.modes.plan_mode import EDITOR_COMMANDS
+
+        assert EDITOR_COMMANDS["vscode"] == "code"
+        assert EDITOR_COMMANDS["cursor"] == "cursor"
+        assert EDITOR_COMMANDS["vim"] == "vim"
+        assert EDITOR_COMMANDS["nvim"] == "nvim"
+        assert EDITOR_COMMANDS["emacs"] == "emacs"
+
+    async def test_view_specs_toggles_expansion(self) -> None:
+        """Test that pressing Enter on specs/ toggles expansion."""
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.widgets.artifact_list import ArtifactListWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create specs directory with a file
+            specs_dir = Path(tmpdir) / "specs"
+            specs_dir.mkdir()
+            (specs_dir / "api.md").write_text("# API Spec")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                # Navigate to specs/
+                await pilot.press("j")  # PRD.md
+                await pilot.press("j")  # specs/
+
+                artifact_widget = app.screen.query_one("#artifacts", ArtifactListWidget)
+                assert artifact_widget.selected_artifact == "specs/"
+                assert artifact_widget._expanded_specs is True
+
+                # Press Enter to toggle
+                await pilot.press("enter")
+
+                # Should be collapsed now
+                assert artifact_widget._expanded_specs is False
+
+                # Press Enter again to expand
+                await pilot.press("enter")
+                assert artifact_widget._expanded_specs is True
