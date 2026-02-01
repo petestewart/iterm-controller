@@ -6,9 +6,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from iterm_controller.models import ManagedSession
+from iterm_controller.models import AttentionState, ManagedSession
 from iterm_controller.session_monitor import (
+    AttentionDetector,
     BatchOutputReader,
+    CLAUDE_WAITING_PATTERNS,
+    CLAUDE_WORKING_PATTERNS,
+    CONFIRMATION_PATTERNS,
     MetricsCollector,
     MonitorConfig,
     MonitorMetrics,
@@ -18,6 +22,7 @@ from iterm_controller.session_monitor import (
     OutputThrottle,
     SessionMonitor,
     SessionNotFoundError,
+    SHELL_PROMPT_PATTERNS,
 )
 
 
@@ -805,3 +810,603 @@ class TestOutputChange:
         )
 
         assert change.old_output is None
+
+
+class TestAttentionDetector:
+    """Test AttentionDetector pattern matching."""
+
+    def make_session(self, session_id="session-1", last_activity=None):
+        """Create a ManagedSession for testing."""
+        session = ManagedSession(
+            id=session_id,
+            template_id="test-template",
+            project_id="test-project",
+            tab_id="tab-1",
+        )
+        session.last_activity = last_activity
+        return session
+
+    def test_init_defaults(self):
+        """Detector initializes with correct defaults."""
+        detector = AttentionDetector()
+        assert detector.activity_threshold.total_seconds() == 2.0
+
+    def test_init_custom_threshold(self):
+        """Detector accepts custom activity threshold."""
+        detector = AttentionDetector(activity_threshold_seconds=5.0)
+        assert detector.activity_threshold.total_seconds() == 5.0
+
+    # ==========================================================================
+    # WAITING state detection
+    # ==========================================================================
+
+    def test_detects_question_mark_as_waiting(self):
+        """Output ending with question mark is WAITING."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "Should I use JWT for authentication?"
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WAITING
+
+    def test_detects_question_mark_with_whitespace_as_waiting(self):
+        """Question mark with trailing whitespace is WAITING."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "Should I proceed?  \n"
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WAITING
+
+    def test_detects_claude_question_patterns(self):
+        """Claude question patterns are WAITING."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        patterns = [
+            "I have a question about the API design",
+            "Before I proceed, I need clarification",
+            "Could you clarify what you mean?",
+            "Which would you prefer: option A or B",
+            "Should I add error handling here?",
+            "Do you want me to refactor this?",
+            "Please confirm you want to delete",
+        ]
+
+        for pattern in patterns:
+            state = detector.determine_state(session, pattern)
+            assert state == AttentionState.WAITING, f"Failed for: {pattern}"
+
+    def test_detects_confirmation_prompts(self):
+        """Confirmation prompts are WAITING."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        prompts = [
+            "Delete file? [y/N]",
+            "Continue? [Y/n]",
+            "Are you sure (yes/no)?",
+            "Continue? This may take a while",
+            "Press Enter to continue",
+            "Press any key to exit",
+            "Are you sure you want to proceed?",
+        ]
+
+        for prompt in prompts:
+            state = detector.determine_state(session, prompt)
+            assert state == AttentionState.WAITING, f"Failed for: {prompt}"
+
+    def test_detects_yes_no_brackets(self):
+        """[yes/no] patterns are WAITING."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "Overwrite existing file? [yes/no]"
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WAITING
+
+    # ==========================================================================
+    # IDLE state detection (shell prompts)
+    # ==========================================================================
+
+    def test_detects_dollar_prompt_as_idle(self):
+        """$ prompt is IDLE."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "previous output\n$ "
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.IDLE
+
+    def test_detects_starship_prompt_as_idle(self):
+        """❯ prompt is IDLE."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "some output\n❯ "
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.IDLE
+
+    def test_detects_zsh_prompt_as_idle(self):
+        """% prompt is IDLE."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "command completed\n% "
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.IDLE
+
+    def test_detects_simple_prompt_as_idle(self):
+        """> prompt is IDLE."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "Done!\n> "
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.IDLE
+
+    def test_detects_user_host_prompt_as_idle(self):
+        """[user@host] style prompt is IDLE."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "output\n[user@localhost]"
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.IDLE
+
+    # ==========================================================================
+    # WORKING state detection
+    # ==========================================================================
+
+    def test_detects_reading_pattern_as_working(self):
+        """Reading output is WORKING."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "Reading file contents..."
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WORKING
+
+    def test_detects_writing_pattern_as_working(self):
+        """Writing output is WORKING."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "Writing to disk..."
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WORKING
+
+    def test_detects_searching_pattern_as_working(self):
+        """Searching output is WORKING."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "Searching for files..."
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WORKING
+
+    def test_detects_running_pattern_as_working(self):
+        """Running output is WORKING."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "Running tests..."
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WORKING
+
+    def test_detects_creating_pattern_as_working(self):
+        """Creating ... output is WORKING."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "Creating new component..."
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WORKING
+
+    def test_detects_analyzing_pattern_as_working(self):
+        """Analyzing output is WORKING."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "Analyzing codebase structure"
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WORKING
+
+    def test_recent_activity_means_working(self):
+        """Recent activity (< 2s) makes session WORKING."""
+        detector = AttentionDetector()
+        session = self.make_session(last_activity=datetime.now())
+
+        # Generic output that doesn't match patterns
+        output = "some random text"
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WORKING
+
+    def test_old_activity_means_idle(self):
+        """Old activity (> 2s) makes session IDLE."""
+        detector = AttentionDetector()
+        old_time = datetime.now() - timedelta(seconds=5)
+        session = self.make_session(last_activity=old_time)
+
+        # Generic output that doesn't match patterns
+        output = "some random text"
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.IDLE
+
+    # ==========================================================================
+    # Priority ordering
+    # ==========================================================================
+
+    def test_waiting_takes_priority_over_working(self):
+        """WAITING patterns take priority over WORKING patterns."""
+        detector = AttentionDetector()
+        session = self.make_session(last_activity=datetime.now())
+
+        # Contains both working and waiting patterns
+        output = "Running tests... Should I continue? [y/N]"
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WAITING
+
+    def test_waiting_takes_priority_over_shell_prompt(self):
+        """WAITING patterns take priority over shell prompt."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        # Ends with prompt but has question
+        output = "Do you want to run the script?\n$ "
+        state = detector.determine_state(session, output)
+
+        # Question mark should be detected since it searches whole output
+        assert state == AttentionState.WAITING
+
+    def test_shell_prompt_takes_priority_over_recent_activity(self):
+        """Shell prompt IDLE takes priority over recent activity WORKING."""
+        detector = AttentionDetector()
+        session = self.make_session(last_activity=datetime.now())
+
+        output = "Command completed\n$ "
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.IDLE
+
+    # ==========================================================================
+    # Edge cases
+    # ==========================================================================
+
+    def test_empty_output_is_idle(self):
+        """Empty output returns IDLE."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        state = detector.determine_state(session, "")
+
+        assert state == AttentionState.IDLE
+
+    def test_whitespace_only_is_idle(self):
+        """Whitespace-only output returns IDLE."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        state = detector.determine_state(session, "   \n  \n  ")
+
+        assert state == AttentionState.IDLE
+
+    def test_multiline_output_checks_whole_content(self):
+        """Patterns are searched in entire output, not just last line."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        output = "Line 1\nLine 2\nShould I proceed?\nLine 4"
+        state = detector.determine_state(session, output)
+
+        assert state == AttentionState.WAITING
+
+    def test_case_insensitive_waiting_patterns(self):
+        """Waiting patterns are case insensitive."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        patterns = [
+            "SHOULD I PROCEED?",
+            "Do You Want Me To continue?",
+            "PLEASE CONFIRM",
+        ]
+
+        for pattern in patterns:
+            state = detector.determine_state(session, pattern)
+            assert state == AttentionState.WAITING, f"Failed for: {pattern}"
+
+    def test_case_insensitive_working_patterns(self):
+        """Working patterns are case insensitive."""
+        detector = AttentionDetector()
+        session = self.make_session()
+
+        patterns = [
+            "READING file...",
+            "WRITING to disk...",
+            "ANALYZING code...",
+        ]
+
+        for pattern in patterns:
+            state = detector.determine_state(session, pattern)
+            assert state == AttentionState.WORKING, f"Failed for: {pattern}"
+
+    # ==========================================================================
+    # get_pattern_match method
+    # ==========================================================================
+
+    def test_get_pattern_match_returns_pattern(self):
+        """get_pattern_match returns the matched pattern."""
+        detector = AttentionDetector()
+
+        state, pattern = detector.get_pattern_match("Should I proceed?")
+
+        assert state == AttentionState.WAITING
+        assert pattern is not None
+        assert "?" in pattern or "Should I" in pattern
+
+    def test_get_pattern_match_shell_prompt(self):
+        """get_pattern_match returns 'shell_prompt' for prompts."""
+        detector = AttentionDetector()
+
+        state, pattern = detector.get_pattern_match("some output\n$ ")
+
+        assert state == AttentionState.IDLE
+        assert pattern == "shell_prompt"
+
+    def test_get_pattern_match_no_match(self):
+        """get_pattern_match returns None pattern when no match."""
+        detector = AttentionDetector()
+
+        state, pattern = detector.get_pattern_match("random text here")
+
+        assert state == AttentionState.IDLE
+        assert pattern is None
+
+    # ==========================================================================
+    # _is_shell_prompt method
+    # ==========================================================================
+
+    def test_is_shell_prompt_true_for_prompts(self):
+        """_is_shell_prompt returns True for shell prompts."""
+        detector = AttentionDetector()
+
+        assert detector._is_shell_prompt("$ ") is True
+        assert detector._is_shell_prompt("output\n$ ") is True
+        assert detector._is_shell_prompt("% ") is True
+        assert detector._is_shell_prompt("❯ ") is True
+
+    def test_is_shell_prompt_false_for_non_prompts(self):
+        """_is_shell_prompt returns False for non-prompts."""
+        detector = AttentionDetector()
+
+        assert detector._is_shell_prompt("some text") is False
+        assert detector._is_shell_prompt("echo $PATH") is False
+        assert detector._is_shell_prompt("output here") is False
+
+    def test_is_shell_prompt_empty(self):
+        """_is_shell_prompt returns False for empty input."""
+        detector = AttentionDetector()
+
+        assert detector._is_shell_prompt("") is False
+        assert detector._is_shell_prompt("   ") is False
+        assert detector._is_shell_prompt("\n\n") is False
+
+
+class TestSessionMonitorAttentionIntegration:
+    """Test SessionMonitor integration with AttentionDetector."""
+
+    def make_mock_controller(self):
+        """Create a mock controller."""
+        controller = MagicMock()
+        controller.app = MagicMock()
+        return controller
+
+    def make_mock_spawner(self, sessions=None):
+        """Create a mock spawner with optional sessions."""
+        spawner = MagicMock()
+        spawner.managed_sessions = sessions or {}
+        return spawner
+
+    def make_session(self, session_id="session-1"):
+        """Create a ManagedSession for testing."""
+        return ManagedSession(
+            id=session_id,
+            template_id="test-template",
+            project_id="test-project",
+            tab_id="tab-1",
+        )
+
+    def test_monitor_has_detector(self):
+        """SessionMonitor has an AttentionDetector."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        assert hasattr(monitor, "_detector")
+        assert isinstance(monitor._detector, AttentionDetector)
+
+    def test_monitor_exposes_detector(self):
+        """SessionMonitor exposes detector via property."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        assert monitor.detector is monitor._detector
+
+    def test_detect_attention_state_method(self):
+        """detect_attention_state method works."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+        session = self.make_session()
+
+        state = monitor.detect_attention_state(session, "Should I proceed?")
+
+        assert state == AttentionState.WAITING
+
+    @pytest.mark.asyncio
+    async def test_poll_updates_attention_state(self):
+        """Poll updates session attention_state."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(
+            return_value="Should I proceed?"
+        )
+        controller.app.async_get_session_by_id = AsyncMock(
+            return_value=mock_iterm_session
+        )
+
+        monitor = SessionMonitor(controller, spawner)
+        await monitor.poll_once()
+
+        assert session.attention_state == AttentionState.WAITING
+
+    @pytest.mark.asyncio
+    async def test_poll_invokes_attention_callback_on_change(self):
+        """Poll invokes attention callback when state changes."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(
+            return_value="Should I proceed?"
+        )
+        controller.app.async_get_session_by_id = AsyncMock(
+            return_value=mock_iterm_session
+        )
+
+        callback_calls = []
+
+        def on_attention_change(sess, old_state, new_state):
+            callback_calls.append((sess.id, old_state, new_state))
+
+        monitor = SessionMonitor(
+            controller, spawner, on_attention_state_change=on_attention_change
+        )
+        await monitor.poll_once()
+
+        assert len(callback_calls) == 1
+        assert callback_calls[0][0] == "session-1"
+        assert callback_calls[0][1] == AttentionState.IDLE  # Initial state
+        assert callback_calls[0][2] == AttentionState.WAITING
+
+    @pytest.mark.asyncio
+    async def test_poll_no_callback_when_state_unchanged(self):
+        """Poll does not invoke callback when state unchanged."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        session.attention_state = AttentionState.IDLE
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        # Output that will be detected as IDLE (ends with shell prompt)
+        mock_iterm_session.async_get_contents = AsyncMock(
+            return_value="output\n$ "
+        )
+        controller.app.async_get_session_by_id = AsyncMock(
+            return_value=mock_iterm_session
+        )
+
+        callback_calls = []
+
+        def on_attention_change(sess, old_state, new_state):
+            callback_calls.append((sess.id, old_state, new_state))
+
+        monitor = SessionMonitor(
+            controller, spawner, on_attention_state_change=on_attention_change
+        )
+        await monitor.poll_once()
+
+        # No callback because state was already IDLE
+        assert len(callback_calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_poll_handles_attention_callback_error(self):
+        """Poll continues even if attention callback raises."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(
+            return_value="Should I proceed?"
+        )
+        controller.app.async_get_session_by_id = AsyncMock(
+            return_value=mock_iterm_session
+        )
+
+        def bad_callback(sess, old_state, new_state):
+            raise ValueError("Callback error")
+
+        monitor = SessionMonitor(
+            controller, spawner, on_attention_state_change=bad_callback
+        )
+
+        # Should not raise
+        result = await monitor.poll_once()
+
+        assert "session-1" in result
+        assert session.attention_state == AttentionState.WAITING
+
+
+class TestPatternLists:
+    """Test that pattern lists are properly defined."""
+
+    def test_claude_waiting_patterns_exist(self):
+        """CLAUDE_WAITING_PATTERNS is defined and non-empty."""
+        assert len(CLAUDE_WAITING_PATTERNS) > 0
+
+    def test_claude_working_patterns_exist(self):
+        """CLAUDE_WORKING_PATTERNS is defined and non-empty."""
+        assert len(CLAUDE_WORKING_PATTERNS) > 0
+
+    def test_shell_prompt_patterns_exist(self):
+        """SHELL_PROMPT_PATTERNS is defined and non-empty."""
+        assert len(SHELL_PROMPT_PATTERNS) > 0
+
+    def test_confirmation_patterns_exist(self):
+        """CONFIRMATION_PATTERNS is defined and non-empty."""
+        assert len(CONFIRMATION_PATTERNS) > 0
+
+    def test_patterns_are_valid_regex(self):
+        """All patterns compile as valid regex."""
+        import re
+
+        all_patterns = (
+            CLAUDE_WAITING_PATTERNS
+            + CLAUDE_WORKING_PATTERNS
+            + SHELL_PROMPT_PATTERNS
+            + CONFIRMATION_PATTERNS
+        )
+
+        for pattern in all_patterns:
+            try:
+                re.compile(pattern)
+            except re.error as e:
+                pytest.fail(f"Invalid regex pattern '{pattern}': {e}")

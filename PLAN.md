@@ -76,7 +76,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Poll session output at configurable interval (default 500ms)
   - Acceptance: Captures session output reliably without performance degradation
 
-- [ ] **Implement attention state detection** `[pending]`
+- [x] **Implement attention state detection** `[complete]`
   - Spec: specs/session-monitor.md#attention-state-detection
   - Scope: Apply pattern matching for WAITING/WORKING/IDLE states
   - Acceptance: Detects Claude prompts, shell prompts, and activity correctly

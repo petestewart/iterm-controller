@@ -8,15 +8,194 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Callable
+
+from iterm_controller.models import AttentionState
 
 if TYPE_CHECKING:
     from iterm_controller.iterm_api import ItermController, SessionSpawner
     from iterm_controller.models import ManagedSession
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Attention Detection Patterns
+# =============================================================================
+
+# Claude-specific patterns for WAITING state
+CLAUDE_WAITING_PATTERNS = [
+    r"\?\s*$",  # Ends with question mark
+    r"I have a question",
+    r"Before I proceed",
+    r"Could you clarify",
+    r"Which would you prefer",
+    r"Should I",
+    r"Do you want me to",
+    r"Please confirm",
+    r"\[yes/no\]",
+    r"\(y/n\)",
+]
+
+# Claude patterns indicating WORKING state
+CLAUDE_WORKING_PATTERNS = [
+    r"^Reading ",
+    r"^Writing ",
+    r"^Searching ",
+    r"^Running ",
+    r"Creating .+\.\.\.",
+    r"Analyzing ",
+]
+
+# Shell prompt patterns indicating IDLE state
+SHELL_PROMPT_PATTERNS = [
+    r"^\$\s*$",  # Basic $ prompt
+    r"^❯\s*$",  # Starship prompt
+    r"^%\s*$",  # Zsh prompt
+    r"^>\s*$",  # Simple prompt
+    r"^\[\w+@\w+\s*\]",  # [user@host] style
+]
+
+# Confirmation prompt patterns
+CONFIRMATION_PATTERNS = [
+    r"\[y/N\]",
+    r"\[Y/n\]",
+    r"\(yes/no\)",
+    r"Continue\?",
+    r"Press Enter",
+    r"Press any key",
+    r"Are you sure",
+]
+
+
+# =============================================================================
+# Attention Detector
+# =============================================================================
+
+
+class AttentionDetector:
+    """Detects session attention state from output using pattern matching.
+
+    The detector applies patterns in priority order:
+    1. WAITING patterns (highest priority) - session needs user input
+    2. Shell prompt patterns - session is idle at prompt
+    3. WORKING patterns - session is actively processing
+    4. Time-based heuristic - recent activity means working
+
+    This allows accurate detection of Claude prompts, shell prompts,
+    and activity states.
+    """
+
+    def __init__(self, activity_threshold_seconds: float = 2.0) -> None:
+        """Initialize the attention detector.
+
+        Args:
+            activity_threshold_seconds: Time threshold for considering
+                a session as "working" based on recent output.
+        """
+        self.activity_threshold = timedelta(seconds=activity_threshold_seconds)
+
+        # Pre-compile patterns for performance
+        self._waiting_patterns = [
+            re.compile(p, re.IGNORECASE | re.MULTILINE)
+            for p in CLAUDE_WAITING_PATTERNS + CONFIRMATION_PATTERNS
+        ]
+        self._working_patterns = [
+            re.compile(p, re.IGNORECASE | re.MULTILINE) for p in CLAUDE_WORKING_PATTERNS
+        ]
+        self._prompt_patterns = [
+            re.compile(p, re.MULTILINE) for p in SHELL_PROMPT_PATTERNS
+        ]
+
+    def determine_state(
+        self,
+        session: ManagedSession,
+        new_output: str,
+    ) -> AttentionState:
+        """Determine attention state from session output.
+
+        Args:
+            session: The managed session being analyzed.
+            new_output: The recent output from the session.
+
+        Returns:
+            The detected attention state.
+        """
+        # Check for waiting patterns first (highest priority)
+        for pattern in self._waiting_patterns:
+            if pattern.search(new_output):
+                return AttentionState.WAITING
+
+        # Check if at shell prompt
+        if self._is_shell_prompt(new_output):
+            return AttentionState.IDLE
+
+        # Check for working patterns
+        for pattern in self._working_patterns:
+            if pattern.search(new_output):
+                return AttentionState.WORKING
+
+        # Recent output means working
+        if session.last_activity:
+            elapsed = datetime.now() - session.last_activity
+            if elapsed < self.activity_threshold:
+                return AttentionState.WORKING
+
+        return AttentionState.IDLE
+
+    def _is_shell_prompt(self, output: str) -> bool:
+        """Check if output ends with a shell prompt.
+
+        Args:
+            output: The output text to check.
+
+        Returns:
+            True if the last line matches a shell prompt pattern.
+        """
+        # Get last non-empty line
+        lines = output.strip().split("\n")
+        if not lines:
+            return False
+
+        last_line = lines[-1].strip()
+        if not last_line:
+            return False
+
+        for pattern in self._prompt_patterns:
+            if pattern.match(last_line):
+                return True
+
+        return False
+
+    def get_pattern_match(self, output: str) -> tuple[AttentionState, str | None]:
+        """Determine state and return the matched pattern.
+
+        Useful for debugging and logging.
+
+        Args:
+            output: The output text to analyze.
+
+        Returns:
+            Tuple of (state, pattern_string) where pattern_string is
+            the pattern that matched, or None if no pattern matched.
+        """
+        for pattern in self._waiting_patterns:
+            match = pattern.search(output)
+            if match:
+                return AttentionState.WAITING, pattern.pattern
+
+        if self._is_shell_prompt(output):
+            return AttentionState.IDLE, "shell_prompt"
+
+        for pattern in self._working_patterns:
+            match = pattern.search(output)
+            if match:
+                return AttentionState.WORKING, pattern.pattern
+
+        return AttentionState.IDLE, None
 
 
 # =============================================================================
@@ -265,6 +444,7 @@ class MonitorConfig:
 
 
 OutputCallback = Callable[["ManagedSession", str, bool], None]
+AttentionStateCallback = Callable[["ManagedSession", AttentionState, AttentionState], None]
 
 
 class SessionMonitor:
@@ -272,6 +452,10 @@ class SessionMonitor:
 
     This class implements the core polling loop that checks all managed
     sessions for new output. It uses batching and caching for efficiency.
+
+    Attention state detection is integrated to determine when sessions
+    need user attention (WAITING), are actively processing (WORKING),
+    or are idle at a prompt (IDLE).
     """
 
     def __init__(
@@ -280,6 +464,7 @@ class SessionMonitor:
         spawner: SessionSpawner,
         config: MonitorConfig | None = None,
         on_output: OutputCallback | None = None,
+        on_attention_state_change: AttentionStateCallback | None = None,
     ) -> None:
         """Initialize the session monitor.
 
@@ -289,17 +474,21 @@ class SessionMonitor:
             config: Monitor configuration (uses defaults if not provided).
             on_output: Callback invoked when new output is detected.
                       Signature: (session, new_output, had_change)
+            on_attention_state_change: Callback invoked when attention state changes.
+                      Signature: (session, old_state, new_state)
         """
         self.controller = controller
         self.spawner = spawner
         self.config = config or MonitorConfig()
         self.on_output = on_output
+        self.on_attention_state_change = on_attention_state_change
 
         # Components
         self._reader = BatchOutputReader(controller, self.config.lines_to_read)
         self._processor = OutputProcessor()
         self._cache = OutputCache(self.config.cache_max_entries)
         self._throttle = OutputThrottle(self.config.throttle_interval_ms)
+        self._detector = AttentionDetector()
 
         # State
         self._running = False
@@ -431,7 +620,24 @@ class SessionMonitor:
                 session.last_output = change.new_output
                 session.last_activity = datetime.now()
 
-                # Invoke callback
+                # Detect attention state
+                old_state = session.attention_state
+                new_state = self._detector.determine_state(session, change.new_output)
+
+                if old_state != new_state:
+                    session.attention_state = new_state
+                    logger.debug(
+                        f"Session {session.id} attention state: {old_state.value} -> {new_state.value}"
+                    )
+
+                    # Invoke attention state callback
+                    if self.on_attention_state_change:
+                        try:
+                            self.on_attention_state_change(session, old_state, new_state)
+                        except Exception as e:
+                            logger.error(f"Error in attention state callback: {e}")
+
+                # Invoke output callback
                 if self.on_output:
                     try:
                         self.on_output(session, change.new_output, True)
@@ -454,6 +660,25 @@ class SessionMonitor:
         self._cache.clear()
         self._processor.clear()
         self._throttle.clear()
+
+    def detect_attention_state(self, session: ManagedSession, output: str) -> AttentionState:
+        """Manually detect attention state for output.
+
+        This is useful for testing or external detection.
+
+        Args:
+            session: The session to analyze.
+            output: The output text to check.
+
+        Returns:
+            The detected attention state.
+        """
+        return self._detector.determine_state(session, output)
+
+    @property
+    def detector(self) -> AttentionDetector:
+        """Access the attention detector for advanced use."""
+        return self._detector
 
 
 # =============================================================================
