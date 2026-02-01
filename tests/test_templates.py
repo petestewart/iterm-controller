@@ -744,3 +744,208 @@ echo 'line3' >> output.txt""",
         # Should not raise
         project = await runner.create_from_template(template, str(project_path), {})
         assert project is not None
+
+
+class TestShellInjectionPrevention:
+    """Test that shell injection attacks are prevented."""
+
+    @pytest.mark.asyncio
+    async def test_script_escapes_shell_metacharacters(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Variables with shell metacharacters are safely escaped."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="echo {{name}} > output.txt",
+        )
+        project_path = tmp_path / "project"
+
+        # Value with shell metacharacters that could inject commands
+        await runner.create_from_template(
+            template, str(project_path), {"name": "test; rm -rf /"}
+        )
+
+        # The value should be escaped, not executed as a command
+        content = (project_path / "output.txt").read_text().strip()
+        assert content == "test; rm -rf /"
+
+    @pytest.mark.asyncio
+    async def test_script_escapes_command_substitution(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Command substitution attempts are escaped."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="echo {{name}} > output.txt",
+        )
+        project_path = tmp_path / "project"
+
+        # Value attempting command substitution
+        await runner.create_from_template(
+            template, str(project_path), {"name": "$(whoami)"}
+        )
+
+        content = (project_path / "output.txt").read_text().strip()
+        # Should be the literal string, not the result of whoami
+        assert content == "$(whoami)"
+
+    @pytest.mark.asyncio
+    async def test_script_escapes_backtick_substitution(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Backtick command substitution is escaped."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="echo {{name}} > output.txt",
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(
+            template, str(project_path), {"name": "`whoami`"}
+        )
+
+        content = (project_path / "output.txt").read_text().strip()
+        assert content == "`whoami`"
+
+    @pytest.mark.asyncio
+    async def test_script_escapes_pipe_characters(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Pipe characters in values are escaped."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="echo {{name}} > output.txt",
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(
+            template, str(project_path), {"name": "test | cat /etc/passwd"}
+        )
+
+        content = (project_path / "output.txt").read_text().strip()
+        assert content == "test | cat /etc/passwd"
+
+    @pytest.mark.asyncio
+    async def test_script_escapes_quotes(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Quote characters in values don't break out of escaping."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="echo {{name}} > output.txt",
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(
+            template, str(project_path), {"name": "'; echo injected; '"}
+        )
+
+        content = (project_path / "output.txt").read_text().strip()
+        # The quotes should be in the output, not used to break out
+        assert "injected" in content  # The word is there but as a literal
+        assert content == "'; echo injected; '"
+
+    @pytest.mark.asyncio
+    async def test_script_escapes_newlines(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Newline characters in values are properly escaped."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="echo {{name}} > output.txt",
+        )
+        project_path = tmp_path / "project"
+
+        # Value with newline attempting to inject a command
+        await runner.create_from_template(
+            template, str(project_path), {"name": "test\nrm -rf /"}
+        )
+
+        content = (project_path / "output.txt").read_text().strip()
+        # The newline should be preserved as a literal, not executing second line
+        assert "test" in content
+
+    @pytest.mark.asyncio
+    async def test_script_with_safe_values_works(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Normal safe values still work correctly with escaping."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="echo {{name}} > output.txt",
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(
+            template, str(project_path), {"name": "my-safe-project"}
+        )
+
+        content = (project_path / "output.txt").read_text().strip()
+        assert content == "my-safe-project"
+
+    @pytest.mark.asyncio
+    async def test_script_with_spaces_in_values(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Values with spaces are properly quoted."""
+        template = ProjectTemplate(
+            id="test",
+            name="Test",
+            setup_script="echo {{name}} > output.txt",
+        )
+        project_path = tmp_path / "project"
+
+        await runner.create_from_template(
+            template, str(project_path), {"name": "my project name"}
+        )
+
+        content = (project_path / "output.txt").read_text().strip()
+        assert content == "my project name"
+
+
+class TestSubstituteVarsWithShellEscape:
+    """Test the shell_escape parameter of _substitute_vars."""
+
+    def test_shell_escape_quotes_simple_value(self, runner: TemplateRunner):
+        """Simple values are quoted."""
+        result = runner._substitute_vars(
+            "echo {{name}}", {"name": "hello"}, shell_escape=True
+        )
+        # shlex.quote will add quotes around the value
+        assert result == "echo hello" or result == "echo 'hello'"
+
+    def test_shell_escape_quotes_value_with_spaces(self, runner: TemplateRunner):
+        """Values with spaces are properly quoted."""
+        result = runner._substitute_vars(
+            "echo {{name}}", {"name": "hello world"}, shell_escape=True
+        )
+        assert result == "echo 'hello world'"
+
+    def test_shell_escape_quotes_value_with_semicolon(self, runner: TemplateRunner):
+        """Values with semicolons are properly quoted."""
+        result = runner._substitute_vars(
+            "echo {{name}}", {"name": "test; rm -rf /"}, shell_escape=True
+        )
+        # The semicolon should be safely quoted
+        assert "'" in result or result.startswith("echo '")
+
+    def test_no_shell_escape_preserves_value(self, runner: TemplateRunner):
+        """Without shell_escape, values are preserved as-is."""
+        result = runner._substitute_vars(
+            "echo {{name}}", {"name": "test; rm -rf /"}, shell_escape=False
+        )
+        assert result == "echo test; rm -rf /"
+
+    def test_shell_escape_preserves_unknown_vars(self, runner: TemplateRunner):
+        """Unknown variables are preserved even with shell_escape."""
+        result = runner._substitute_vars(
+            "echo {{unknown}}", {}, shell_escape=True
+        )
+        assert result == "echo {{unknown}}"

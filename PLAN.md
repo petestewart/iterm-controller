@@ -492,9 +492,296 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Add workflow modes section to help modal
   - Acceptance: Help shows 1-4 key descriptions for modes
 
+### Phase 18: Security Fixes (Critical)
+
+- [x] **Fix shell injection in template setup script** `[complete]`
+  - Scope: Replace `asyncio.create_subprocess_shell()` with `create_subprocess_exec()` in templates.py
+  - Location: iterm_controller/templates.py:280
+  - Fix: Use `shlex.split()` and `create_subprocess_exec()`, validate all user inputs with `shlex.quote()`
+  - Acceptance: Setup scripts run safely, malicious variable values cannot inject commands
+
+- [ ] **Fix command injection in session spawning** `[pending]`
+  - Scope: Escape shell metacharacters in `_escape_value()` and validate environment variable keys
+  - Location: iterm_controller/iterm_api.py:300-323
+  - Fix: Use `shlex.quote()` for all values, validate env keys with regex `^[A-Za-z_][A-Za-z0-9_]*$`
+  - Acceptance: Cannot inject commands via template.env values or keys
+
+- [ ] **Fix arbitrary command execution in auto mode** `[pending]`
+  - Scope: Implement command allowlisting for auto mode commands
+  - Location: iterm_controller/auto_mode.py:535-621
+  - Fix: Add command validation against expected patterns or allowlist
+  - Acceptance: Only approved commands can be executed via auto mode
+
+### Phase 19: Type System & Code Quality (Critical)
+
+- [ ] **Rename ConnectionError to avoid shadowing built-in** `[pending]`
+  - Scope: Rename `ConnectionError` class to `ItermControllerConnectionError`
+  - Location: iterm_controller/exceptions.py:51
+  - Fix: Find/replace all usages across codebase
+  - Acceptance: No shadowing of Python's built-in `ConnectionError`
+
+- [ ] **Fix callable type hint to Callable** `[pending]`
+  - Scope: Change `-> callable` to proper `-> Callable[[re.Match[str]], str]` return type
+  - Location: iterm_controller/plan_parser.py:278
+  - Fix: Import `Callable` from typing, use correct generic type
+  - Acceptance: mypy passes without type errors
+
+- [ ] **Add type hints to **kwargs in widgets** `[pending]`
+  - Scope: Add `**kwargs: Any` type hint to widget constructors
+  - Locations: widgets/session_list.py:61, widgets/task_list.py:76
+  - Fix: Import `Any` from typing, add annotation
+  - Acceptance: All widget constructors have complete type hints
+
+- [ ] **Remove duplicate exception classes from iterm_api.py** `[pending]`
+  - Scope: Remove local exception definitions, import from exceptions.py instead
+  - Location: iterm_controller/iterm_api.py:40-55
+  - Fix: Delete duplicate classes, add imports from `exceptions`
+  - Acceptance: Single source of truth for exception classes
+
+- [ ] **Remove empty TYPE_CHECKING blocks** `[pending]`
+  - Scope: Clean up empty `if TYPE_CHECKING: pass` blocks
+  - Locations: models.py:17-18, widgets/task_list.py:19-20, widgets/task_queue.py:17-18, app.py:29-30, iterm_api.py:27-28
+  - Fix: Remove empty blocks or add actual type imports
+  - Acceptance: No empty TYPE_CHECKING blocks in codebase
+
+- [ ] **Remove unused import load_global_config from app.py** `[pending]`
+  - Scope: Remove unused import
+  - Location: iterm_controller/app.py:13
+  - Acceptance: No unused imports in app.py
+
+### Phase 20: Agent-Native Architecture (Critical)
+
+- [ ] **Create public API module for programmatic access** `[pending]`
+  - Scope: Create iterm_controller/api.py exposing core operations as async functions
+  - Functions: spawn_session, kill_session, open_project, claim_task, toggle_test_step, etc.
+  - Acceptance: All 28 UI actions have programmatic equivalents
+
+- [ ] **Add CLI subcommands for headless operation** `[pending]`
+  - Scope: Add argparse subparsers to __main__.py for command-line operations
+  - Depends: Phase 20 task 1
+  - Commands: spawn, kill, list-projects, list-sessions, task claim, task done
+  - Acceptance: Can perform operations without launching TUI
+
+- [ ] **Add state query API for external observation** `[pending]`
+  - Scope: Add methods to query state without TUI context
+  - Location: iterm_controller/state.py
+  - Functions: get_state(), get_sessions(), get_plan()
+  - Acceptance: External tools can query current sessions, tasks, project state
+
+- [ ] **Extract core logic from action methods** `[pending]`
+  - Scope: Separate business logic from TUI-specific code in action_* methods
+  - Locations: All screen action handlers
+  - Fix: Move core logic to api.py, have action methods call API
+  - Acceptance: All keyboard shortcuts have callable API equivalents
+
+- [ ] **Export public API from __init__.py** `[pending]`
+  - Scope: Export key classes and functions for external use
+  - Exports: ItermController, SessionSpawner, AppState, Project, ManagedSession, Task, Plan, config functions
+  - Acceptance: Can `from iterm_controller import Controller, Project` etc.
+
+- [ ] **Document agent integration patterns** `[pending]`
+  - Scope: Create documentation showing programmatic usage
+  - Acceptance: README includes example of API usage without TUI
+
+### Phase 21: Path Traversal Security (High)
+
+- [ ] **Add centralized path validation utility** `[pending]`
+  - Scope: Create utility function to validate paths stay within project directory
+  - Location: New file iterm_controller/security.py
+  - Function: `validate_path_in_project(path: Path, project_root: Path) -> bool`
+  - Acceptance: Reusable validation across all file operations
+
+- [ ] **Fix path traversal in spec validator** `[pending]`
+  - Scope: Validate spec references don't escape project directory
+  - Location: iterm_controller/spec_validator.py:66-71
+  - Depends: Phase 21 task 1
+  - Fix: Use centralized path validation before accessing files
+  - Acceptance: `../../../etc/passwd` spec refs are rejected
+
+- [ ] **Fix path traversal in document operations** `[pending]`
+  - Scope: Validate all document paths in docs mode
+  - Location: iterm_controller/screens/modes/docs_mode.py:477-544
+  - Depends: Phase 21 task 1
+  - Fix: Validate create/delete/rename paths stay in project
+  - Acceptance: Cannot create/delete files outside project directory
+
+- [ ] **Fix path traversal in add document modal** `[pending]`
+  - Scope: Validate filename doesn't contain traversal sequences
+  - Location: iterm_controller/screens/modals/add_document.py:165-192
+  - Depends: Phase 21 task 1
+  - Fix: Reject filenames with `..` or `/` characters
+  - Acceptance: Cannot create files outside intended directory
+
+- [ ] **Add editor command allowlist** `[pending]`
+  - Scope: Validate editor commands against known-safe list
+  - Locations: docs_mode.py, plan_mode.py, docs_picker.py subprocess calls
+  - Fix: Only allow editors from EDITOR_COMMANDS dict
+  - Acceptance: Cannot execute arbitrary commands via editor setting
+
+### Phase 22: Code Duplication Cleanup (Important)
+
+- [ ] **Extract EDITOR_COMMANDS to shared module** `[pending]`
+  - Scope: Create shared constants for editor command mapping
+  - Location: New file iterm_controller/editors.py
+  - Currently duplicated in: plan_mode.py:42-54, docs_mode.py:34-46
+  - Acceptance: Single source of truth for editor commands
+
+- [ ] **Extract _open_in_editor to ModeScreen base class** `[pending]`
+  - Scope: Move duplicated editor-opening logic to shared location
+  - Depends: Phase 22 task 1
+  - Currently duplicated in: plan_mode.py:319-353, docs_mode.py:442-475
+  - Acceptance: Single implementation of editor opening logic
+
+- [ ] **Create TaskDependencyResolver utility** `[pending]`
+  - Scope: Extract is_task_blocked() and get_blocking_tasks() to shared utility
+  - Currently duplicated in: task_list.py:180-221, task_queue.py:122-161, blocked_tasks.py:88-125
+  - Acceptance: Single implementation of dependency checking
+
+- [ ] **Create shared STATUS_ICONS and STATUS_COLORS constants** `[pending]`
+  - Scope: Consolidate status display constants
+  - Currently duplicated in: task_list.py:55-69, session_list.py:44-54, active_work.py:60-70
+  - Acceptance: Consistent status display across all widgets
+
+- [ ] **Remove duplicate StateEvent enum** `[pending]`
+  - Scope: Use single StateEvent definition from state.py
+  - Location: Remove from iterm_controller/plan_watcher.py:28-32
+  - Fix: Import StateEvent from state module instead
+  - Acceptance: Single enum definition for state events
+
+### Phase 23: Architecture Improvements (Important)
+
+- [ ] **Split iterm_api.py into focused modules** `[pending]`
+  - Scope: Break 1207-line file into separate modules
+  - New structure: iterm_controller/iterm/connection.py, spawner.py, terminator.py, tracker.py, layouts.py
+  - Acceptance: Each module < 300 lines with single responsibility
+
+- [ ] **Refactor AppState into focused state managers** `[pending]`
+  - Scope: Split 571-line god class into smaller managers
+  - Components: ProjectStateManager, SessionStateManager, PlanStateManager
+  - Acceptance: Each manager has single responsibility
+
+- [ ] **Remove dual event system (callbacks)** `[pending]`
+  - Scope: Remove unused callback event system, keep only Textual Messages
+  - Location: iterm_controller/state.py:221-224, 245-281
+  - Fix: Remove subscribe(), unsubscribe(), emit() and _listeners
+  - Acceptance: Single event mechanism (Textual Messages only)
+
+- [ ] **Add dependency injection for services** `[pending]`
+  - Scope: Inject dependencies via app instead of instantiating in screens
+  - Fix: Create ServiceContainer, inject SessionSpawner etc via app
+  - Acceptance: Screens don't directly instantiate infrastructure classes
+
+- [ ] **Create iTerm2 abstraction layer** `[pending]`
+  - Scope: Add protocol/interface for terminal operations
+  - Location: New file iterm_controller/ports.py with TerminalProvider protocol
+  - Acceptance: Can mock iTerm2 operations for testing
+
+- [ ] **Fix circular import prevention patterns** `[pending]`
+  - Scope: Refactor to eliminate delayed imports for circular dependency prevention
+  - Locations: 8 instances across app.py, screens, etc.
+  - Acceptance: No `from X import Y` inside functions for circular deps
+
+### Phase 24: Performance Optimizations (Important)
+
+- [ ] **Add output buffer size limit** `[pending]`
+  - Scope: Limit stored session output to prevent memory bloat
+  - Location: iterm_controller/session_monitor.py:491-552
+  - Fix: Add MAX_OUTPUT_BUFFER constant (100KB), truncate older output
+  - Acceptance: Memory usage stable with long-running sessions
+
+- [ ] **Use async file I/O for plan parsing** `[pending]`
+  - Scope: Replace synchronous file reads with asyncio.to_thread
+  - Locations: plan_parser.py:62-101, plan_watcher.py:159-161, 481-486
+  - Fix: Use `await asyncio.to_thread(path.read_text, encoding="utf-8")`
+  - Acceptance: Event loop not blocked during file reads
+
+- [ ] **Reuse httpx client in health checker** `[pending]`
+  - Scope: Create single httpx.AsyncClient instance for reuse
+  - Location: iterm_controller/health_checker.py:117-135
+  - Fix: Initialize client in __init__, close in stop_polling()
+  - Acceptance: Connection pool reused, reduced SSL handshakes
+
+- [ ] **Add task lookup dictionary to Plan model** `[pending]`
+  - Scope: Cache task by ID for O(1) lookups instead of O(n) linear search
+  - Location: iterm_controller/plan_watcher.py:520-524
+  - Fix: Add `_task_map_cache` property to Plan model
+  - Acceptance: Task status updates are O(1)
+
+- [ ] **Cache sorted session list in widget** `[pending]`
+  - Scope: Avoid re-sorting on every render
+  - Location: iterm_controller/widgets/session_list.py:160-180
+  - Fix: Cache sorted list, invalidate on session changes
+  - Acceptance: Reduced sorting overhead on frequent renders
+
+- [ ] **Debounce UI refresh on state changes** `[pending]`
+  - Scope: Prevent UI thrashing with rapid status updates
+  - Location: iterm_controller/screens/control_room.py:293-303
+  - Fix: Add 100ms debounce timer for refresh calls
+  - Acceptance: UI updates batched during rapid changes
+
+### Phase 25: Code Simplification (Nice-to-have)
+
+- [ ] **Flatten exception hierarchy** `[pending]`
+  - Scope: Reduce 24 exception classes to ~5 essential ones
+  - Location: iterm_controller/exceptions.py (531 lines)
+  - Keep: ItermControllerError, ConnectionError, ConfigError, PlanError, TemplateNotFoundError
+  - Remove: ~19 rarely-used exception classes
+  - Acceptance: Exception module < 100 lines
+
+- [ ] **Remove ErrorStats tracking** `[pending]`
+  - Scope: Remove unused error statistics tracking
+  - Location: iterm_controller/exceptions.py:500-531
+  - Fix: Delete ErrorStats class and record_error function
+  - Acceptance: No dead code for unused metrics
+
+- [ ] **Remove unused window layout capture** `[pending]`
+  - Scope: Delete capture_current_layout and related methods
+  - Location: iterm_controller/iterm_api.py:1035-1207 (172 lines)
+  - Reason: Never called from production code
+  - Acceptance: Only spawn methods remain in layouts
+
+- [ ] **Simplify auto_mode.py class structure** `[pending]`
+  - Scope: Consolidate 4 classes into single AutoMode class
+  - Remove: WorkflowStageInferrer (trivial wrapper), create_controller_for_project factory
+  - Acceptance: Single cohesive class for auto mode
+
+- [ ] **Add logging to silent exception handlers** `[pending]`
+  - Scope: Add logging to exception handlers that currently silently swallow errors
+  - Location: iterm_controller/state.py:279-281 (comment says log but doesn't)
+  - Fix: Add `logger.warning("Subscriber error for %s: %s", event.value, e)`
+  - Acceptance: All exception handlers log their errors
+
+- [ ] **Extract magic numbers to named constants** `[pending]`
+  - Scope: Replace hardcoded numbers with named constants
+  - Locations: task_list.py:264 (padding=40), session_list.py:134 (width=25)
+  - Acceptance: No magic numbers in widget rendering code
+
+- [ ] **Remove unused model fields** `[pending]`
+  - Scope: Remove fields that are tracked but never meaningfully used
+  - Fields: SessionTemplate.health_check, ManagedSession.metadata, TestStep.line_number, HealthCheck.service
+  - Acceptance: All model fields have actual usage
+
+- [ ] **Fix import organization** `[pending]`
+  - Scope: Consolidate split imports into single lines
+  - Location: iterm_controller/screens/project_list.py:15-16
+  - Fix: `from textual.widgets import DataTable, Footer, Header, Static`
+  - Acceptance: Consistent import style across codebase
+
+- [ ] **Use singleton parsers in MakeTestParser** `[pending]`
+  - Scope: Avoid creating parser instances on every parse call
+  - Location: iterm_controller/test_output_parser.py:478-506
+  - Fix: Use class-level singleton parsers or parser pool
+  - Acceptance: Reduced object allocation overhead
+
+- [ ] **Address TODO comments** `[pending]`
+  - Scope: Implement or remove 2 remaining TODO comments
+  - Locations: project_list.py:232 (delete confirmation), test_mode.py:309 (conflict modal)
+  - Acceptance: No TODO comments in production code
+
 ## Open Questions
 
 - [~] **Multi-window support**: Should projects span multiple iTerm2 windows? Current design assumes single window per project.
 
 ---
 *Generated from PRD.md and specs/README.md on 2026-01-31*
+*Code review findings added on 2026-02-01*

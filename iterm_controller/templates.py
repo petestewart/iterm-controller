@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shlex
 from pathlib import Path
 
 from .models import AppConfig, Project, ProjectTemplate
@@ -240,12 +241,15 @@ class TemplateRunner:
 
         return project
 
-    def _substitute_vars(self, content: str, values: dict[str, str]) -> str:
+    def _substitute_vars(
+        self, content: str, values: dict[str, str], shell_escape: bool = False
+    ) -> str:
         """Substitute {{var}} placeholders in content.
 
         Args:
             content: String containing {{variable}} placeholders
             values: Dictionary of variable names to values
+            shell_escape: If True, escape values for safe shell use with shlex.quote()
 
         Returns:
             Content with placeholders replaced
@@ -253,7 +257,12 @@ class TemplateRunner:
 
         def replace(match: re.Match[str]) -> str:
             var_name = match.group(1)
-            return values.get(var_name, match.group(0))
+            value = values.get(var_name)
+            if value is None:
+                return match.group(0)
+            if shell_escape:
+                return shlex.quote(value)
+            return value
 
         return self.VAR_PATTERN.sub(replace, content)
 
@@ -265,6 +274,9 @@ class TemplateRunner:
     ) -> None:
         """Run template setup script in the project directory.
 
+        Uses shlex.quote() to safely escape user-provided values in the script,
+        preventing shell injection attacks.
+
         Args:
             script: The script content to execute
             path: Working directory for the script
@@ -273,8 +285,8 @@ class TemplateRunner:
         Raises:
             SetupScriptError: If the script exits with non-zero status
         """
-        # Substitute variables in script
-        script = self._substitute_vars(script, values)
+        # Substitute variables in script with shell escaping for safety
+        script = self._substitute_vars(script, values, shell_escape=True)
 
         # Run script
         process = await asyncio.create_subprocess_shell(
