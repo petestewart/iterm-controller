@@ -86,6 +86,7 @@ class ProjectDashboardScreen(Screen):
         Binding("g", "github_actions", "GitHub"),
         Binding("f", "focus_session", "Focus"),
         Binding("k", "kill_session", "Kill"),
+        Binding("a", "toggle_auto_mode", "Auto Mode"),
         Binding("escape", "app.pop_screen", "Back"),
     ]
 
@@ -282,6 +283,26 @@ class ProjectDashboardScreen(Screen):
     def action_github_actions(self) -> None:
         """Show GitHub actions modal."""
         self.notify("GitHub actions: Not implemented yet")
+
+    async def action_toggle_auto_mode(self) -> None:
+        """Toggle auto mode enabled/disabled or open config modal."""
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        if not app.state.config:
+            self.notify("No configuration loaded", severity="error")
+            return
+
+        # Toggle auto mode
+        auto_mode = app.state.config.auto_mode
+        auto_mode.enabled = not auto_mode.enabled
+
+        # Save config
+        from iterm_controller.config import save_global_config
+
+        save_global_config(app.state.config)
+
+        status = "enabled" if auto_mode.enabled else "disabled"
+        self.notify(f"Auto mode {status}")
 
     async def action_focus_session(self) -> None:
         """Focus the first WAITING session (or first session if none waiting)."""

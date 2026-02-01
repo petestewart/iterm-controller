@@ -43,6 +43,7 @@ class ItermControllerApp(App):
         Binding("?", "show_help", "Help"),
         Binding("p", "push_screen('project_list')", "Projects"),
         Binding("s", "push_screen('settings')", "Settings"),
+        Binding("h", "go_home", "Home", show=False),
     ]
 
     def __init__(self) -> None:
@@ -170,6 +171,19 @@ class ItermControllerApp(App):
         # Exit the application
         self.exit()
 
-    def action_show_help(self) -> None:
-        """Show help information."""
-        self.notify("Help: q=Quit, p=Projects, s=Settings, ?=Help")
+    async def action_show_help(self) -> None:
+        """Show help modal with all keyboard shortcuts."""
+        from iterm_controller.screens.modals import HelpModal
+
+        await self.push_screen_wait(HelpModal())
+
+    def action_go_home(self) -> None:
+        """Navigate to the home screen (Control Room)."""
+        from iterm_controller.screens.control_room import ControlRoomScreen
+
+        # Pop all screens except the base and push Control Room
+        while len(self.screen_stack) > 1:
+            self.pop_screen()
+        # Push Control Room if not already there
+        if not isinstance(self.screen, ControlRoomScreen):
+            self.push_screen(ControlRoomScreen())

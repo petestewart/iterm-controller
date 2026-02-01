@@ -265,7 +265,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Validate spec references in tasks, show warnings for missing files
   - Acceptance: Invalid refs show warning indicator in task list
 
-- [ ] **Implement keyboard shortcuts** `[pending]`
+- [x] **Implement keyboard shortcuts** `[complete]`
   - Scope: Add shortcuts for common actions (spawn, kill, navigate)
   - Acceptance: Shortcuts work and are documented in help
 

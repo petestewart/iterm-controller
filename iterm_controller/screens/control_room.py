@@ -55,6 +55,16 @@ class ControlRoomScreen(Screen):
         Binding("enter", "focus_session", "Focus"),
         Binding("p", "app.push_screen('project_list')", "Projects"),
         Binding("r", "refresh", "Refresh"),
+        # Number shortcuts for quick session focus (1-9)
+        Binding("1", "focus_session_num(1)", "Focus #1", show=False),
+        Binding("2", "focus_session_num(2)", "Focus #2", show=False),
+        Binding("3", "focus_session_num(3)", "Focus #3", show=False),
+        Binding("4", "focus_session_num(4)", "Focus #4", show=False),
+        Binding("5", "focus_session_num(5)", "Focus #5", show=False),
+        Binding("6", "focus_session_num(6)", "Focus #6", show=False),
+        Binding("7", "focus_session_num(7)", "Focus #7", show=False),
+        Binding("8", "focus_session_num(8)", "Focus #8", show=False),
+        Binding("9", "focus_session_num(9)", "Focus #9", show=False),
     ]
 
     def compose(self) -> ComposeResult:
@@ -229,6 +239,38 @@ class ControlRoomScreen(Screen):
         """Manually refresh the session list."""
         await self.refresh_sessions()
         self.notify("Refreshed sessions")
+
+    async def action_focus_session_num(self, num: int) -> None:
+        """Focus session by its display number (1-9).
+
+        Args:
+            num: The 1-based session number to focus.
+        """
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+        sessions = list(app.state.sessions.values())
+
+        # Convert to 0-based index
+        index = num - 1
+        if index >= len(sessions):
+            self.notify(f"No session #{num}", severity="warning")
+            return
+
+        session = sessions[index]
+
+        if not app.iterm.is_connected:
+            self.notify("Not connected to iTerm2", severity="error")
+            return
+
+        try:
+            iterm_session = await app.iterm.app.async_get_session_by_id(session.id)
+            if not iterm_session:
+                self.notify(f"Session not found: {session.template_id}", severity="error")
+                return
+
+            await iterm_session.async_activate()
+            self.notify(f"Focused session #{num}: {session.template_id}")
+        except Exception as e:
+            self.notify(f"Error focusing session: {e}", severity="error")
 
     # =========================================================================
     # State Event Handlers
