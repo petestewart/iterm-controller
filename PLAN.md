@@ -295,9 +295,37 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 | gh CLI | GitHub integration | `brew install gh` (optional) |
 | terminal-notifier | macOS notifications | `brew install terminal-notifier` (optional) |
 
+### Phase 11: Bug Fixes & Improvements
+
+- [x] **Add Jira ticket field to New Project screen** `[complete]`
+  - Scope: Add optional Jira ticket # field to the Create New Project form
+  - Acceptance: Field appears in form, value saved to project configuration
+
+- [ ] **Auto-refresh project list after creating project**
+  - Scope: Project list screen should automatically refresh after a new project is created
+  - Acceptance: New project appears in list without manual navigation
+
+- [ ] **Fix project selection with Enter key**
+  - Scope: Pressing Enter on a selected project in the project list should open it
+  - Affects: Direct project list access AND Control Room "Select a project first" flow when spawning sessions
+  - Root cause: Screen binding `Binding("enter", "open_project")` is intercepted by DataTable, which emits `DataTable.RowSelected` instead
+  - Fix: Add `on_data_table_row_selected` handler instead of relying on the binding
+  - Acceptance: Enter key opens the selected project's dashboard
+
+- [ ] **Fix keyboard shortcuts for Settings and Sessions screens**
+  - Scope: Settings uses `s`/`ctrl+s` but should use `,`/`ctrl+,` (standard convention). Sessions/Control Room should use `s`/`ctrl+s`
+  - Fix: Update bindings in app.py - change settings to comma, add sessions shortcut with `s`
+  - Acceptance: `,` or `ctrl+,` opens Settings, `s` or `ctrl+s` opens Sessions/Control Room
+
+- [ ] **Fix help modal crash (NoActiveWorker error)**
+  - Scope: Pressing ? crashes with `NoActiveWorker: push_screen must be run from a worker when wait_for_dismiss is True`
+  - Root cause: `action_show_help` uses `await self.push_screen_wait()` which requires a worker context
+  - Fix: Use `self.push_screen()` without waiting, or wrap in a worker
+  - Acceptance: Pressing ? shows help modal without crashing
+
 ## Open Questions
 
-- [ ] **Multi-window support**: Should projects span multiple iTerm2 windows? Current design assumes single window per project.
+- [~] **Multi-window support**: Should projects span multiple iTerm2 windows? Current design assumes single window per project.
 
 ---
 *Generated from PRD.md and specs/README.md on 2026-01-31*

@@ -61,6 +61,8 @@ class NewProjectScreen(Screen):
                 Input(id="path-input", placeholder="/path/to/project"),
                 Label("Git Branch (optional)"),
                 Input(id="branch-input", placeholder="feature/new-thing"),
+                Label("Jira Ticket (optional)"),
+                Input(id="jira-input", placeholder="PROJ-123"),
                 Static("", id="status-message", classes="status"),
                 Horizontal(
                     Button("Cancel", variant="default", id="cancel"),
@@ -134,6 +136,7 @@ class NewProjectScreen(Screen):
         self.query_one("#name-input", Input).disabled = not enabled
         self.query_one("#path-input", Input).disabled = not enabled
         self.query_one("#branch-input", Input).disabled = not enabled
+        self.query_one("#jira-input", Input).disabled = not enabled
         self.query_one("#template-select", Select).disabled = not enabled
         self.query_one("#create", Button).disabled = not enabled
 
@@ -148,6 +151,7 @@ class NewProjectScreen(Screen):
         name = self.query_one("#name-input", Input).value.strip()
         path_value = self.query_one("#path-input", Input).value.strip()
         branch = self.query_one("#branch-input", Input).value.strip()
+        jira_ticket = self.query_one("#jira-input", Input).value.strip() or None
         template_select = self.query_one("#template-select", Select)
         template_id = str(template_select.value) if template_select.value else ""
 
@@ -193,6 +197,7 @@ class NewProjectScreen(Screen):
                 "name": name,
                 "path": str(project_path),
                 "branch": branch,
+                "jira_ticket": jira_ticket,
             }
 
             if template:
@@ -202,7 +207,7 @@ class NewProjectScreen(Screen):
                 )
             else:
                 self._update_status("Creating project directory...")
-                await self._create_empty_project(name, str(project_path), branch)
+                await self._create_empty_project(name, str(project_path), branch, jira_ticket)
 
             self.notify(f"Project '{name}' created successfully!", severity="information")
             self.app.pop_screen()
@@ -259,7 +264,7 @@ class NewProjectScreen(Screen):
             await self._spawn_initial_sessions(project, template)
 
     async def _create_empty_project(
-        self, name: str, project_path: str, branch: str
+        self, name: str, project_path: str, branch: str, jira_ticket: str | None
     ) -> None:
         """Create an empty project without a template.
 
@@ -267,6 +272,7 @@ class NewProjectScreen(Screen):
             name: The project name.
             project_path: Path where the project should be created.
             branch: Optional git branch to create.
+            jira_ticket: Optional Jira ticket number.
         """
         from iterm_controller.models import Project
 
@@ -281,6 +287,7 @@ class NewProjectScreen(Screen):
             id=name,
             name=name,
             path=str(path.resolve()),
+            jira_ticket=jira_ticket,
         )
 
         # Create git branch if specified

@@ -81,8 +81,18 @@ class TestProjectModel:
         assert project.plan_path == "PLAN.md"
         assert project.config_path is None
         assert project.template_id is None
+        assert project.jira_ticket is None
         assert project.is_open is False
         assert project.sessions == []
+
+    def test_project_with_jira_ticket(self):
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+            jira_ticket="PROJ-123",
+        )
+        assert project.jira_ticket == "PROJ-123"
 
     def test_full_plan_path_property(self):
         project = Project(

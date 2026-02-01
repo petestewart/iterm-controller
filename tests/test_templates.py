@@ -597,6 +597,34 @@ class TestCreateFromTemplate:
         assert project.id == "fallback-name"
         assert project.name == "fallback-name"
 
+    @pytest.mark.asyncio
+    async def test_passes_jira_ticket_to_project(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """Passes jira_ticket from form_values to the created Project."""
+        template = ProjectTemplate(id="test", name="Test")
+        project_path = tmp_path / "jira-project"
+
+        project = await runner.create_from_template(
+            template, str(project_path), {"name": "jira-project", "jira_ticket": "PROJ-456"}
+        )
+
+        assert project.jira_ticket == "PROJ-456"
+
+    @pytest.mark.asyncio
+    async def test_jira_ticket_none_when_not_provided(
+        self, runner: TemplateRunner, tmp_path: Path
+    ):
+        """jira_ticket is None when not provided in form_values."""
+        template = ProjectTemplate(id="test", name="Test")
+        project_path = tmp_path / "no-jira-project"
+
+        project = await runner.create_from_template(
+            template, str(project_path), {"name": "no-jira-project"}
+        )
+
+        assert project.jira_ticket is None
+
 
 class TestSetupScriptExecution:
     """Test setup script execution during project creation."""

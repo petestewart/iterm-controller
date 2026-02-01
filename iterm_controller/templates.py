@@ -235,6 +235,7 @@ class TemplateRunner:
             name=form_values.get("name", path.name),
             path=str(path.resolve()),
             template_id=template.id,
+            jira_ticket=form_values.get("jira_ticket"),
         )
 
         return project

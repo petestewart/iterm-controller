@@ -401,6 +401,7 @@ class Project:
     plan_path: str = "PLAN.md"  # Relative path to plan file
     config_path: str | None = None  # Project-local config override
     template_id: str | None = None  # Template used to create project
+    jira_ticket: str | None = None  # Optional Jira ticket number (e.g., "PROJ-123")
 
     # Runtime state (not persisted)
     is_open: bool = field(default=False, repr=False)

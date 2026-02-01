@@ -85,6 +85,7 @@ class TestNewProjectScreenAsync:
             assert screen.query_one("#name-input") is not None
             assert screen.query_one("#path-input") is not None
             assert screen.query_one("#branch-input") is not None
+            assert screen.query_one("#jira-input") is not None
             assert screen.query_one("#create") is not None
             assert screen.query_one("#cancel") is not None
 
@@ -254,7 +255,7 @@ class TestNewProjectScreenAsync:
 
                 # Call internal method directly
                 await screen._create_empty_project(
-                    "new-project", str(project_path), ""
+                    "new-project", str(project_path), "", None
                 )
 
                 # Project should exist in state
@@ -279,7 +280,7 @@ class TestNewProjectScreenAsync:
 
                 # Call internal method directly with branch
                 await screen._create_empty_project(
-                    "branched-project", str(project_path), "feature/test"
+                    "branched-project", str(project_path), "feature/test", None
                 )
 
                 # Project should exist
@@ -288,6 +289,30 @@ class TestNewProjectScreenAsync:
                 # Git directory should exist
                 git_dir = project_path / ".git"
                 assert git_dir.exists()
+
+    async def test_creates_project_with_jira_ticket(self) -> None:
+        """Test creating a project with a Jira ticket via internal method."""
+        app = ItermControllerApp()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_path = Path(tmpdir) / "jira-project"
+
+            async with app.run_test() as pilot:
+                await pilot.press("p")
+                await pilot.press("n")
+
+                screen = app.screen
+                assert isinstance(screen, NewProjectScreen)
+
+                # Call internal method directly with jira_ticket
+                await screen._create_empty_project(
+                    "jira-project", str(project_path), "", "PROJ-123"
+                )
+
+                # Project should exist with jira_ticket set
+                assert "jira-project" in app.state.projects
+                project = app.state.projects["jira-project"]
+                assert project.jira_ticket == "PROJ-123"
 
     async def test_form_disabled_during_creation(self) -> None:
         """Test that form inputs are disabled during project creation."""
@@ -311,6 +336,8 @@ class TestNewProjectScreenAsync:
                 path_input = app.screen.query_one("#path-input", Input)
                 path_input.value = str(project_path)
 
+                jira_input = app.screen.query_one("#jira-input", Input)
+
                 # Start save - form should be disabled during save
                 # The _set_form_enabled method is called
                 screen = app.screen
@@ -320,10 +347,12 @@ class TestNewProjectScreenAsync:
                 screen._set_form_enabled(False)
                 assert name_input.disabled is True
                 assert path_input.disabled is True
+                assert jira_input.disabled is True
 
                 screen._set_form_enabled(True)
                 assert name_input.disabled is False
                 assert path_input.disabled is False
+                assert jira_input.disabled is False
 
     async def test_rejects_non_empty_existing_directory(self) -> None:
         """Test that form rejects creating project in non-empty directory."""
