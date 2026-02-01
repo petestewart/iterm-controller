@@ -365,7 +365,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Show PROBLEM.md, PRD.md, specs/, PLAN.md with status indicators
   - Acceptance: Artifact list displays with correct exists/missing status
 
-- [ ] **Implement artifact existence checking**
+- [x] **Implement artifact existence checking** `[complete]`
   - Spec: specs/plan-mode.md#artifact-existence-check
   - Scope: Check file/directory existence, count specs, count tasks
   - Acceptance: Status indicators accurate for all artifacts
