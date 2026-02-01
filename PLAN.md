@@ -49,7 +49,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Parse .env files for session environment variables and placeholder resolution
   - Acceptance: Parses KEY=value, handles quotes, expands ${VAR} references
 
-- [ ] **Implement template management** `[pending]`
+- [x] **Implement template management** `[complete]`
   - Spec: specs/config.md#project-templates
   - Scope: Template CRUD operations, schema validation, required field checking
   - Acceptance: Can list/add/update/delete templates, validation catches errors
