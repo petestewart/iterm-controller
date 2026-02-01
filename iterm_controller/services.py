@@ -14,6 +14,8 @@ import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+from textual.screen import ModalScreen, Screen
+
 from iterm_controller.github import GitHubIntegration
 from iterm_controller.iterm import (
     ItermController,
@@ -22,10 +24,20 @@ from iterm_controller.iterm import (
     WindowLayoutManager,
     WindowLayoutSpawner,
 )
+from iterm_controller.models import WorkflowMode, WorkflowStage
 from iterm_controller.notifications import Notifier
 
+# Import all screens and modals in services.py - this is the single place where
+# they are imported to avoid circular dependencies elsewhere
+from iterm_controller.screens.modals.mode_command import ModeCommandModal
+from iterm_controller.screens.modals.stage_advance import StageAdvanceModal
+from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+from iterm_controller.screens.modes.plan_mode import PlanModeScreen
+from iterm_controller.screens.modes.test_mode import TestModeScreen
+from iterm_controller.screens.modes.work_mode import WorkModeScreen
+
 if TYPE_CHECKING:
-    from iterm_controller.models import WindowLayout
+    from iterm_controller.models import Project, WindowLayout
 
 logger = logging.getLogger(__name__)
 
@@ -121,3 +133,84 @@ class ServiceContainer:
     def is_connected(self) -> bool:
         """Check if connected to iTerm2."""
         return self.iterm.is_connected
+
+
+class ScreenFactory:
+    """Factory for creating screens and modals without circular imports.
+
+    This factory is the single point where screen/modal classes are
+    instantiated. By centralizing these imports in services.py, we avoid
+    circular imports between auto_mode.py, mode_screen.py, and the
+    screens/modals packages.
+
+    The factory implements ScreenFactoryProtocol from ports.py.
+    """
+
+    # Map of workflow mode names to screen classes
+    _mode_screen_map: dict[str, type[Screen]] = {
+        "plan": PlanModeScreen,
+        "docs": DocsModeScreen,
+        "work": WorkModeScreen,
+        "test": TestModeScreen,
+    }
+
+    def create_mode_command_modal(
+        self, mode: str, command: str
+    ) -> ModalScreen[bool]:
+        """Create a modal for confirming mode command execution.
+
+        Args:
+            mode: The workflow mode name ('plan', 'docs', 'work', 'test').
+            command: The command that will be executed.
+
+        Returns:
+            A ModeCommandModal that returns True if confirmed, False if cancelled.
+        """
+        try:
+            workflow_mode = WorkflowMode(mode)
+        except ValueError:
+            # Default to PLAN if invalid mode
+            workflow_mode = WorkflowMode.PLAN
+
+        return ModeCommandModal(workflow_mode, command)
+
+    def create_stage_advance_modal(
+        self, stage: str, command: str
+    ) -> ModalScreen[bool]:
+        """Create a modal for confirming stage advancement.
+
+        Args:
+            stage: The workflow stage name.
+            command: The command that will be executed.
+
+        Returns:
+            A StageAdvanceModal that returns True if confirmed, False if cancelled.
+        """
+        try:
+            workflow_stage = WorkflowStage(stage)
+        except ValueError:
+            # Default to PLANNING if invalid stage
+            workflow_stage = WorkflowStage.PLANNING
+
+        return StageAdvanceModal(workflow_stage, command)
+
+    def create_mode_screen(
+        self, mode: str, project: "Project"
+    ) -> Screen | None:
+        """Create a screen for a workflow mode.
+
+        Args:
+            mode: The workflow mode name ('plan', 'docs', 'work', 'test').
+            project: The project to display in the mode screen.
+
+        Returns:
+            The screen instance, or None if the mode is invalid.
+        """
+        screen_class = self._mode_screen_map.get(mode)
+        if screen_class:
+            return screen_class(project)
+        return None
+
+
+# Create a singleton instance for use across the app
+screen_factory = ScreenFactory()

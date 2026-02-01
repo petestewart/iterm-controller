@@ -2097,3 +2097,39 @@ class AppAPI:
         if not self._app.state.config:
             return []
         return list(self._app.state.config.session_templates)
+
+    async def execute_mode_command(
+        self, mode: WorkflowMode
+    ) -> "CommandExecutionResult | None":
+        """Execute the configured command for a workflow mode.
+
+        This method handles mode entry commands via the AutoAdvanceHandler,
+        with modal confirmation if configured.
+
+        Args:
+            mode: The workflow mode being entered.
+
+        Returns:
+            CommandExecutionResult if a command was executed, None otherwise.
+        """
+        from .auto_mode import AutoAdvanceHandler, CommandExecutionResult
+
+        if not self._app.state.config or not self._app.state.config.auto_mode:
+            return None
+
+        auto_mode_config = self._app.state.config.auto_mode
+        if not auto_mode_config.enabled:
+            return None
+
+        command = auto_mode_config.mode_commands.get(mode.value)
+        if not command:
+            return None
+
+        handler = AutoAdvanceHandler(
+            config=auto_mode_config,
+            iterm=self._app.iterm,
+            app=self._app,
+            screen_factory=self._app.screen_factory,
+        )
+
+        return await handler.handle_mode_enter(mode)

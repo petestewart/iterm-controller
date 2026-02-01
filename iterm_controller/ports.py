@@ -16,6 +16,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 if TYPE_CHECKING:
+    from textual.screen import ModalScreen, Screen
+
     from iterm_controller.models import ManagedSession, Project, SessionTemplate
 
 
@@ -458,3 +460,68 @@ class TerminalProvider(Protocol):
     def tracker(self) -> WindowTrackerProtocol:
         """Get the window tracker component."""
         ...
+
+
+# =============================================================================
+# Screen Factory Protocol
+# =============================================================================
+
+
+@runtime_checkable
+class ScreenFactoryProtocol(Protocol):
+    """Protocol for creating screens and modals without circular imports.
+
+    This factory allows code in core modules (like auto_mode.py) to create
+    UI elements without directly importing screen classes, breaking the
+    circular dependency between auto_mode -> screens/modals -> app -> auto_mode.
+
+    The app layer implements this protocol with actual screen imports,
+    and passes it to modules that need to create screens.
+    """
+
+    @abstractmethod
+    def create_mode_command_modal(
+        self, mode: str, command: str
+    ) -> "ModalScreen[bool]":
+        """Create a modal for confirming mode command execution.
+
+        Args:
+            mode: The workflow mode name ('plan', 'docs', 'work', 'test').
+            command: The command that will be executed.
+
+        Returns:
+            A modal screen that returns True if confirmed, False if cancelled.
+        """
+        ...
+
+    @abstractmethod
+    def create_stage_advance_modal(
+        self, stage: str, command: str
+    ) -> "ModalScreen[bool]":
+        """Create a modal for confirming stage advancement.
+
+        Args:
+            stage: The workflow stage name.
+            command: The command that will be executed.
+
+        Returns:
+            A modal screen that returns True if confirmed, False if cancelled.
+        """
+        ...
+
+    @abstractmethod
+    def create_mode_screen(
+        self, mode: str, project: "Project"
+    ) -> "Screen | None":
+        """Create a screen for a workflow mode.
+
+        Args:
+            mode: The workflow mode name ('plan', 'docs', 'work', 'test').
+            project: The project to display in the mode screen.
+
+        Returns:
+            The screen instance, or None if the mode is invalid.
+        """
+        ...
+
+

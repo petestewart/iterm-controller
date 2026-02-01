@@ -676,7 +676,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Location: New file iterm_controller/ports.py with TerminalProvider protocol
   - Acceptance: Can mock iTerm2 operations for testing
 
-- [ ] **Fix circular import prevention patterns** `[pending]`
+- [x] **Fix circular import prevention patterns** `[complete]`
   - Scope: Refactor to eliminate delayed imports for circular dependency prevention
   - Locations: 8 instances across app.py, screens, etc.
   - Acceptance: No `from X import Y` inside functions for circular deps

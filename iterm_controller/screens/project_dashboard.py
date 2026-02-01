@@ -326,25 +326,10 @@ class ProjectDashboardScreen(Screen):
         project.last_mode = workflow_mode
         app.state.update_project(project)
 
-        # Import mode screens here to avoid circular imports
-        from iterm_controller.screens.modes import (
-            DocsModeScreen,
-            PlanModeScreen,
-            TestModeScreen,
-            WorkModeScreen,
-        )
-
-        # Get the appropriate screen class
-        mode_screen_map = {
-            WorkflowMode.PLAN: PlanModeScreen,
-            WorkflowMode.DOCS: DocsModeScreen,
-            WorkflowMode.WORK: WorkModeScreen,
-            WorkflowMode.TEST: TestModeScreen,
-        }
-
-        screen_class = mode_screen_map.get(workflow_mode)
-        if screen_class:
-            self.app.push_screen(screen_class(project))
+        # Use screen factory to create mode screen (avoids circular imports)
+        screen = app.screen_factory.create_mode_screen(mode, project)
+        if screen:
+            self.app.push_screen(screen)
 
     async def action_toggle_auto_mode(self) -> None:
         """Toggle auto mode enabled/disabled or open config modal."""

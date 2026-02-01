@@ -21,7 +21,7 @@ from iterm_controller.screens.new_project import NewProjectScreen
 from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 from iterm_controller.screens.project_list import ProjectListScreen
 from iterm_controller.screens.settings import SettingsScreen
-from iterm_controller.services import ServiceContainer
+from iterm_controller.services import ScreenFactory, ServiceContainer, screen_factory
 from iterm_controller.state import AppState
 
 if TYPE_CHECKING:
@@ -74,6 +74,9 @@ class ItermControllerApp(App):
         self.iterm = self.services.iterm
         self.github = self.services.github
         self.notifier = self.services.notifier
+
+        # Screen factory for creating modals and screens without circular imports
+        self.screen_factory = screen_factory
 
         # Create API with injected services
         self.api = AppAPI(self, self.services)

@@ -23,6 +23,7 @@ from iterm_controller.models import WorkflowMode
 if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
     from iterm_controller.models import Project
+    from iterm_controller.ports import ScreenFactoryProtocol
 
 logger = logging.getLogger(__name__)
 
@@ -118,32 +119,17 @@ class ModeScreen(Screen):
     def _get_mode_screen(self, mode: WorkflowMode) -> Screen | None:
         """Get the screen instance for a workflow mode.
 
+        Uses the screen factory from services to avoid circular imports.
+
         Args:
             mode: The workflow mode.
 
         Returns:
             The screen instance, or None if not yet implemented.
         """
-        # Import mode screens here to avoid circular imports
-        # These will be implemented in Phase 13-16
-        from iterm_controller.screens.modes import (
-            DocsModeScreen,
-            PlanModeScreen,
-            TestModeScreen,
-            WorkModeScreen,
-        )
-
-        mode_screen_map = {
-            WorkflowMode.PLAN: PlanModeScreen,
-            WorkflowMode.DOCS: DocsModeScreen,
-            WorkflowMode.WORK: WorkModeScreen,
-            WorkflowMode.TEST: TestModeScreen,
-        }
-
-        screen_class = mode_screen_map.get(mode)
-        if screen_class:
-            return screen_class(self.project)
-        return None
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+        screen_factory: ScreenFactoryProtocol = app.screen_factory  # type: ignore[assignment]
+        return screen_factory.create_mode_screen(mode.value, self.project)
 
     def action_back_to_dashboard(self) -> None:
         """Return to the project dashboard."""
@@ -180,16 +166,8 @@ class ModeScreen(Screen):
 
         logger.info(f"Triggering mode command for {self.CURRENT_MODE.value}: {command}")
 
-        # Use the AutoAdvanceHandler to handle the mode entry
-        from iterm_controller.auto_mode import AutoAdvanceHandler
-
-        handler = AutoAdvanceHandler(
-            config=auto_mode_config,
-            iterm=app.iterm,
-            app=app,
-        )
-
-        result = await handler.handle_mode_enter(self.CURRENT_MODE)
+        # Use the app's API to handle the mode entry command
+        result = await app.api.execute_mode_command(self.CURRENT_MODE)
 
         if result:
             if result.success:

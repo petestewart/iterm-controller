@@ -170,36 +170,19 @@ class ProjectListScreen(Screen):
         # Open the project in state
         await app.state.open_project(project_id)
 
-        # Check if we should restore last mode
+        # Always push the dashboard first
+        from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
+
+        self.app.push_screen(ProjectDashboardScreen(project_id))
+
+        # Check if we should restore last mode and push mode screen on top
         if project.last_mode:
-            from iterm_controller.models import WorkflowMode
-            from iterm_controller.screens.modes import (
-                DocsModeScreen,
-                PlanModeScreen,
-                TestModeScreen,
-                WorkModeScreen,
+            # Use screen factory to create mode screen (avoids circular imports)
+            mode_screen = app.screen_factory.create_mode_screen(
+                project.last_mode.value, project
             )
-            from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
-
-            # Push dashboard first, then mode screen
-            # This ensures proper screen stack for "Back" navigation
-            self.app.push_screen(ProjectDashboardScreen(project_id))
-
-            mode_screen_map = {
-                WorkflowMode.PLAN: PlanModeScreen,
-                WorkflowMode.DOCS: DocsModeScreen,
-                WorkflowMode.WORK: WorkModeScreen,
-                WorkflowMode.TEST: TestModeScreen,
-            }
-
-            screen_class = mode_screen_map.get(project.last_mode)
-            if screen_class:
-                self.app.push_screen(screen_class(project))
-        else:
-            # No last mode, just push the dashboard
-            from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
-
-            self.app.push_screen(ProjectDashboardScreen(project_id))
+            if mode_screen:
+                self.app.push_screen(mode_screen)
 
     def action_new_project(self) -> None:
         """Create a new project."""

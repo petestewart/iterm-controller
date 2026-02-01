@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
     from .github import GitHubIntegration
     from .iterm import ItermController
+    from .ports import ScreenFactoryProtocol
     from .state import AppState
 
 logger = logging.getLogger(__name__)
@@ -386,6 +387,7 @@ class AutoAdvanceHandler:
         config: AutoModeConfig,
         iterm: ItermController | None = None,
         app: App | None = None,
+        screen_factory: ScreenFactoryProtocol | None = None,
     ) -> None:
         """Initialize the auto advance handler.
 
@@ -393,10 +395,13 @@ class AutoAdvanceHandler:
             config: Auto mode configuration.
             iterm: iTerm controller for session access.
             app: Textual app for modal display.
+            screen_factory: Factory for creating modals without circular imports.
+                If None, will fall back to dynamic imports (deprecated).
         """
         self.config = config
         self.iterm = iterm
         self.app = app
+        self.screen_factory = screen_factory
         self._pending_advance: StageTransition | None = None
 
     async def handle_stage_change(
@@ -521,8 +526,12 @@ class AutoAdvanceHandler:
             logger.warning("No app available for confirmation modal, skipping")
             return True  # Proceed without confirmation
 
-        # Import here to avoid circular imports
-        from .screens.modals import ModeCommandModal
+        if self.screen_factory is None:
+            logger.warning(
+                "No screen factory provided to AutoAdvanceHandler; "
+                "modal confirmation cannot be shown"
+            )
+            return True  # Proceed without confirmation
 
         # Use Future + callback pattern to avoid NoActiveWorker error
         loop = asyncio.get_running_loop()
@@ -533,7 +542,7 @@ class AutoAdvanceHandler:
             if not future.done():
                 future.set_result(bool(result))
 
-        modal = ModeCommandModal(mode, command)
+        modal = self.screen_factory.create_mode_command_modal(mode.value, command)
         self.app.push_screen(modal, on_modal_dismiss)
 
         return await future
@@ -556,8 +565,12 @@ class AutoAdvanceHandler:
             logger.warning("No app available for confirmation modal, skipping")
             return True  # Proceed without confirmation
 
-        # Import here to avoid circular imports
-        from .screens.modals import StageAdvanceModal
+        if self.screen_factory is None:
+            logger.warning(
+                "No screen factory provided to AutoAdvanceHandler; "
+                "modal confirmation cannot be shown"
+            )
+            return True  # Proceed without confirmation
 
         # Use Future + callback pattern to avoid NoActiveWorker error
         # push_screen_wait requires a worker context, but this method may be called
@@ -570,7 +583,7 @@ class AutoAdvanceHandler:
             if not future.done():
                 future.set_result(bool(result))
 
-        modal = StageAdvanceModal(stage, command)
+        modal = self.screen_factory.create_stage_advance_modal(stage.value, command)
         self.app.push_screen(modal, on_modal_dismiss)
 
         return await future
@@ -727,6 +740,7 @@ class AutoModeIntegration:
         iterm: ItermController | None = None,
         app: App | None = None,
         github: GitHubIntegration | None = None,
+        screen_factory: ScreenFactoryProtocol | None = None,
     ) -> None:
         """Initialize the integration.
 
@@ -737,12 +751,14 @@ class AutoModeIntegration:
             iterm: iTerm controller for session access.
             app: Textual app for modal display.
             github: GitHub integration for PR status checks.
+            screen_factory: Factory for creating modals without circular imports.
         """
         self.config = config
         self.handler = AutoAdvanceHandler(
             config=config,
             iterm=iterm,
             app=app,
+            screen_factory=screen_factory,
         )
 
         # Create controller with our handler
