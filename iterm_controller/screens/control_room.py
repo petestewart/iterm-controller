@@ -13,6 +13,12 @@ from textual.containers import Container, Horizontal
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
+from iterm_controller.state import (
+    SessionClosed,
+    SessionSpawned,
+    SessionStatusChanged,
+)
+
 if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
 
@@ -76,3 +82,19 @@ class ControlRoomScreen(Screen):
     def action_focus_session(self) -> None:
         """Focus the selected session in iTerm2."""
         self.notify("Focus session: Not implemented yet")
+
+    # =========================================================================
+    # State Event Handlers
+    # =========================================================================
+
+    def on_session_spawned(self, event: SessionSpawned) -> None:
+        """Handle session spawned event."""
+        self.call_later(self.refresh_sessions)
+
+    def on_session_closed(self, event: SessionClosed) -> None:
+        """Handle session closed event."""
+        self.call_later(self.refresh_sessions)
+
+    def on_session_status_changed(self, event: SessionStatusChanged) -> None:
+        """Handle session status change event."""
+        self.call_later(self.refresh_sessions)

@@ -135,7 +135,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Set up Textual app with screen navigation, CSS styling
   - Acceptance: App launches, can navigate between placeholder screens
 
-- [ ] **Implement app state manager** `[pending]`
+- [x] **Implement app state manager** `[complete]`
   - Spec: specs/app.md#app-state-manager
   - Scope: Reactive state for projects, sessions, settings with event dispatch
   - Acceptance: State changes trigger UI updates automatically

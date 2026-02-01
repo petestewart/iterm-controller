@@ -49,6 +49,7 @@ class ItermControllerApp(App):
         """Initialize the application."""
         super().__init__()
         self.state = AppState()
+        self.state.connect_app(self)  # Connect state to app for message posting
         self.iterm = ItermController()
         self.github = GitHubIntegration()
         self.notifier = Notifier()

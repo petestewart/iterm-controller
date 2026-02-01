@@ -1,9 +1,25 @@
 """Tests for the AppState module."""
 
+from unittest.mock import MagicMock
+
 import pytest
 
-from iterm_controller.models import AttentionState, ManagedSession, Project
-from iterm_controller.state import AppState, StateEvent
+from iterm_controller.models import AttentionState, ManagedSession, Plan, Project
+from iterm_controller.state import (
+    AppState,
+    ConfigChanged,
+    HealthStatusChanged,
+    PlanConflict,
+    PlanReloaded,
+    ProjectClosed,
+    ProjectOpened,
+    SessionClosed,
+    SessionSpawned,
+    SessionStatusChanged,
+    StateEvent,
+    TaskStatusChanged,
+    WorkflowStageChanged,
+)
 
 
 class TestAppState:
@@ -256,3 +272,229 @@ class TestAppStateAsync:
 
         assert state.active_project_id is None
         assert not project.is_open
+
+
+class TestAppStateTextualMessages:
+    """Tests for Textual message posting from AppState."""
+
+    def test_connect_app(self) -> None:
+        """Test connecting a Textual app to state."""
+        state = AppState()
+        mock_app = MagicMock()
+
+        state.connect_app(mock_app)
+
+        assert state._app is mock_app
+
+    def test_add_session_posts_message(self) -> None:
+        """Test that adding a session posts SessionSpawned message."""
+        state = AppState()
+        mock_app = MagicMock()
+        state.connect_app(mock_app)
+
+        session = ManagedSession(
+            id="s1", template_id="t1", project_id="p1", tab_id="tab1"
+        )
+        state.add_session(session)
+
+        # Verify message was posted
+        mock_app.post_message.assert_called_once()
+        posted = mock_app.post_message.call_args[0][0]
+        assert isinstance(posted, SessionSpawned)
+        assert posted.session is session
+
+    def test_remove_session_posts_message(self) -> None:
+        """Test that removing a session posts SessionClosed message."""
+        state = AppState()
+        mock_app = MagicMock()
+        state.connect_app(mock_app)
+
+        session = ManagedSession(
+            id="s1", template_id="t1", project_id="p1", tab_id="tab1"
+        )
+        state.sessions["s1"] = session
+        state.remove_session("s1")
+
+        mock_app.post_message.assert_called_once()
+        posted = mock_app.post_message.call_args[0][0]
+        assert isinstance(posted, SessionClosed)
+        assert posted.session is session
+
+    def test_update_session_status_posts_message(self) -> None:
+        """Test that updating session status posts SessionStatusChanged."""
+        state = AppState()
+        mock_app = MagicMock()
+        state.connect_app(mock_app)
+
+        session = ManagedSession(
+            id="s1",
+            template_id="t1",
+            project_id="p1",
+            tab_id="tab1",
+            attention_state=AttentionState.IDLE,
+        )
+        state.sessions["s1"] = session
+        state.update_session_status("s1", attention_state=AttentionState.WAITING)
+
+        mock_app.post_message.assert_called_once()
+        posted = mock_app.post_message.call_args[0][0]
+        assert isinstance(posted, SessionStatusChanged)
+        assert posted.session.attention_state == AttentionState.WAITING
+
+    def test_set_plan_posts_message(self) -> None:
+        """Test that setting a plan posts PlanReloaded message."""
+        state = AppState()
+        mock_app = MagicMock()
+        state.connect_app(mock_app)
+
+        plan = Plan()
+        state.set_plan("p1", plan)
+
+        mock_app.post_message.assert_called_once()
+        posted = mock_app.post_message.call_args[0][0]
+        assert isinstance(posted, PlanReloaded)
+        assert posted.project_id == "p1"
+        assert posted.plan is plan
+
+    def test_get_plan_returns_stored_plan(self) -> None:
+        """Test that get_plan returns the stored plan."""
+        state = AppState()
+        plan = Plan()
+        state.plans["p1"] = plan
+
+        result = state.get_plan("p1")
+
+        assert result is plan
+
+    def test_get_plan_returns_none_for_missing(self) -> None:
+        """Test that get_plan returns None for missing project."""
+        state = AppState()
+
+        result = state.get_plan("nonexistent")
+
+        assert result is None
+
+    def test_notify_plan_conflict_posts_message(self) -> None:
+        """Test that plan conflict notification posts PlanConflict."""
+        state = AppState()
+        mock_app = MagicMock()
+        state.connect_app(mock_app)
+
+        new_plan = Plan()
+        state.notify_plan_conflict("p1", new_plan)
+
+        mock_app.post_message.assert_called_once()
+        posted = mock_app.post_message.call_args[0][0]
+        assert isinstance(posted, PlanConflict)
+        assert posted.project_id == "p1"
+        assert posted.new_plan is new_plan
+
+    def test_update_task_status_posts_message(self) -> None:
+        """Test that task status update posts TaskStatusChanged."""
+        state = AppState()
+        mock_app = MagicMock()
+        state.connect_app(mock_app)
+
+        state.update_task_status("p1", "1.1")
+
+        mock_app.post_message.assert_called_once()
+        posted = mock_app.post_message.call_args[0][0]
+        assert isinstance(posted, TaskStatusChanged)
+        assert posted.project_id == "p1"
+        assert posted.task_id == "1.1"
+
+    def test_update_health_status_posts_message(self) -> None:
+        """Test that health status update posts HealthStatusChanged."""
+        state = AppState()
+        mock_app = MagicMock()
+        state.connect_app(mock_app)
+
+        state.update_health_status("p1", "api-health", "healthy")
+
+        mock_app.post_message.assert_called_once()
+        posted = mock_app.post_message.call_args[0][0]
+        assert isinstance(posted, HealthStatusChanged)
+        assert posted.project_id == "p1"
+        assert posted.check_name == "api-health"
+        assert posted.status == "healthy"
+
+    def test_update_workflow_stage_posts_message(self) -> None:
+        """Test that workflow stage update posts WorkflowStageChanged."""
+        state = AppState()
+        mock_app = MagicMock()
+        state.connect_app(mock_app)
+
+        state.update_workflow_stage("p1", "execute")
+
+        mock_app.post_message.assert_called_once()
+        posted = mock_app.post_message.call_args[0][0]
+        assert isinstance(posted, WorkflowStageChanged)
+        assert posted.project_id == "p1"
+        assert posted.stage == "execute"
+
+    def test_no_message_without_app(self) -> None:
+        """Test that no error occurs when app not connected."""
+        state = AppState()
+
+        # These should not raise
+        session = ManagedSession(
+            id="s1", template_id="t1", project_id="p1", tab_id="tab1"
+        )
+        state.add_session(session)
+        state.update_session_status("s1", attention_state=AttentionState.WAITING)
+        state.remove_session("s1")
+        state.set_plan("p1", Plan())
+        state.update_task_status("p1", "1.1")
+        state.update_health_status("p1", "check", "healthy")
+        state.update_workflow_stage("p1", "execute")
+
+
+@pytest.mark.asyncio
+class TestAppStateAsyncMessages:
+    """Async tests for Textual message posting."""
+
+    async def test_open_project_posts_message(self) -> None:
+        """Test that opening a project posts ProjectOpened message."""
+        state = AppState()
+        mock_app = MagicMock()
+        state.connect_app(mock_app)
+
+        project = Project(id="p1", name="Test", path="/test")
+        state.projects["p1"] = project
+
+        await state.open_project("p1")
+
+        mock_app.post_message.assert_called_once()
+        posted = mock_app.post_message.call_args[0][0]
+        assert isinstance(posted, ProjectOpened)
+        assert posted.project is project
+
+    async def test_close_project_posts_message(self) -> None:
+        """Test that closing a project posts ProjectClosed message."""
+        state = AppState()
+        mock_app = MagicMock()
+        state.connect_app(mock_app)
+
+        project = Project(id="p1", name="Test", path="/test", is_open=True)
+        state.projects["p1"] = project
+        state.active_project_id = "p1"
+
+        await state.close_project("p1")
+
+        mock_app.post_message.assert_called_once()
+        posted = mock_app.post_message.call_args[0][0]
+        assert isinstance(posted, ProjectClosed)
+        assert posted.project_id == "p1"
+
+    async def test_load_config_posts_message(self) -> None:
+        """Test that loading config posts ConfigChanged message."""
+        state = AppState()
+        mock_app = MagicMock()
+        state.connect_app(mock_app)
+
+        await state.load_config()
+
+        mock_app.post_message.assert_called_once()
+        posted = mock_app.post_message.call_args[0][0]
+        assert isinstance(posted, ConfigChanged)
+        assert state.config is posted.config

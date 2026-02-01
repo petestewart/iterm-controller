@@ -1,16 +1,21 @@
 """AppState and event system.
 
 This module provides the reactive application state with event dispatch
-for coordinating UI updates.
+for coordinating UI updates. Uses Textual Messages for automatic UI updates.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
-from iterm_controller.models import AppConfig, ManagedSession, Project
+from textual.message import Message
+
+from iterm_controller.models import AppConfig, ManagedSession, Plan, Project
+
+if TYPE_CHECKING:
+    from textual.app import App
 
 
 class StateEvent(Enum):
@@ -29,20 +34,163 @@ class StateEvent(Enum):
     WORKFLOW_STAGE_CHANGED = "workflow_stage_changed"
 
 
+# =============================================================================
+# Textual Messages for State Events
+# =============================================================================
+
+
+class StateMessage(Message):
+    """Base class for state change messages."""
+
+    pass
+
+
+class ProjectOpened(StateMessage):
+    """Posted when a project is opened."""
+
+    def __init__(self, project: Project) -> None:
+        super().__init__()
+        self.project = project
+
+
+class ProjectClosed(StateMessage):
+    """Posted when a project is closed."""
+
+    def __init__(self, project_id: str) -> None:
+        super().__init__()
+        self.project_id = project_id
+
+
+class SessionSpawned(StateMessage):
+    """Posted when a session is spawned."""
+
+    def __init__(self, session: ManagedSession) -> None:
+        super().__init__()
+        self.session = session
+
+
+class SessionClosed(StateMessage):
+    """Posted when a session is closed."""
+
+    def __init__(self, session: ManagedSession) -> None:
+        super().__init__()
+        self.session = session
+
+
+class SessionStatusChanged(StateMessage):
+    """Posted when a session's status changes."""
+
+    def __init__(self, session: ManagedSession) -> None:
+        super().__init__()
+        self.session = session
+
+
+class TaskStatusChanged(StateMessage):
+    """Posted when a task's status changes."""
+
+    def __init__(self, task_id: str, project_id: str) -> None:
+        super().__init__()
+        self.task_id = task_id
+        self.project_id = project_id
+
+
+class PlanReloaded(StateMessage):
+    """Posted when a PLAN.md file is reloaded."""
+
+    def __init__(self, project_id: str, plan: Plan) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.plan = plan
+
+
+class PlanConflict(StateMessage):
+    """Posted when an external change to PLAN.md is detected."""
+
+    def __init__(self, project_id: str, new_plan: Plan) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.new_plan = new_plan
+
+
+class ConfigChanged(StateMessage):
+    """Posted when the configuration changes."""
+
+    def __init__(self, config: AppConfig) -> None:
+        super().__init__()
+        self.config = config
+
+
+class HealthStatusChanged(StateMessage):
+    """Posted when health check status changes."""
+
+    def __init__(self, project_id: str, check_name: str, status: str) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.check_name = check_name
+        self.status = status
+
+
+class WorkflowStageChanged(StateMessage):
+    """Posted when workflow stage changes."""
+
+    def __init__(self, project_id: str, stage: str) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.stage = stage
+
+
 @dataclass
 class AppState:
-    """Reactive application state with event dispatch."""
+    """Reactive application state with event dispatch.
+
+    This class manages application state and provides two mechanisms for
+    notifying about state changes:
+
+    1. **Callback-based subscriptions**: Use `subscribe()` and `unsubscribe()`
+       for components that need to react to specific events without being
+       part of the Textual widget tree.
+
+    2. **Textual Message posting**: When connected to a Textual App via
+       `connect_app()`, state changes automatically post Messages that
+       widgets can handle with `on_*` methods.
+
+    Example:
+        # In a Screen or Widget
+        def on_session_status_changed(self, event: SessionStatusChanged) -> None:
+            self.refresh_session_display(event.session)
+    """
 
     # Core state
     projects: dict[str, Project] = field(default_factory=dict)
     active_project_id: str | None = None
     sessions: dict[str, ManagedSession] = field(default_factory=dict)
     config: AppConfig | None = None
+    plans: dict[str, Plan] = field(default_factory=dict)  # project_id -> Plan
 
     # Event subscribers
     _listeners: dict[StateEvent, list[Callable[..., Any]]] = field(
         default_factory=lambda: {e: [] for e in StateEvent}
     )
+
+    # Textual app reference for posting messages
+    _app: App | None = field(default=None, repr=False)
+
+    def connect_app(self, app: App) -> None:
+        """Connect to a Textual App for message posting.
+
+        Args:
+            app: The Textual App instance to post messages to.
+        """
+        self._app = app
+
+    def _post_message(self, message: StateMessage) -> None:
+        """Post a message to the connected Textual app.
+
+        Args:
+            message: The message to post.
+        """
+        if self._app is not None:
+            self._app.post_message(message)
 
     def subscribe(self, event: StateEvent, callback: Callable[..., Any]) -> None:
         """Register callback for state event.
@@ -105,6 +253,7 @@ class AppState:
             self.projects = {p.id: p for p in self.config.projects}
 
         self.emit(StateEvent.CONFIG_CHANGED, config=self.config)
+        self._post_message(ConfigChanged(self.config))
 
     async def open_project(self, project_id: str) -> None:
         """Open a project and spawn its sessions.
@@ -119,6 +268,7 @@ class AppState:
         project.is_open = True
         self.active_project_id = project_id
         self.emit(StateEvent.PROJECT_OPENED, project=project)
+        self._post_message(ProjectOpened(project))
 
     async def close_project(self, project_id: str) -> None:
         """Close a project and its sessions.
@@ -130,6 +280,7 @@ class AppState:
             self.projects[project_id].is_open = False
 
         self.emit(StateEvent.PROJECT_CLOSED, project_id=project_id)
+        self._post_message(ProjectClosed(project_id))
 
         if self.active_project_id == project_id:
             self.active_project_id = None
@@ -142,6 +293,7 @@ class AppState:
         """
         self.sessions[session.id] = session
         self.emit(StateEvent.SESSION_SPAWNED, session=session)
+        self._post_message(SessionSpawned(session))
 
     def remove_session(self, session_id: str) -> None:
         """Remove a session from the state.
@@ -152,6 +304,7 @@ class AppState:
         if session_id in self.sessions:
             session = self.sessions.pop(session_id)
             self.emit(StateEvent.SESSION_CLOSED, session=session)
+            self._post_message(SessionClosed(session))
 
     def update_session_status(self, session_id: str, **kwargs: Any) -> None:
         """Update session status.
@@ -166,6 +319,7 @@ class AppState:
                 if hasattr(session, key):
                     setattr(session, key, value)
             self.emit(StateEvent.SESSION_STATUS_CHANGED, session=session)
+            self._post_message(SessionStatusChanged(session))
 
     def get_sessions_for_project(self, project_id: str) -> list[ManagedSession]:
         """Get all sessions for a project.
@@ -177,3 +331,77 @@ class AppState:
             List of managed sessions for the project.
         """
         return [s for s in self.sessions.values() if s.project_id == project_id]
+
+    def set_plan(self, project_id: str, plan: Plan) -> None:
+        """Set or update the plan for a project.
+
+        Args:
+            project_id: The project ID.
+            plan: The parsed plan.
+        """
+        self.plans[project_id] = plan
+        self.emit(StateEvent.PLAN_RELOADED, project_id=project_id, plan=plan)
+        self._post_message(PlanReloaded(project_id, plan))
+
+    def get_plan(self, project_id: str) -> Plan | None:
+        """Get the plan for a project.
+
+        Args:
+            project_id: The project ID.
+
+        Returns:
+            The plan if one exists, None otherwise.
+        """
+        return self.plans.get(project_id)
+
+    def notify_plan_conflict(self, project_id: str, new_plan: Plan) -> None:
+        """Notify about a PLAN.md conflict.
+
+        Args:
+            project_id: The project ID.
+            new_plan: The new plan from the external change.
+        """
+        self.emit(StateEvent.PLAN_CONFLICT, project_id=project_id, new_plan=new_plan)
+        self._post_message(PlanConflict(project_id, new_plan))
+
+    def update_task_status(self, project_id: str, task_id: str) -> None:
+        """Notify about a task status change.
+
+        Args:
+            project_id: The project ID.
+            task_id: The task that changed.
+        """
+        self.emit(StateEvent.TASK_STATUS_CHANGED, project_id=project_id, task_id=task_id)
+        self._post_message(TaskStatusChanged(task_id, project_id))
+
+    def update_health_status(
+        self, project_id: str, check_name: str, status: str
+    ) -> None:
+        """Notify about a health check status change.
+
+        Args:
+            project_id: The project ID.
+            check_name: The name of the health check.
+            status: The new status.
+        """
+        self.emit(
+            StateEvent.HEALTH_STATUS_CHANGED,
+            project_id=project_id,
+            check_name=check_name,
+            status=status,
+        )
+        self._post_message(HealthStatusChanged(project_id, check_name, status))
+
+    def update_workflow_stage(self, project_id: str, stage: str) -> None:
+        """Notify about a workflow stage change.
+
+        Args:
+            project_id: The project ID.
+            stage: The new workflow stage.
+        """
+        self.emit(
+            StateEvent.WORKFLOW_STAGE_CHANGED,
+            project_id=project_id,
+            stage=stage,
+        )
+        self._post_message(WorkflowStageChanged(project_id, stage))
