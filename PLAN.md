@@ -392,7 +392,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Two-panel layout: task queue (pending) and active work (in_progress)
   - Acceptance: Tasks displayed in correct panels by status
 
-- [ ] **Implement task claiming (claim/unclaim)**
+- [x] **Implement task claiming (claim/unclaim)** `[complete]`
   - Spec: specs/work-mode.md#claim-workflow
   - Scope: `c` claims task (sets in_progress), `u` unclaims (back to pending)
   - Acceptance: Task status changes persist to PLAN.md

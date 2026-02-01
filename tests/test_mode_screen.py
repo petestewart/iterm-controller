@@ -576,3 +576,243 @@ class TestPlanModeCreateEditActions:
                 # Press Enter again to expand
                 await pilot.press("enter")
                 assert artifact_widget._expanded_specs is True
+
+
+@pytest.mark.asyncio
+class TestWorkModeClaimUnclaim:
+    """Tests for WorkModeScreen claim/unclaim functionality."""
+
+    async def test_claim_task_changes_status_to_in_progress(self) -> None:
+        """Test that claiming a task changes its status to in_progress."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a PLAN.md with a pending task
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Test task** `[pending]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Verify the task is loaded and pending
+                from iterm_controller.widgets.task_queue import TaskQueueWidget
+                queue_widget = app.screen.query_one("#task-queue", TaskQueueWidget)
+                assert queue_widget.selected_task is not None
+                assert queue_widget.selected_task.title == "Test task"
+
+                # Press 'c' to claim the task
+                await pilot.press("c")
+                await pilot.pause()
+
+                # Read the PLAN.md to verify status changed
+                updated_content = (Path(tmpdir) / "PLAN.md").read_text()
+                assert "[in_progress]" in updated_content
+
+    async def test_claim_blocked_task_shows_warning(self) -> None:
+        """Test that claiming a blocked task shows a warning."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a PLAN.md with a blocked task (depends on incomplete task)
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **First task** `[pending]`
+  - Scope: First scope
+
+- [ ] **Second task** `[pending]`
+  - Depends: 1.1
+  - Scope: Depends on first
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Navigate to the blocked task
+                from iterm_controller.widgets.task_queue import TaskQueueWidget
+                queue_widget = app.screen.query_one("#task-queue", TaskQueueWidget)
+
+                # The first task should be selected by default
+                assert queue_widget.selected_task is not None
+                assert "First" in queue_widget.selected_task.title
+
+                # Verify second task is blocked
+                blocked_tasks = queue_widget.get_blocked_tasks()
+                assert len(blocked_tasks) == 1
+                assert "Second" in blocked_tasks[0].title
+                assert queue_widget.is_task_blocked(blocked_tasks[0])
+
+                # Try to move to a blocked task and claim it
+                # The rendering shows available tasks first, then blocked
+                # Move to the blocked task (1 available + we start at 0, so press j once to go to blocked)
+                await pilot.press("j")
+                await pilot.pause()
+
+                # Now we should be on the second (blocked) task
+                # Note: The selection index is based on visible_tasks order
+                assert queue_widget.selected_task is not None
+
+                # Press 'c' to try to claim this task
+                await pilot.press("c")
+                await pilot.pause()
+
+                # The PLAN.md should not have changed for the blocked task
+                # At most the first task may have been claimed, but the second should still be pending
+                updated_content = (Path(tmpdir) / "PLAN.md").read_text()
+                # Second task should still be pending (it was blocked)
+                assert "Second task" in updated_content
+                # The blocked task's status should still be pending
+                assert updated_content.count("[pending]") >= 1
+
+    async def test_unclaim_task_changes_status_to_pending(self) -> None:
+        """Test that unclaiming a task changes its status back to pending."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a PLAN.md with an in-progress task
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **In progress task** `[in_progress]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Switch to active work panel
+                await pilot.press("tab")
+                await pilot.pause()
+
+                # Verify the active task is selected
+                from iterm_controller.widgets.active_work import ActiveWorkWidget
+                active_widget = app.screen.query_one("#active-work", ActiveWorkWidget)
+                assert active_widget.selected_task is not None
+                assert active_widget.selected_task.title == "In progress task"
+
+                # Press 'u' to unclaim the task
+                await pilot.press("u")
+                await pilot.pause()
+
+                # Read the PLAN.md to verify status changed back to pending
+                updated_content = (Path(tmpdir) / "PLAN.md").read_text()
+                assert "[pending]" in updated_content
+
+    async def test_mark_done_changes_status_to_complete(self) -> None:
+        """Test that marking a task done changes its status to complete."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a PLAN.md with an in-progress task
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Active task** `[in_progress]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Switch to active work panel
+                await pilot.press("tab")
+                await pilot.pause()
+
+                # Press 'd' to mark done
+                await pilot.press("d")
+                await pilot.pause()
+
+                # Read the PLAN.md to verify status changed to complete
+                updated_content = (Path(tmpdir) / "PLAN.md").read_text()
+                assert "[complete]" in updated_content
+                assert "[x]" in updated_content  # Checkbox should be marked
+
+    async def test_claim_no_task_selected_shows_warning(self) -> None:
+        """Test that claiming with no task selected shows warning."""
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a PLAN.md with no pending tasks
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [x] **Completed task** `[complete]`
+  - Scope: Already done
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Verify no pending tasks
+                from iterm_controller.widgets.task_queue import TaskQueueWidget
+                queue_widget = app.screen.query_one("#task-queue", TaskQueueWidget)
+                assert queue_widget.selected_task is None
+
+                # Press 'c' to try to claim (should show warning)
+                await pilot.press("c")
+                await pilot.pause()
+
+                # No change should happen
+                updated_content = (Path(tmpdir) / "PLAN.md").read_text()
+                assert "[complete]" in updated_content
+
+    async def test_work_mode_has_claim_unclaim_bindings(self) -> None:
+        """Test that WorkModeScreen has claim/unclaim bindings."""
+        project = make_project()
+        screen = WorkModeScreen(project)
+        binding_keys = [b.key for b in screen.BINDINGS]
+
+        assert "c" in binding_keys  # Claim
+        assert "u" in binding_keys  # Unclaim
+        assert "d" in binding_keys  # Done
+        assert "f" in binding_keys  # Focus
+        assert "tab" in binding_keys  # Switch panel

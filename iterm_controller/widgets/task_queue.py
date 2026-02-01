@@ -113,10 +113,10 @@ class TaskQueueWidget(Static, can_focus=True):
             self._task_lookup[task.id] = task
 
     def _rebuild_visible_tasks(self) -> None:
-        """Rebuild the list of visible (pending) tasks."""
+        """Rebuild the list of visible (pending and blocked) tasks."""
         self._visible_tasks = []
         for task in self._plan.all_tasks:
-            if task.status == TaskStatus.PENDING:
+            if task.status in (TaskStatus.PENDING, TaskStatus.BLOCKED):
                 self._visible_tasks.append(task)
 
     def is_task_blocked(self, task: Task) -> bool:
