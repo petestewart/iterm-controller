@@ -666,7 +666,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Remove subscribe(), unsubscribe(), emit() and _listeners
   - Acceptance: Single event mechanism (Textual Messages only)
 
-- [ ] **Add dependency injection for services** `[pending]`
+- [x] **Add dependency injection for services** `[complete]`
   - Scope: Inject dependencies via app instead of instantiating in screens
   - Fix: Create ServiceContainer, inject SessionSpawner etc via app
   - Acceptance: Screens don't directly instantiate infrastructure classes

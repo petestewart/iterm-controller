@@ -39,7 +39,10 @@ import asyncio
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .services import ServiceContainer
 
 from .config import (
     load_global_config,
@@ -1473,35 +1476,57 @@ class AppAPI:
     """API adapter for the TUI app.
 
     This class provides the same interface as ItermControllerAPI but uses
-    the app's existing components (state, iterm controller, etc.) instead of
-    creating its own. This allows screens to call API methods without duplicating
-    component instantiation logic.
+    the app's injected services instead of creating its own. This allows
+    screens to call API methods without duplicating component instantiation
+    logic.
 
     Usage in screen action handlers:
         result = await self.app.api.spawn_session(project_id, template_id)
         if result.success:
             self.notify(f"Spawned: {result.session.name}")
 
-    The app should create this in __init__ or on_mount:
-        self.api = AppAPI(self)
+    The app should create this in __init__ with the service container:
+        self.api = AppAPI(self, self.services)
     """
 
-    def __init__(self, app: "ItermControllerApp") -> None:  # noqa: F821
-        """Initialize with the TUI app instance.
+    def __init__(
+        self,
+        app: "ItermControllerApp",  # noqa: F821
+        services: "ServiceContainer | None" = None,  # noqa: F821
+    ) -> None:
+        """Initialize with the TUI app instance and service container.
 
         Args:
             app: The ItermControllerApp instance.
+            services: Optional ServiceContainer with pre-initialized services.
+                     If not provided, services will be lazily created for
+                     backwards compatibility.
         """
         self._app = app
-        self._spawner: SessionSpawner | None = None
-        self._terminator: SessionTerminator | None = None
-        self._layout_manager: WindowLayoutManager | None = None
-        self._layout_spawner: WindowLayoutSpawner | None = None
+        self._services = services
+
+        # Use injected services if available, otherwise lazy init
+        if services:
+            self._spawner: SessionSpawner | None = services.spawner
+            self._terminator: SessionTerminator | None = services.terminator
+            self._layout_manager: WindowLayoutManager | None = services.layout_manager
+            self._layout_spawner: WindowLayoutSpawner | None = services.layout_spawner
+        else:
+            self._spawner = None
+            self._terminator = None
+            self._layout_manager = None
+            self._layout_spawner = None
+
         self._plan_watchers: dict[str, PlanWatcher] = {}
         self._write_queues: dict[str, PlanWriteQueue] = {}
 
     def _ensure_components(self) -> None:
-        """Lazily initialize iTerm2 components."""
+        """Lazily initialize iTerm2 components if not injected."""
+        if self._services:
+            # Services were injected, use them directly
+            return
+
+        # Fallback to lazy initialization for backwards compatibility
         if self._spawner is None:
             self._spawner = SessionSpawner(self._app.iterm)
         if self._terminator is None:

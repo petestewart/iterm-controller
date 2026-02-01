@@ -11,9 +11,6 @@ from textual.app import App
 from textual.binding import Binding
 
 from iterm_controller.api import AppAPI
-from iterm_controller.github import GitHubIntegration
-from iterm_controller.iterm import ItermController
-from iterm_controller.notifications import Notifier
 from iterm_controller.screens.modes import (
     DocsModeScreen,
     PlanModeScreen,
@@ -24,6 +21,7 @@ from iterm_controller.screens.new_project import NewProjectScreen
 from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 from iterm_controller.screens.project_list import ProjectListScreen
 from iterm_controller.screens.settings import SettingsScreen
+from iterm_controller.services import ServiceContainer
 from iterm_controller.state import AppState
 
 if TYPE_CHECKING:
@@ -68,24 +66,35 @@ class ItermControllerApp(App):
         super().__init__()
         self.state = AppState()
         self.state.connect_app(self)  # Connect state to app for message posting
-        self.iterm = ItermController()
-        self.github = GitHubIntegration()
-        self.notifier = Notifier()
-        self.api = AppAPI(self)  # API for screens to call
+
+        # Create service container with all dependencies
+        self.services = ServiceContainer.create()
+
+        # Expose commonly-used services directly for backwards compatibility
+        self.iterm = self.services.iterm
+        self.github = self.services.github
+        self.notifier = self.services.notifier
+
+        # Create API with injected services
+        self.api = AppAPI(self, self.services)
 
     async def on_mount(self) -> None:
         """Initialize services when app starts."""
         # Load configuration
         await self.state.load_config()
 
+        # Load window layouts from config into service container
+        if self.state.config and self.state.config.window_layouts:
+            self.services.load_layouts(self.state.config.window_layouts)
+
         # Try to connect to iTerm2 (non-blocking)
         try:
-            await self.iterm.connect()
+            await self.services.connect_iterm()
         except Exception as e:
             self.notify(f"iTerm2 connection failed: {e}", severity="warning")
 
         # Initialize GitHub (non-blocking)
-        await self.github.initialize()
+        await self.services.initialize_github()
 
         # Push the initial screen
         from iterm_controller.screens.control_room import ControlRoomScreen
@@ -134,7 +143,7 @@ class ItermControllerApp(App):
     async def _cleanup_and_exit(self) -> None:
         """Clean up resources and exit the application."""
         # Disconnect from iTerm2
-        await self.iterm.disconnect()
+        await self.services.disconnect_iterm()
 
         # Exit the application
         self.exit()

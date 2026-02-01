@@ -380,33 +380,23 @@ class NewProjectScreen(Screen):
             project: The project to spawn sessions for.
             template: The template containing session definitions.
         """
-        from iterm_controller.iterm import SessionSpawner
-
         app: ItermControllerApp = self.app  # type: ignore[assignment]
 
         if not app.iterm.is_connected:
             self.notify("iTerm2 not connected, skipping session spawn", severity="warning")
             return
 
-        # Build session template lookup
-        session_templates = {}
-        if app.state.config:
-            for st in app.state.config.session_templates:
-                session_templates[st.id] = st
-
-        spawner = SessionSpawner(app.iterm)
-
         for session_id in template.initial_sessions:
-            session_template = session_templates.get(session_id)
-            if session_template:
-                result = await spawner.spawn_session(session_template, project)
-                if result.success:
-                    # Add to app state
-                    managed = spawner.get_session(result.session_id)
-                    if managed:
-                        app.state.add_session(managed)
-            else:
-                self.notify(
-                    f"Session template '{session_id}' not found",
-                    severity="warning",
-                )
+            # Use the injected API to spawn sessions instead of creating spawner
+            result = await app.api.spawn_session(project.id, session_id)
+            if not result.success:
+                if "Template not found" in (result.error or ""):
+                    self.notify(
+                        f"Session template '{session_id}' not found",
+                        severity="warning",
+                    )
+                else:
+                    self.notify(
+                        f"Failed to spawn session '{session_id}': {result.error}",
+                        severity="warning",
+                    )
