@@ -574,7 +574,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Move core logic to api.py, have action methods call API
   - Acceptance: All keyboard shortcuts have callable API equivalents
 
-- [ ] **Export public API from __init__.py** `[pending]`
+- [x] **Export public API from __init__.py** `[complete]`
   - Scope: Export key classes and functions for external use
   - Exports: ItermController, SessionSpawner, AppState, Project, ManagedSession, Task, Plan, config functions
   - Acceptance: Can `from iterm_controller import Controller, Project` etc.
