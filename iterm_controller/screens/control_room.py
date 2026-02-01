@@ -9,8 +9,9 @@ from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical
+from textual.containers import Container, Horizontal
 from textual.screen import Screen
+from textual.timer import Timer
 from textual.widgets import Footer, Header, Static
 
 from iterm_controller.models import ManagedSession, SessionTemplate
@@ -23,6 +24,9 @@ from iterm_controller.widgets import SessionListWidget, WorkflowBarWidget
 
 if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
+
+# Debounce interval for UI refresh (in seconds)
+REFRESH_DEBOUNCE_SECONDS = 0.1  # 100ms
 
 
 class ControlRoomScreen(Screen):
@@ -67,6 +71,13 @@ class ControlRoomScreen(Screen):
         Binding("9", "focus_session_num(9)", "Focus #9", show=False),
     ]
 
+    def __init__(self) -> None:
+        """Initialize the control room screen with debounce state."""
+        super().__init__()
+        # Debounce state for batching rapid UI updates
+        self._refresh_timer: Timer | None = None
+        self._refresh_pending: bool = False
+
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
         yield Header()
@@ -93,6 +104,40 @@ class ControlRoomScreen(Screen):
 
         widget = self.query_one("#sessions", SessionListWidget)
         widget.refresh_sessions(sessions)
+        # Clear pending flag after refresh completes
+        self._refresh_pending = False
+
+    def schedule_refresh(self) -> None:
+        """Schedule a debounced refresh of the session list.
+
+        Multiple calls within REFRESH_DEBOUNCE_SECONDS are batched into a single
+        refresh. This prevents UI thrashing during rapid state changes (e.g.,
+        multiple sessions updating status simultaneously).
+        """
+        # If a refresh is already pending, don't schedule another
+        if self._refresh_pending:
+            return
+
+        self._refresh_pending = True
+
+        # Cancel any existing timer
+        if self._refresh_timer is not None:
+            self._refresh_timer.stop()
+
+        # Schedule the refresh with debounce delay
+        self._refresh_timer = self.set_timer(
+            REFRESH_DEBOUNCE_SECONDS,
+            self._do_debounced_refresh,
+        )
+
+    def _do_debounced_refresh(self) -> None:
+        """Execute the debounced refresh.
+
+        Called by the timer after the debounce interval.
+        """
+        self._refresh_timer = None
+        # Use call_later to run the async refresh
+        self.call_later(self.refresh_sessions)
 
     @property
     def selected_session(self) -> ManagedSession | None:
@@ -236,13 +281,22 @@ class ControlRoomScreen(Screen):
     # =========================================================================
 
     def on_session_spawned(self, event: SessionSpawned) -> None:
-        """Handle session spawned event."""
-        self.call_later(self.refresh_sessions)
+        """Handle session spawned event.
+
+        Uses debounced refresh to batch multiple rapid events.
+        """
+        self.schedule_refresh()
 
     def on_session_closed(self, event: SessionClosed) -> None:
-        """Handle session closed event."""
-        self.call_later(self.refresh_sessions)
+        """Handle session closed event.
+
+        Uses debounced refresh to batch multiple rapid events.
+        """
+        self.schedule_refresh()
 
     def on_session_status_changed(self, event: SessionStatusChanged) -> None:
-        """Handle session status change event."""
-        self.call_later(self.refresh_sessions)
+        """Handle session status change event.
+
+        Uses debounced refresh to batch multiple rapid events.
+        """
+        self.schedule_refresh()

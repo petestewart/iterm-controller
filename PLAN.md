@@ -713,7 +713,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Cache sorted list, invalidate on session changes
   - Acceptance: Reduced sorting overhead on frequent renders
 
-- [ ] **Debounce UI refresh on state changes** `[pending]`
+- [x] **Debounce UI refresh on state changes** `[complete]`
   - Scope: Prevent UI thrashing with rapid status updates
   - Location: iterm_controller/screens/control_room.py:293-303
   - Fix: Add 100ms debounce timer for refresh calls

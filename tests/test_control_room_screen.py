@@ -1,5 +1,6 @@
 """Tests for the Control Room screen."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,7 +14,10 @@ from iterm_controller.models import (
     Project,
     SessionTemplate,
 )
-from iterm_controller.screens.control_room import ControlRoomScreen
+from iterm_controller.screens.control_room import (
+    ControlRoomScreen,
+    REFRESH_DEBOUNCE_SECONDS,
+)
 from iterm_controller.widgets import SessionListWidget, WorkflowBarWidget
 
 
@@ -280,3 +284,173 @@ class TestEventHandlers:
             await app.screen.refresh_sessions()
 
             assert widget.sessions[0].attention_state == AttentionState.WAITING
+
+
+@pytest.mark.asyncio
+class TestDebounceRefresh:
+    """Tests for the debounced refresh functionality."""
+
+    def test_debounce_constant_is_100ms(self) -> None:
+        """Test that debounce interval is 100ms."""
+        assert REFRESH_DEBOUNCE_SECONDS == 0.1
+
+    async def test_schedule_refresh_sets_pending_flag(self) -> None:
+        """Test that schedule_refresh sets the pending flag."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            screen = app.screen
+            assert isinstance(screen, ControlRoomScreen)
+
+            # Initially not pending
+            assert not screen._refresh_pending
+
+            # Schedule a refresh
+            screen.schedule_refresh()
+
+            # Should now be pending
+            assert screen._refresh_pending
+
+    async def test_schedule_refresh_creates_timer(self) -> None:
+        """Test that schedule_refresh creates a timer."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            screen = app.screen
+            assert isinstance(screen, ControlRoomScreen)
+
+            # Initially no timer
+            assert screen._refresh_timer is None
+
+            # Schedule a refresh
+            screen.schedule_refresh()
+
+            # Should have a timer now
+            assert screen._refresh_timer is not None
+
+    async def test_multiple_schedule_refresh_calls_batched(self) -> None:
+        """Test that multiple rapid schedule_refresh calls are batched into one refresh."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            screen = app.screen
+            assert isinstance(screen, ControlRoomScreen)
+
+            # Track refresh calls
+            refresh_count = 0
+            original_refresh = screen.refresh_sessions
+
+            async def counting_refresh():
+                nonlocal refresh_count
+                refresh_count += 1
+                await original_refresh()
+
+            screen.refresh_sessions = counting_refresh
+
+            # Schedule multiple refreshes rapidly
+            screen.schedule_refresh()
+            screen.schedule_refresh()
+            screen.schedule_refresh()
+            screen.schedule_refresh()
+            screen.schedule_refresh()
+
+            # Wait for debounce period to elapse
+            await asyncio.sleep(REFRESH_DEBOUNCE_SECONDS + 0.05)
+
+            # Give the event loop time to process the callback
+            await asyncio.sleep(0.05)
+
+            # Should only have refreshed once (batched)
+            assert refresh_count == 1
+
+    async def test_refresh_clears_pending_flag(self) -> None:
+        """Test that refresh_sessions clears the pending flag."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            screen = app.screen
+            assert isinstance(screen, ControlRoomScreen)
+
+            # Set pending flag
+            screen._refresh_pending = True
+
+            # Refresh
+            await screen.refresh_sessions()
+
+            # Should clear the flag
+            assert not screen._refresh_pending
+
+    async def test_event_handler_calls_schedule_refresh(self) -> None:
+        """Test that event handlers call schedule_refresh instead of direct refresh."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            from iterm_controller.state import SessionSpawned
+
+            screen = app.screen
+            assert isinstance(screen, ControlRoomScreen)
+
+            # Track schedule_refresh calls
+            schedule_count = 0
+            original_schedule = screen.schedule_refresh
+
+            def counting_schedule():
+                nonlocal schedule_count
+                schedule_count += 1
+                original_schedule()
+
+            screen.schedule_refresh = counting_schedule
+
+            # Directly call the event handler (simulating the event)
+            session = make_session()
+            screen.on_session_spawned(SessionSpawned(session))
+
+            # Should have called schedule_refresh
+            assert schedule_count == 1
+
+    async def test_status_change_event_handler_calls_schedule_refresh(self) -> None:
+        """Test that status change event handler calls schedule_refresh."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            from iterm_controller.state import SessionStatusChanged
+
+            screen = app.screen
+            assert isinstance(screen, ControlRoomScreen)
+
+            # Track schedule_refresh calls
+            schedule_count = 0
+            original_schedule = screen.schedule_refresh
+
+            def counting_schedule():
+                nonlocal schedule_count
+                schedule_count += 1
+                original_schedule()
+
+            screen.schedule_refresh = counting_schedule
+
+            # Directly call the event handler (simulating the event)
+            screen.on_session_status_changed(SessionStatusChanged("session-1"))
+
+            # Should have called schedule_refresh
+            assert schedule_count == 1
+
+    async def test_closed_event_handler_calls_schedule_refresh(self) -> None:
+        """Test that closed event handler calls schedule_refresh."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            from iterm_controller.state import SessionClosed
+
+            screen = app.screen
+            assert isinstance(screen, ControlRoomScreen)
+
+            # Track schedule_refresh calls
+            schedule_count = 0
+            original_schedule = screen.schedule_refresh
+
+            def counting_schedule():
+                nonlocal schedule_count
+                schedule_count += 1
+                original_schedule()
+
+            screen.schedule_refresh = counting_schedule
+
+            # Directly call the event handler (simulating the event)
+            screen.on_session_closed(SessionClosed("session-1"))
+
+            # Should have called schedule_refresh
+            assert schedule_count == 1
