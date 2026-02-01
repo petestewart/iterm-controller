@@ -7,9 +7,7 @@ See specs/docs-mode.md for full specification.
 
 from __future__ import annotations
 
-import asyncio
 import logging
-import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -436,41 +434,6 @@ class DocsModeScreen(ModeScreen):
     # =========================================================================
     # Helper Methods
     # =========================================================================
-
-    def _open_in_editor(self, path: Path, editor_cmd: str) -> None:
-        """Open a file in the configured editor.
-
-        Args:
-            path: Path to the file to open.
-            editor_cmd: The editor command to use.
-        """
-
-        async def _do_open() -> None:
-            try:
-                cmd = [editor_cmd, str(path)]
-                await asyncio.to_thread(
-                    subprocess.Popen,
-                    cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                self.notify(f"Opened {path.name} in {editor_cmd}")
-            except FileNotFoundError:
-                # Editor not found, try macOS open command
-                try:
-                    await asyncio.to_thread(
-                        subprocess.Popen,
-                        ["open", str(path)],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    self.notify(f"Opened {path.name}")
-                except Exception as e:
-                    self.notify(f"Failed to open {path.name}: {e}", severity="error")
-            except Exception as e:
-                self.notify(f"Failed to open {path.name}: {e}", severity="error")
-
-        self.call_later(_do_open)
 
     def _create_document(self, path: str, content: str = "") -> None:
         """Create a new document file.

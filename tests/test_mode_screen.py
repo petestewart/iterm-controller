@@ -1556,6 +1556,147 @@ class TestTestPlanWatcherCreationCallback:
 
 
 @pytest.mark.asyncio
+class TestModeScreenOpenInEditor:
+    """Tests for ModeScreen._open_in_editor shared method."""
+
+    async def test_open_in_editor_with_default_display_name(self) -> None:
+        """Test that _open_in_editor uses path.name as default display name."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a test file
+            test_file = Path(tmpdir) / "README.md"
+            test_file.write_text("# Readme")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                # Mock subprocess.Popen to verify it's called correctly
+                with patch("asyncio.to_thread") as mock_to_thread:
+                    mock_to_thread.return_value = None
+
+                    # Call _open_in_editor without display_name (uses default)
+                    app.screen._open_in_editor(test_file, "code")
+
+                    # Give time for async operation
+                    await pilot.pause()
+
+                    # Verify to_thread was called (indicating subprocess was spawned)
+                    assert mock_to_thread.called
+
+    async def test_open_in_editor_with_custom_display_name(self) -> None:
+        """Test that _open_in_editor uses custom display name when provided."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a test file
+            test_file = Path(tmpdir) / "PROBLEM.md"
+            test_file.write_text("# Problem Statement")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(PlanModeScreen(project))
+
+                # Mock subprocess.Popen
+                with patch("asyncio.to_thread") as mock_to_thread:
+                    mock_to_thread.return_value = None
+
+                    # Call _open_in_editor with custom display_name
+                    app.screen._open_in_editor(test_file, "code", "Problem Statement")
+
+                    # Give time for async operation
+                    await pilot.pause()
+
+                    # Verify to_thread was called
+                    assert mock_to_thread.called
+
+    async def test_open_in_editor_falls_back_to_macos_open(self) -> None:
+        """Test that _open_in_editor falls back to 'open' when editor not found."""
+        import tempfile
+        from pathlib import Path
+        from unittest.mock import patch, MagicMock, call
+        import subprocess
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a test file
+            test_file = Path(tmpdir) / "test.md"
+            test_file.write_text("# Test")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Mock asyncio.to_thread to simulate FileNotFoundError then success
+                call_count = [0]
+
+                def mock_to_thread_side_effect(func, *args, **kwargs):
+                    call_count[0] += 1
+                    if call_count[0] == 1:
+                        # First call fails (editor not found)
+                        raise FileNotFoundError("code not found")
+                    # Second call succeeds (macOS open)
+                    return None
+
+                with patch("iterm_controller.screens.mode_screen.asyncio.to_thread") as mock_to_thread:
+                    mock_to_thread.side_effect = mock_to_thread_side_effect
+
+                    # Call _open_in_editor with an editor that "doesn't exist"
+                    app.screen._open_in_editor(test_file, "nonexistent-editor")
+
+                    # Give time for async operation
+                    await pilot.pause()
+
+                    # Verify to_thread was called twice (once for editor, once for open fallback)
+                    assert mock_to_thread.call_count == 2
+
+    async def test_open_in_editor_method_exists_in_base_class(self) -> None:
+        """Test that _open_in_editor exists in ModeScreen base class."""
+        # Verify the method exists in the base class
+        from iterm_controller.screens.mode_screen import ModeScreen
+
+        assert hasattr(ModeScreen, "_open_in_editor")
+        assert callable(getattr(ModeScreen, "_open_in_editor"))
+
+    async def test_plan_mode_inherits_open_in_editor(self) -> None:
+        """Test that PlanModeScreen inherits _open_in_editor from ModeScreen."""
+        project = make_project()
+        screen = PlanModeScreen(project)
+
+        # The method should come from ModeScreen (not defined locally)
+        assert hasattr(screen, "_open_in_editor")
+
+        # Verify it's inherited from ModeScreen (not defined in PlanModeScreen)
+        from iterm_controller.screens.mode_screen import ModeScreen
+        assert screen._open_in_editor.__func__ is ModeScreen._open_in_editor
+
+    async def test_docs_mode_inherits_open_in_editor(self) -> None:
+        """Test that DocsModeScreen inherits _open_in_editor from ModeScreen."""
+        project = make_project()
+        screen = DocsModeScreen(project)
+
+        # The method should come from ModeScreen (not defined locally)
+        assert hasattr(screen, "_open_in_editor")
+
+        # Verify it's inherited from ModeScreen (not defined in DocsModeScreen)
+        from iterm_controller.screens.mode_screen import ModeScreen
+        assert screen._open_in_editor.__func__ is ModeScreen._open_in_editor
+
+
+@pytest.mark.asyncio
 class TestDocsModeTreeNavigation:
     """Tests for DocsModeScreen tree navigation functionality."""
 

@@ -626,7 +626,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Currently duplicated in: plan_mode.py:42-54, docs_mode.py:34-46
   - Acceptance: Single source of truth for editor commands
 
-- [ ] **Extract _open_in_editor to ModeScreen base class** `[pending]`
+- [x] **Extract _open_in_editor to ModeScreen base class** `[complete]`
   - Scope: Move duplicated editor-opening logic to shared location
   - Depends: Phase 22 task 1
   - Currently duplicated in: plan_mode.py:319-353, docs_mode.py:442-475

@@ -9,7 +9,10 @@ See specs/workflow-modes.md for full specification.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import subprocess
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from textual.binding import Binding
@@ -193,3 +196,47 @@ class ModeScreen(Screen):
                 self.notify(f"Running: {command}")
             elif result.error and result.error != "User declined confirmation":
                 self.notify(f"Failed to run command: {result.error}", severity="error")
+
+    def _open_in_editor(
+        self, path: Path, editor_cmd: str, display_name: str | None = None
+    ) -> None:
+        """Open a file or directory in the configured editor.
+
+        This is a shared utility method for all mode screens that need to open
+        files in an external editor. It handles fallback to macOS `open` command
+        if the configured editor is not found.
+
+        Args:
+            path: Path to the file or directory to open.
+            editor_cmd: The editor command to use (e.g., "code", "cursor").
+            display_name: Name to show in notifications. Defaults to path.name.
+        """
+        if display_name is None:
+            display_name = path.name
+
+        async def _do_open() -> None:
+            try:
+                cmd = [editor_cmd, str(path)]
+                await asyncio.to_thread(
+                    subprocess.Popen,
+                    cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                self.notify(f"Opened {display_name} in {editor_cmd}")
+            except FileNotFoundError:
+                # Editor not found, try macOS open command
+                try:
+                    await asyncio.to_thread(
+                        subprocess.Popen,
+                        ["open", str(path)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+                    self.notify(f"Opened {display_name}")
+                except Exception as e:
+                    self.notify(f"Failed to open {display_name}: {e}", severity="error")
+            except Exception as e:
+                self.notify(f"Failed to open {display_name}: {e}", severity="error")
+
+        self.call_later(_do_open)

@@ -7,8 +7,6 @@ See specs/plan-mode.md for full specification.
 
 from __future__ import annotations
 
-import asyncio
-import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -309,42 +307,6 @@ class PlanModeScreen(ModeScreen):
         """Refresh artifact status."""
         self._refresh_artifacts()
         self.notify("Artifacts refreshed")
-
-    def _open_in_editor(self, path: Path, editor_cmd: str, display_name: str) -> None:
-        """Open a file or directory in the configured editor.
-
-        Args:
-            path: Path to the file or directory to open.
-            editor_cmd: The editor command to use.
-            display_name: Name to show in notifications.
-        """
-
-        async def _do_open() -> None:
-            try:
-                cmd = [editor_cmd, str(path)]
-                await asyncio.to_thread(
-                    subprocess.Popen,
-                    cmd,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                )
-                self.notify(f"Opened {display_name} in {editor_cmd}")
-            except FileNotFoundError:
-                # Editor not found, try macOS open command
-                try:
-                    await asyncio.to_thread(
-                        subprocess.Popen,
-                        ["open", str(path)],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    self.notify(f"Opened {display_name}")
-                except Exception as e:
-                    self.notify(f"Failed to open {display_name}: {e}", severity="error")
-            except Exception as e:
-                self.notify(f"Failed to open {display_name}: {e}", severity="error")
-
-        self.call_later(_do_open)
 
     def _spawn_claude_session(self, command: str, session_name: str) -> None:
         """Spawn a new iTerm2 session with a Claude command.
