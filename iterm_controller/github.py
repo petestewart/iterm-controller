@@ -15,7 +15,6 @@ from datetime import datetime
 
 from iterm_controller.exceptions import (
     GitHubError,
-    GitHubUnavailableError,
     NetworkError as BaseNetworkError,
     RateLimitError as BaseRateLimitError,
     record_error,

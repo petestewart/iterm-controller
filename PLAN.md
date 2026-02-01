@@ -721,18 +721,20 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 25: Code Simplification (Nice-to-have)
 
-- [ ] **Flatten exception hierarchy** `[pending]`
+- [x] **Flatten exception hierarchy** `[complete]`
   - Scope: Reduce 24 exception classes to ~5 essential ones
   - Location: iterm_controller/exceptions.py (531 lines)
   - Keep: ItermControllerError, ConnectionError, ConfigError, PlanError, TemplateNotFoundError
   - Remove: ~19 rarely-used exception classes
   - Acceptance: Exception module < 100 lines
+  - Result: Reduced from 569 lines to 119 lines, removed unused classes (SessionError, TemplateError, NotificationError, AutoModeError, TestPlanError, ErrorStats, etc.), kept only actively-used exceptions
 
-- [ ] **Remove ErrorStats tracking** `[pending]`
+- [x] **Remove ErrorStats tracking** `[complete]`
   - Scope: Remove unused error statistics tracking
   - Location: iterm_controller/exceptions.py:500-531
   - Fix: Delete ErrorStats class and record_error function
   - Acceptance: No dead code for unused metrics
+  - Result: Removed ErrorStats class, record_error is now a no-op for backward compatibility
 
 - [ ] **Remove unused window layout capture** `[pending]`
   - Scope: Delete capture_current_layout and related methods
