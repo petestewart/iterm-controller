@@ -12,6 +12,7 @@ from rich.text import Text
 from textual.widgets import Static
 
 from iterm_controller.models import Plan, Task, TaskStatus
+from iterm_controller.task_dependency import TaskDependencyResolver
 
 
 class BlockedTasksWidget(Static):
@@ -56,8 +57,7 @@ class BlockedTasksWidget(Static):
         """
         super().__init__(**kwargs)
         self._plan = plan or Plan()
-        self._task_lookup: dict[str, Task] = {}
-        self._rebuild_task_lookup()
+        self._dependency_resolver = TaskDependencyResolver(self._plan)
 
     @property
     def plan(self) -> Plan:
@@ -71,17 +71,13 @@ class BlockedTasksWidget(Static):
             plan: New plan to display.
         """
         self._plan = plan
-        self._rebuild_task_lookup()
+        self._dependency_resolver.update_plan(plan)
         self.update(self._render_blocked())
-
-    def _rebuild_task_lookup(self) -> None:
-        """Rebuild the task lookup dictionary for dependency resolution."""
-        self._task_lookup = {}
-        for task in self._plan.all_tasks:
-            self._task_lookup[task.id] = task
 
     def is_task_blocked(self, task: Task) -> bool:
         """Check if a task is blocked by incomplete dependencies.
+
+        Delegates to TaskDependencyResolver.
 
         Args:
             task: The task to check.
@@ -89,18 +85,7 @@ class BlockedTasksWidget(Static):
         Returns:
             True if the task is blocked, False otherwise.
         """
-        if task.status == TaskStatus.BLOCKED:
-            return True
-        if not task.depends:
-            return False
-        for dep_id in task.depends:
-            dep_task = self._task_lookup.get(dep_id)
-            if dep_task and dep_task.status not in (
-                TaskStatus.COMPLETE,
-                TaskStatus.SKIPPED,
-            ):
-                return True
-        return False
+        return self._dependency_resolver.is_task_blocked(task)
 
     def get_blocked_tasks(self) -> list[Task]:
         """Get all blocked tasks from the plan.
@@ -118,27 +103,20 @@ class BlockedTasksWidget(Static):
     def get_blocking_task_ids(self, task: Task) -> list[str]:
         """Get IDs of tasks that are blocking this task.
 
+        Delegates to TaskDependencyResolver.
+
         Args:
             task: The task to check.
 
         Returns:
             List of task IDs that are blocking this task.
         """
-        blockers = []
-        for dep_id in task.depends:
-            dep_task = self._task_lookup.get(dep_id)
-            if dep_task and dep_task.status not in (
-                TaskStatus.COMPLETE,
-                TaskStatus.SKIPPED,
-            ):
-                blockers.append(dep_id)
-        return blockers
+        return self._dependency_resolver.get_blocking_tasks(task)
 
     def get_dependency_chain(self, task: Task) -> list[tuple[Task, list[str]]]:
         """Get the full dependency chain for a task.
 
-        Recursively builds a list of tasks and their blockers in the
-        dependency chain leading to the given task.
+        Delegates to TaskDependencyResolver.
 
         Args:
             task: The task to get the dependency chain for.
@@ -146,27 +124,7 @@ class BlockedTasksWidget(Static):
         Returns:
             List of (task, blockers) tuples showing the dependency chain.
         """
-        chain: list[tuple[Task, list[str]]] = []
-        visited: set[str] = set()
-
-        def _add_to_chain(t: Task) -> None:
-            if t.id in visited:
-                return
-            visited.add(t.id)
-
-            blockers = self.get_blocking_task_ids(t)
-
-            # First add blocking tasks recursively
-            for blocker_id in blockers:
-                blocker = self._task_lookup.get(blocker_id)
-                if blocker:
-                    _add_to_chain(blocker)
-
-            # Then add this task
-            chain.append((t, blockers))
-
-        _add_to_chain(task)
-        return chain
+        return self._dependency_resolver.get_dependency_chain(task)
 
     def _render_blocked(self) -> Text:
         """Render the blocked tasks summary.

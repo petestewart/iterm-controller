@@ -632,7 +632,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Currently duplicated in: plan_mode.py:319-353, docs_mode.py:442-475
   - Acceptance: Single implementation of editor opening logic
 
-- [ ] **Create TaskDependencyResolver utility** `[pending]`
+- [x] **Create TaskDependencyResolver utility** `[complete]`
   - Scope: Extract is_task_blocked() and get_blocking_tasks() to shared utility
   - Currently duplicated in: task_list.py:180-221, task_queue.py:122-161, blocked_tasks.py:88-125
   - Acceptance: Single implementation of dependency checking

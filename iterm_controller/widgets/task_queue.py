@@ -13,6 +13,7 @@ from textual.binding import Binding
 from textual.widgets import Static
 
 from iterm_controller.models import Plan, Task, TaskStatus
+from iterm_controller.task_dependency import TaskDependencyResolver
 
 
 class TaskQueueWidget(Static, can_focus=True):
@@ -66,10 +67,9 @@ class TaskQueueWidget(Static, can_focus=True):
         """
         super().__init__(**kwargs)
         self._plan = plan or Plan()
-        self._task_lookup: dict[str, Task] = {}
+        self._dependency_resolver = TaskDependencyResolver(self._plan)
         self._selected_index: int = 0
         self._visible_tasks: list[Task] = []
-        self._rebuild_task_lookup()
         self._rebuild_visible_tasks()
 
     @property
@@ -96,18 +96,12 @@ class TaskQueueWidget(Static, can_focus=True):
             plan: New plan to display.
         """
         self._plan = plan
-        self._rebuild_task_lookup()
+        self._dependency_resolver.update_plan(plan)
         self._rebuild_visible_tasks()
         # Ensure selected index is valid
         if self._selected_index >= len(self._visible_tasks):
             self._selected_index = max(0, len(self._visible_tasks) - 1)
         self.update(self._render_queue())
-
-    def _rebuild_task_lookup(self) -> None:
-        """Rebuild the task lookup dictionary for dependency resolution."""
-        self._task_lookup = {}
-        for task in self._plan.all_tasks:
-            self._task_lookup[task.id] = task
 
     def _rebuild_visible_tasks(self) -> None:
         """Rebuild the list of visible (pending and blocked) tasks."""
@@ -119,27 +113,20 @@ class TaskQueueWidget(Static, can_focus=True):
     def is_task_blocked(self, task: Task) -> bool:
         """Check if a task is blocked by incomplete dependencies.
 
+        Delegates to TaskDependencyResolver.
+
         Args:
             task: The task to check.
 
         Returns:
             True if the task is blocked, False otherwise.
         """
-        if task.status == TaskStatus.BLOCKED:
-            return True
-        if not task.depends:
-            return False
-        for dep_id in task.depends:
-            dep_task = self._task_lookup.get(dep_id)
-            if dep_task and dep_task.status not in (
-                TaskStatus.COMPLETE,
-                TaskStatus.SKIPPED,
-            ):
-                return True
-        return False
+        return self._dependency_resolver.is_task_blocked(task)
 
     def get_blocking_tasks(self, task: Task) -> list[str]:
         """Get the IDs of tasks blocking this task.
+
+        Delegates to TaskDependencyResolver.
 
         Args:
             task: The task to check.
@@ -147,15 +134,7 @@ class TaskQueueWidget(Static, can_focus=True):
         Returns:
             List of task IDs that are blocking this task.
         """
-        blockers = []
-        for dep_id in task.depends:
-            dep_task = self._task_lookup.get(dep_id)
-            if dep_task and dep_task.status not in (
-                TaskStatus.COMPLETE,
-                TaskStatus.SKIPPED,
-            ):
-                blockers.append(dep_id)
-        return blockers
+        return self._dependency_resolver.get_blocking_tasks(task)
 
     def get_available_tasks(self) -> list[Task]:
         """Get tasks that are available to claim (not blocked).

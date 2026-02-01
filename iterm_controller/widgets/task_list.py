@@ -15,6 +15,7 @@ from textual.widgets import Static
 from iterm_controller.models import Phase, Plan, Task, TaskStatus
 from iterm_controller.spec_validator import SpecValidationResult, validate_spec_ref
 from iterm_controller.state import PlanReloaded, TaskStatusChanged
+from iterm_controller.task_dependency import TaskDependencyResolver
 
 
 class TaskListWidget(Static):
@@ -83,10 +84,9 @@ class TaskListWidget(Static):
         super().__init__(**kwargs)
         self._plan = plan or Plan()
         self._collapsed_phases: set[str] = collapsed_phases or set()
-        self._task_lookup: dict[str, Task] = {}
+        self._dependency_resolver = TaskDependencyResolver(self._plan)
         self._project_path: str | None = project_path
         self._spec_validations: dict[str, SpecValidationResult] = {}
-        self._rebuild_task_lookup()
         # Validate specs if project path is provided
         if self._project_path:
             self._validate_all_specs()
@@ -113,12 +113,6 @@ class TaskListWidget(Static):
         else:
             self._spec_validations.clear()
         self.update(self._render_plan())
-
-    def _rebuild_task_lookup(self) -> None:
-        """Rebuild the task lookup dictionary for dependency resolution."""
-        self._task_lookup = {}
-        for task in self._plan.all_tasks:
-            self._task_lookup[task.id] = task
 
     def _validate_all_specs(self) -> None:
         """Validate all spec references in the current plan."""
@@ -152,7 +146,7 @@ class TaskListWidget(Static):
                 uses the previously set project path.
         """
         self._plan = plan
-        self._rebuild_task_lookup()
+        self._dependency_resolver.update_plan(plan)
 
         # Update project path if provided
         if project_path is not None:
@@ -177,7 +171,7 @@ class TaskListWidget(Static):
     def is_task_blocked(self, task: Task) -> bool:
         """Check if a task is blocked by incomplete dependencies.
 
-        A task is blocked if any of its dependencies are not complete or skipped.
+        Delegates to TaskDependencyResolver.
 
         Args:
             task: The task to check.
@@ -185,21 +179,12 @@ class TaskListWidget(Static):
         Returns:
             True if the task is blocked, False otherwise.
         """
-        if task.status == TaskStatus.BLOCKED:
-            return True
-        if not task.depends:
-            return False
-        for dep_id in task.depends:
-            dep_task = self._task_lookup.get(dep_id)
-            if dep_task and dep_task.status not in (
-                TaskStatus.COMPLETE,
-                TaskStatus.SKIPPED,
-            ):
-                return True
-        return False
+        return self._dependency_resolver.is_task_blocked(task)
 
     def get_blocking_tasks(self, task: Task) -> list[str]:
         """Get the IDs of tasks blocking this task.
+
+        Delegates to TaskDependencyResolver.
 
         Args:
             task: The task to check.
@@ -207,15 +192,7 @@ class TaskListWidget(Static):
         Returns:
             List of task IDs that are blocking this task.
         """
-        blockers = []
-        for dep_id in task.depends:
-            dep_task = self._task_lookup.get(dep_id)
-            if dep_task and dep_task.status not in (
-                TaskStatus.COMPLETE,
-                TaskStatus.SKIPPED,
-            ):
-                blockers.append(dep_id)
-        return blockers
+        return self._dependency_resolver.get_blocking_tasks(task)
 
     def _get_status_icon(self, status: TaskStatus) -> str:
         """Get the icon for a given task status.
@@ -378,7 +355,7 @@ class TaskListWidget(Static):
         Returns:
             The task if found, None otherwise.
         """
-        return self._task_lookup.get(task_id)
+        return self._dependency_resolver.get_task_by_id(task_id)
 
     def get_pending_tasks(self) -> list[Task]:
         """Get all pending tasks that are not blocked.
