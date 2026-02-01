@@ -8,6 +8,7 @@ import pytest
 
 from iterm_controller.models import AttentionState, ManagedSession
 from iterm_controller.session_monitor import (
+    AdaptivePoller,
     AttentionDetector,
     BatchOutputReader,
     CLAUDE_WAITING_PATTERNS,
@@ -1410,3 +1411,511 @@ class TestPatternLists:
                 re.compile(pattern)
             except re.error as e:
                 pytest.fail(f"Invalid regex pattern '{pattern}': {e}")
+
+
+class TestAdaptivePoller:
+    """Test AdaptivePoller functionality."""
+
+    def test_init_defaults(self):
+        """Poller initializes with correct defaults."""
+        poller = AdaptivePoller()
+
+        assert poller.min_interval_ms == 100
+        assert poller.max_interval_ms == 2000
+        assert poller.default_interval_ms == 500
+
+    def test_init_custom_values(self):
+        """Poller accepts custom values."""
+        poller = AdaptivePoller(
+            min_interval_ms=50,
+            max_interval_ms=5000,
+            default_interval_ms=1000,
+        )
+
+        assert poller.min_interval_ms == 50
+        assert poller.max_interval_ms == 5000
+        assert poller.default_interval_ms == 1000
+
+    def test_get_interval_ms_returns_default_for_unknown(self):
+        """get_interval_ms returns default for unknown session."""
+        poller = AdaptivePoller(default_interval_ms=500)
+
+        result = poller.get_interval_ms("unknown-session")
+
+        assert result == 500
+
+    def test_get_interval_returns_seconds(self):
+        """get_interval returns interval in seconds."""
+        poller = AdaptivePoller(default_interval_ms=500)
+
+        result = poller.get_interval("session-1")
+
+        assert result == 0.5
+
+    def test_on_output_with_output_decreases_interval(self):
+        """on_output with had_output=True decreases interval."""
+        poller = AdaptivePoller(
+            min_interval_ms=100,
+            max_interval_ms=2000,
+            default_interval_ms=500,
+        )
+
+        new_interval = poller.on_output("session-1", had_output=True)
+
+        # 500 // 2 = 250
+        assert new_interval == 250
+        assert poller.get_interval_ms("session-1") == 250
+
+    def test_on_output_with_output_halves_interval(self):
+        """on_output with had_output=True halves the interval."""
+        poller = AdaptivePoller(min_interval_ms=100, default_interval_ms=1000)
+
+        poller.on_output("session-1", had_output=True)
+        assert poller.get_interval_ms("session-1") == 500  # 1000 // 2
+
+        poller.on_output("session-1", had_output=True)
+        assert poller.get_interval_ms("session-1") == 250  # 500 // 2
+
+        poller.on_output("session-1", had_output=True)
+        assert poller.get_interval_ms("session-1") == 125  # 250 // 2
+
+        poller.on_output("session-1", had_output=True)
+        assert poller.get_interval_ms("session-1") == 100  # min
+
+    def test_on_output_respects_min_interval(self):
+        """on_output never goes below min_interval."""
+        poller = AdaptivePoller(min_interval_ms=100, default_interval_ms=150)
+
+        poller.on_output("session-1", had_output=True)
+        # 150 // 2 = 75, but min is 100
+        assert poller.get_interval_ms("session-1") == 100
+
+    def test_on_output_without_output_increases_interval(self):
+        """on_output with had_output=False increases interval."""
+        poller = AdaptivePoller(
+            min_interval_ms=100,
+            max_interval_ms=2000,
+            default_interval_ms=500,
+        )
+
+        new_interval = poller.on_output("session-1", had_output=False)
+
+        # 500 * 1.5 = 750
+        assert new_interval == 750
+        assert poller.get_interval_ms("session-1") == 750
+
+    def test_on_output_without_output_increases_by_1_5x(self):
+        """on_output with had_output=False increases by 1.5x."""
+        poller = AdaptivePoller(max_interval_ms=2000, default_interval_ms=100)
+
+        poller.on_output("session-1", had_output=False)
+        assert poller.get_interval_ms("session-1") == 150  # 100 * 1.5
+
+        poller.on_output("session-1", had_output=False)
+        assert poller.get_interval_ms("session-1") == 225  # 150 * 1.5 = 225
+
+        poller.on_output("session-1", had_output=False)
+        assert poller.get_interval_ms("session-1") == 337  # 225 * 1.5 = 337.5 -> 337
+
+    def test_on_output_respects_max_interval(self):
+        """on_output never goes above max_interval."""
+        poller = AdaptivePoller(max_interval_ms=2000, default_interval_ms=1500)
+
+        poller.on_output("session-1", had_output=False)
+        # 1500 * 1.5 = 2250, but max is 2000
+        assert poller.get_interval_ms("session-1") == 2000
+
+    def test_on_state_change_waiting_sets_max(self):
+        """on_state_change with WAITING sets to max interval."""
+        poller = AdaptivePoller(max_interval_ms=2000, default_interval_ms=500)
+
+        new_interval = poller.on_state_change("session-1", AttentionState.WAITING)
+
+        assert new_interval == 2000
+        assert poller.get_interval_ms("session-1") == 2000
+
+    def test_on_state_change_working_sets_min(self):
+        """on_state_change with WORKING sets to min interval."""
+        poller = AdaptivePoller(min_interval_ms=100, default_interval_ms=500)
+
+        new_interval = poller.on_state_change("session-1", AttentionState.WORKING)
+
+        assert new_interval == 100
+        assert poller.get_interval_ms("session-1") == 100
+
+    def test_on_state_change_idle_sets_default(self):
+        """on_state_change with IDLE sets to default interval."""
+        poller = AdaptivePoller(
+            min_interval_ms=100,
+            max_interval_ms=2000,
+            default_interval_ms=500,
+        )
+
+        # First change to WORKING (min)
+        poller.on_state_change("session-1", AttentionState.WORKING)
+        assert poller.get_interval_ms("session-1") == 100
+
+        # Then change to IDLE (default)
+        new_interval = poller.on_state_change("session-1", AttentionState.IDLE)
+
+        assert new_interval == 500
+        assert poller.get_interval_ms("session-1") == 500
+
+    def test_reset_session_removes_interval(self):
+        """reset_session removes stored interval."""
+        poller = AdaptivePoller(default_interval_ms=500)
+
+        poller.on_output("session-1", had_output=True)
+        assert poller.get_interval_ms("session-1") == 250
+
+        poller.reset_session("session-1")
+
+        assert poller.get_interval_ms("session-1") == 500  # back to default
+
+    def test_reset_session_safe_for_unknown(self):
+        """reset_session is safe for unknown session."""
+        poller = AdaptivePoller()
+
+        # Should not raise
+        poller.reset_session("unknown")
+
+    def test_reset_all_clears_all_sessions(self):
+        """reset_all clears all stored intervals."""
+        poller = AdaptivePoller(default_interval_ms=500)
+
+        poller.on_output("session-1", had_output=True)
+        poller.on_output("session-2", had_output=True)
+        poller.on_output("session-3", had_output=True)
+
+        poller.reset_all()
+
+        assert poller.get_interval_ms("session-1") == 500
+        assert poller.get_interval_ms("session-2") == 500
+        assert poller.get_interval_ms("session-3") == 500
+
+    def test_session_intervals_property(self):
+        """session_intervals returns copy of all intervals."""
+        poller = AdaptivePoller(default_interval_ms=500)
+
+        poller.on_output("session-1", had_output=True)  # 250
+        poller.on_output("session-2", had_output=False)  # 750
+
+        intervals = poller.session_intervals
+
+        assert intervals == {"session-1": 250, "session-2": 750}
+
+    def test_session_intervals_returns_copy(self):
+        """session_intervals returns a copy, not the internal dict."""
+        poller = AdaptivePoller()
+
+        poller.on_output("session-1", had_output=True)
+
+        intervals = poller.session_intervals
+        intervals["session-2"] = 999
+
+        # Internal dict should not be modified
+        assert "session-2" not in poller.session_intervals
+
+    def test_independent_sessions(self):
+        """Sessions have independent intervals."""
+        poller = AdaptivePoller(
+            min_interval_ms=100,
+            max_interval_ms=2000,
+            default_interval_ms=500,
+        )
+
+        poller.on_output("session-1", had_output=True)  # 250
+        poller.on_output("session-2", had_output=False)  # 750
+        poller.on_state_change("session-3", AttentionState.WAITING)  # 2000
+
+        assert poller.get_interval_ms("session-1") == 250
+        assert poller.get_interval_ms("session-2") == 750
+        assert poller.get_interval_ms("session-3") == 2000
+
+
+class TestSessionMonitorAdaptivePolling:
+    """Test SessionMonitor adaptive polling integration."""
+
+    def make_mock_controller(self):
+        """Create a mock controller."""
+        controller = MagicMock()
+        controller.app = MagicMock()
+        return controller
+
+    def make_mock_spawner(self, sessions=None):
+        """Create a mock spawner with optional sessions."""
+        spawner = MagicMock()
+        spawner.managed_sessions = sessions or {}
+        return spawner
+
+    def make_session(self, session_id="session-1"):
+        """Create a ManagedSession for testing."""
+        return ManagedSession(
+            id=session_id,
+            template_id="test-template",
+            project_id="test-project",
+            tab_id="tab-1",
+        )
+
+    def test_monitor_has_adaptive_poller(self):
+        """SessionMonitor has an AdaptivePoller."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        assert hasattr(monitor, "_adaptive_poller")
+        assert isinstance(monitor._adaptive_poller, AdaptivePoller)
+
+    def test_monitor_exposes_adaptive_poller(self):
+        """SessionMonitor exposes adaptive_poller via property."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        assert monitor.adaptive_poller is monitor._adaptive_poller
+
+    def test_adaptive_polling_disabled_by_default(self):
+        """Adaptive polling is disabled by default."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        assert monitor.is_adaptive_polling_enabled is False
+
+    def test_adaptive_polling_enabled_via_config(self):
+        """Adaptive polling can be enabled via config."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        config = MonitorConfig(adaptive_polling_enabled=True)
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        assert monitor.is_adaptive_polling_enabled is True
+
+    def test_adaptive_poller_uses_config_values(self):
+        """AdaptivePoller uses config values."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        config = MonitorConfig(
+            adaptive_min_interval_ms=50,
+            adaptive_max_interval_ms=3000,
+            adaptive_default_interval_ms=1000,
+        )
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        poller = monitor.adaptive_poller
+        assert poller.min_interval_ms == 50
+        assert poller.max_interval_ms == 3000
+        assert poller.default_interval_ms == 1000
+
+    def test_get_session_poll_interval_without_adaptive(self):
+        """get_session_poll_interval returns fixed interval when disabled."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        config = MonitorConfig(
+            polling_interval_ms=1000,
+            adaptive_polling_enabled=False,
+        )
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        interval = monitor.get_session_poll_interval("session-1")
+
+        assert interval == 1.0
+
+    def test_get_session_poll_interval_with_adaptive(self):
+        """get_session_poll_interval returns adaptive interval when enabled."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        config = MonitorConfig(
+            polling_interval_ms=1000,
+            adaptive_polling_enabled=True,
+            adaptive_default_interval_ms=500,
+        )
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        interval = monitor.get_session_poll_interval("session-1")
+
+        assert interval == 0.5
+
+    def test_clear_session_resets_adaptive_poller(self):
+        """clear_session resets adaptive poller for that session."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        config = MonitorConfig(
+            adaptive_polling_enabled=True,
+            adaptive_default_interval_ms=500,
+        )
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        # Change the interval
+        monitor._adaptive_poller.on_output("session-1", had_output=True)
+        assert monitor._adaptive_poller.get_interval_ms("session-1") == 250
+
+        # Clear the session
+        monitor.clear_session("session-1")
+
+        # Should be back to default
+        assert monitor._adaptive_poller.get_interval_ms("session-1") == 500
+
+    def test_clear_all_resets_adaptive_poller(self):
+        """clear_all resets all adaptive poller intervals."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        config = MonitorConfig(
+            adaptive_polling_enabled=True,
+            adaptive_default_interval_ms=500,
+        )
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        # Change intervals for multiple sessions
+        monitor._adaptive_poller.on_output("session-1", had_output=True)
+        monitor._adaptive_poller.on_output("session-2", had_output=True)
+
+        # Clear all
+        monitor.clear_all()
+
+        # All should be back to default
+        assert monitor._adaptive_poller.get_interval_ms("session-1") == 500
+        assert monitor._adaptive_poller.get_interval_ms("session-2") == 500
+
+    @pytest.mark.asyncio
+    async def test_poll_updates_adaptive_poller_on_output(self):
+        """Poll updates adaptive poller when output detected.
+
+        Note: When new output is detected:
+        1. on_output(had_output=True) is called, decreasing interval
+        2. Attention state detection runs
+        3. If state changes (e.g., to WORKING), on_state_change is called
+
+        So the final interval depends on both the output and state change.
+        """
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        # Output that ends with shell prompt (detected as IDLE)
+        # This way the state stays IDLE and doesn't trigger on_state_change
+        mock_iterm_session.async_get_contents = AsyncMock(return_value="Some output\n$ ")
+        controller.app.async_get_session_by_id = AsyncMock(
+            return_value=mock_iterm_session
+        )
+
+        config = MonitorConfig(
+            adaptive_polling_enabled=True,
+            adaptive_default_interval_ms=500,
+        )
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        await monitor.poll_once()
+
+        # Should have decreased interval (output was detected)
+        # State stays IDLE so no state change adjustment
+        assert monitor._adaptive_poller.get_interval_ms("session-1") == 250
+
+    @pytest.mark.asyncio
+    async def test_poll_updates_adaptive_poller_on_no_change(self):
+        """Poll updates adaptive poller when no output change."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        # Output that ends with shell prompt (detected as IDLE, no state change)
+        mock_iterm_session.async_get_contents = AsyncMock(return_value="Output\n$ ")
+        controller.app.async_get_session_by_id = AsyncMock(
+            return_value=mock_iterm_session
+        )
+
+        config = MonitorConfig(
+            adaptive_polling_enabled=True,
+            adaptive_default_interval_ms=500,
+            throttle_interval_ms=1,
+        )
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        # First poll - new output, state stays IDLE
+        await monitor.poll_once()
+        assert monitor._adaptive_poller.get_interval_ms("session-1") == 250
+
+        # Wait for throttle
+        await asyncio.sleep(0.01)
+
+        # Second poll - same output (cached)
+        await monitor.poll_once()
+        # Should have increased interval (no change)
+        assert monitor._adaptive_poller.get_interval_ms("session-1") == 375  # 250 * 1.5
+
+    @pytest.mark.asyncio
+    async def test_poll_updates_adaptive_poller_on_state_change(self):
+        """Poll updates adaptive poller when attention state changes."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        # Output that triggers WAITING state
+        mock_iterm_session.async_get_contents = AsyncMock(
+            return_value="Should I proceed?"
+        )
+        controller.app.async_get_session_by_id = AsyncMock(
+            return_value=mock_iterm_session
+        )
+
+        config = MonitorConfig(
+            adaptive_polling_enabled=True,
+            adaptive_min_interval_ms=100,
+            adaptive_max_interval_ms=2000,
+            adaptive_default_interval_ms=500,
+        )
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        await monitor.poll_once()
+
+        # Should be at max interval (WAITING state)
+        assert monitor._adaptive_poller.get_interval_ms("session-1") == 2000
+
+    @pytest.mark.asyncio
+    async def test_poll_no_adaptive_update_when_disabled(self):
+        """Poll does not update adaptive poller when disabled."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(return_value="New output")
+        controller.app.async_get_session_by_id = AsyncMock(
+            return_value=mock_iterm_session
+        )
+
+        config = MonitorConfig(
+            adaptive_polling_enabled=False,  # Disabled
+            adaptive_default_interval_ms=500,
+        )
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        await monitor.poll_once()
+
+        # Should still be at default (not updated)
+        assert monitor._adaptive_poller.get_interval_ms("session-1") == 500
+
+    def test_config_includes_adaptive_settings(self):
+        """MonitorConfig includes adaptive polling settings."""
+        config = MonitorConfig()
+
+        assert hasattr(config, "adaptive_polling_enabled")
+        assert hasattr(config, "adaptive_min_interval_ms")
+        assert hasattr(config, "adaptive_max_interval_ms")
+        assert hasattr(config, "adaptive_default_interval_ms")
+
+    def test_config_adaptive_defaults(self):
+        """MonitorConfig has correct adaptive defaults."""
+        config = MonitorConfig()
+
+        assert config.adaptive_polling_enabled is False
+        assert config.adaptive_min_interval_ms == 100
+        assert config.adaptive_max_interval_ms == 2000
+        assert config.adaptive_default_interval_ms == 500

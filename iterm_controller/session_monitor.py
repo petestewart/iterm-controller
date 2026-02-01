@@ -277,6 +277,131 @@ class OutputThrottle:
 
 
 # =============================================================================
+# Adaptive Poller
+# =============================================================================
+
+
+class AdaptivePoller:
+    """Adjusts polling rate based on session activity.
+
+    The adaptive poller dynamically adjusts polling intervals per-session:
+    - When output is detected, the interval decreases (faster polling)
+    - When no output is detected, the interval increases (slower polling)
+    - On attention state changes, interval adjusts based on the new state:
+      - WAITING: slow down (user needs to respond)
+      - WORKING: speed up (catch changes quickly)
+      - IDLE: return to default
+
+    This balances responsiveness with resource efficiency.
+    """
+
+    def __init__(
+        self,
+        min_interval_ms: int = 100,
+        max_interval_ms: int = 2000,
+        default_interval_ms: int = 500,
+    ) -> None:
+        """Initialize the adaptive poller.
+
+        Args:
+            min_interval_ms: Minimum polling interval (fastest rate).
+            max_interval_ms: Maximum polling interval (slowest rate).
+            default_interval_ms: Default interval for new sessions.
+        """
+        self.min_interval_ms = min_interval_ms
+        self.max_interval_ms = max_interval_ms
+        self.default_interval_ms = default_interval_ms
+        self._session_intervals: dict[str, int] = {}
+
+    def get_interval_ms(self, session_id: str) -> int:
+        """Get polling interval for a session in milliseconds.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            The polling interval in milliseconds.
+        """
+        return self._session_intervals.get(session_id, self.default_interval_ms)
+
+    def get_interval(self, session_id: str) -> float:
+        """Get polling interval for a session in seconds.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            The polling interval in seconds.
+        """
+        return self.get_interval_ms(session_id) / 1000
+
+    def on_output(self, session_id: str, had_output: bool) -> int:
+        """Adjust polling based on output activity.
+
+        When output is detected, increase polling rate (decrease interval).
+        When no output, decrease polling rate (increase interval).
+
+        Args:
+            session_id: The session ID.
+            had_output: Whether new output was detected.
+
+        Returns:
+            The new polling interval in milliseconds.
+        """
+        current = self.get_interval_ms(session_id)
+
+        if had_output:
+            # Increase polling rate (halve the interval)
+            new_interval = max(self.min_interval_ms, current // 2)
+        else:
+            # Decrease polling rate (increase by 1.5x)
+            new_interval = min(self.max_interval_ms, int(current * 1.5))
+
+        self._session_intervals[session_id] = new_interval
+        return new_interval
+
+    def on_state_change(self, session_id: str, new_state: AttentionState) -> int:
+        """Adjust polling based on attention state change.
+
+        Args:
+            session_id: The session ID.
+            new_state: The new attention state.
+
+        Returns:
+            The new polling interval in milliseconds.
+        """
+        if new_state == AttentionState.WAITING:
+            # User needs to respond - slow down polling
+            new_interval = self.max_interval_ms
+        elif new_state == AttentionState.WORKING:
+            # Session is active - speed up to catch changes
+            new_interval = self.min_interval_ms
+        else:
+            # IDLE - return to default
+            new_interval = self.default_interval_ms
+
+        self._session_intervals[session_id] = new_interval
+        return new_interval
+
+    def reset_session(self, session_id: str) -> None:
+        """Reset interval for a session to default.
+
+        Args:
+            session_id: The session ID.
+        """
+        self._session_intervals.pop(session_id, None)
+
+    def reset_all(self) -> None:
+        """Reset all session intervals to default."""
+        self._session_intervals.clear()
+
+    @property
+    def session_intervals(self) -> dict[str, int]:
+        """Get a copy of all session intervals."""
+        return dict(self._session_intervals)
+
+
+# =============================================================================
 # Batch Output Reader
 # =============================================================================
 
@@ -442,6 +567,12 @@ class MonitorConfig:
     throttle_interval_ms: int = 100
     cache_max_entries: int = 100
 
+    # Adaptive polling settings
+    adaptive_polling_enabled: bool = False
+    adaptive_min_interval_ms: int = 100
+    adaptive_max_interval_ms: int = 2000
+    adaptive_default_interval_ms: int = 500
+
 
 OutputCallback = Callable[["ManagedSession", str, bool], None]
 AttentionStateCallback = Callable[["ManagedSession", AttentionState, AttentionState], None]
@@ -489,6 +620,11 @@ class SessionMonitor:
         self._cache = OutputCache(self.config.cache_max_entries)
         self._throttle = OutputThrottle(self.config.throttle_interval_ms)
         self._detector = AttentionDetector()
+        self._adaptive_poller = AdaptivePoller(
+            min_interval_ms=self.config.adaptive_min_interval_ms,
+            max_interval_ms=self.config.adaptive_max_interval_ms,
+            default_interval_ms=self.config.adaptive_default_interval_ms,
+        )
 
         # State
         self._running = False
@@ -541,9 +677,11 @@ class SessionMonitor:
         return await self._poll_all_sessions()
 
     async def _poll_loop(self) -> None:
-        """Main polling loop."""
-        interval = self.config.polling_interval_ms / 1000
+        """Main polling loop.
 
+        When adaptive polling is enabled, the loop uses the minimum interval
+        from all active sessions. Otherwise, it uses the fixed polling interval.
+        """
         while self._running:
             try:
                 await self._poll_all_sessions()
@@ -551,7 +689,32 @@ class SessionMonitor:
             except Exception as e:
                 logger.error(f"Error in poll loop: {e}")
 
+            # Determine sleep interval
+            interval = self._get_next_poll_interval()
             await asyncio.sleep(interval)
+
+    def _get_next_poll_interval(self) -> float:
+        """Get the next poll interval in seconds.
+
+        When adaptive polling is enabled, returns the minimum interval across
+        all managed sessions (to ensure responsive polling for active sessions).
+        Otherwise, returns the fixed polling interval.
+
+        Returns:
+            The interval in seconds to wait before the next poll.
+        """
+        if not self.config.adaptive_polling_enabled:
+            return self.config.polling_interval_ms / 1000
+
+        sessions = list(self.spawner.managed_sessions.values())
+        if not sessions:
+            return self.config.polling_interval_ms / 1000
+
+        # Use minimum interval across all sessions for responsiveness
+        min_interval_ms = min(
+            self._adaptive_poller.get_interval_ms(s.id) for s in sessions
+        )
+        return min_interval_ms / 1000
 
     async def _poll_all_sessions(self) -> dict[str, OutputChange]:
         """Poll output from all managed sessions.
@@ -605,6 +768,9 @@ class SessionMonitor:
             if cached == output:
                 # No change since last poll
                 self._throttle.mark_processed(session.id)
+                # Update adaptive polling to slow down
+                if self.config.adaptive_polling_enabled:
+                    self._adaptive_poller.on_output(session.id, had_output=False)
                 continue
 
             # Update cache
@@ -620,6 +786,10 @@ class SessionMonitor:
                 session.last_output = change.new_output
                 session.last_activity = datetime.now()
 
+                # Update adaptive polling for output activity
+                if self.config.adaptive_polling_enabled:
+                    self._adaptive_poller.on_output(session.id, had_output=True)
+
                 # Detect attention state
                 old_state = session.attention_state
                 new_state = self._detector.determine_state(session, change.new_output)
@@ -629,6 +799,10 @@ class SessionMonitor:
                     logger.debug(
                         f"Session {session.id} attention state: {old_state.value} -> {new_state.value}"
                     )
+
+                    # Update adaptive polling for state change
+                    if self.config.adaptive_polling_enabled:
+                        self._adaptive_poller.on_state_change(session.id, new_state)
 
                     # Invoke attention state callback
                     if self.on_attention_state_change:
@@ -643,6 +817,10 @@ class SessionMonitor:
                         self.on_output(session, change.new_output, True)
                     except Exception as e:
                         logger.error(f"Error in output callback: {e}")
+            else:
+                # No output change - update adaptive polling for idle
+                if self.config.adaptive_polling_enabled:
+                    self._adaptive_poller.on_output(session.id, had_output=False)
 
         return changes
 
@@ -654,12 +832,30 @@ class SessionMonitor:
         self._cache.invalidate(session_id)
         self._processor.clear(session_id)
         self._throttle.clear(session_id)
+        self._adaptive_poller.reset_session(session_id)
 
     def clear_all(self) -> None:
         """Clear all cached state."""
         self._cache.clear()
         self._processor.clear()
         self._throttle.clear()
+        self._adaptive_poller.reset_all()
+
+    def get_session_poll_interval(self, session_id: str) -> float:
+        """Get the current polling interval for a session.
+
+        When adaptive polling is enabled, returns the session's dynamic
+        interval. Otherwise, returns the fixed polling interval.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            The polling interval in seconds.
+        """
+        if self.config.adaptive_polling_enabled:
+            return self._adaptive_poller.get_interval(session_id)
+        return self.config.polling_interval_ms / 1000
 
     def detect_attention_state(self, session: ManagedSession, output: str) -> AttentionState:
         """Manually detect attention state for output.
@@ -679,6 +875,16 @@ class SessionMonitor:
     def detector(self) -> AttentionDetector:
         """Access the attention detector for advanced use."""
         return self._detector
+
+    @property
+    def adaptive_poller(self) -> AdaptivePoller:
+        """Access the adaptive poller for advanced use."""
+        return self._adaptive_poller
+
+    @property
+    def is_adaptive_polling_enabled(self) -> bool:
+        """Check if adaptive polling is enabled."""
+        return self.config.adaptive_polling_enabled
 
 
 # =============================================================================

@@ -91,7 +91,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Graceful session shutdown with SIGTERM, timeout, and SIGKILL fallback
   - Acceptance: Sessions close cleanly, forced close works after timeout
 
-- [ ] **Add adaptive polling** `[pending]`
+- [x] **Add adaptive polling** `[complete]`
   - Spec: specs/session-monitor.md#adaptive-polling
   - Scope: Adjust polling rate based on session activity (faster when active, slower when idle)
   - Acceptance: Polling interval adapts dynamically, no performance degradation
