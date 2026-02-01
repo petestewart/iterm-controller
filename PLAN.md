@@ -204,7 +204,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 7: GitHub Integration
 
-- [ ] **Implement gh CLI wrapper** `[pending]`
+- [x] **Implement gh CLI wrapper** `[complete]`
   - Spec: specs/github.md
   - Scope: Check availability, fetch branch sync status, PR info
   - Acceptance: Graceful degradation when gh unavailable or unauthenticated

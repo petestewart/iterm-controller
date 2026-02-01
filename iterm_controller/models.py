@@ -332,6 +332,8 @@ class GitHubStatus:
 
     # Cached state
     last_updated: datetime | None = None
+    rate_limited: bool = False
+    offline: bool = False
 
 
 # =============================================================================
