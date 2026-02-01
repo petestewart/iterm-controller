@@ -103,7 +103,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 3: PLAN.md Integration
 
-- [ ] **Build PLAN.md parser** `[pending]`
+- [x] **Build PLAN.md parser** `[complete]`
   - Spec: specs/plan-parser.md#parsing
   - Scope: Parse markdown task lists with metadata (Status, Spec, Session, Depends)
   - Acceptance: Extracts phases, tasks, statuses, and dependencies
