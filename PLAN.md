@@ -736,11 +736,12 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Acceptance: No dead code for unused metrics
   - Result: Removed ErrorStats class, record_error is now a no-op for backward compatibility
 
-- [ ] **Remove unused window layout capture** `[pending]`
+- [x] **Remove unused window layout capture** `[complete]`
   - Scope: Delete capture_current_layout and related methods
-  - Location: iterm_controller/iterm_api.py:1035-1207 (172 lines)
+  - Location: iterm_controller/iterm/layout_manager.py (was 273 lines, now 93 lines)
   - Reason: Never called from production code
   - Acceptance: Only spawn methods remain in layouts
+  - Result: Removed capture_current_layout, capture_and_save, _capture_tab, _capture_session, _infer_split_direction and related tests (180 lines removed)
 
 - [ ] **Simplify auto_mode.py class structure** `[pending]`
   - Scope: Consolidate 4 classes into single AutoMode class
