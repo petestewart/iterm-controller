@@ -775,11 +775,12 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Acceptance: Consistent import style across codebase
   - Result: Merged two `from textual.widgets import` lines into single line with all imports
 
-- [ ] **Use singleton parsers in MakeTestParser** `[pending]`
+- [x] **Use singleton parsers in MakeTestParser** `[complete]`
   - Scope: Avoid creating parser instances on every parse call
   - Location: iterm_controller/test_output_parser.py:478-506
   - Fix: Use class-level singleton parsers or parser pool
   - Acceptance: Reduced object allocation overhead
+  - Result: Added class-level singleton parsers to MakeTestParser and OutputParserRegistry; parsers are now initialized once and reused across all parse calls
 
 - [ ] **Address TODO comments** `[pending]`
   - Scope: Implement or remove 2 remaining TODO comments

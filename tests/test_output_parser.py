@@ -6,6 +6,7 @@ from datetime import datetime
 from iterm_controller.test_output_parser import (
     CargoTestParser,
     GoTestParser,
+    MakeTestParser,
     NpmTestParser,
     OutputParserRegistry,
     PytestParser,
@@ -355,6 +356,54 @@ FAIL	github.com/example/pkg	0.10s
 # =============================================================================
 
 
+class TestMakeTestParser:
+    """Tests for the MakeTestParser singleton behavior."""
+
+    def test_singleton_parsers_reused(self):
+        """MakeTestParser should reuse singleton parser instances."""
+        parser = MakeTestParser()
+
+        # Get parsers twice
+        parsers1 = parser._get_parsers()
+        parsers2 = parser._get_parsers()
+
+        # Should be the same list with same instances
+        assert parsers1 == parsers2
+        for p1, p2 in zip(parsers1, parsers2):
+            assert p1 is p2
+
+    def test_delegates_to_detected_parser(self):
+        """MakeTestParser should delegate to detected parser."""
+        parser = MakeTestParser()
+
+        # Pytest output embedded in make output
+        output = """
+make test
+pytest tests/
+======= 3 passed in 0.50s =======
+make: leaving directory
+"""
+        results = parser.parse(output)
+        assert results.passed == 3
+        assert results.duration_seconds == 0.50
+
+    def test_fallback_counting(self):
+        """MakeTestParser should fallback to counting patterns."""
+        parser = MakeTestParser()
+        output = """
+make test
+Running tests...
+PASS: test_one
+PASS: test_two
+FAIL: test_three
+OK
+make: done
+"""
+        results = parser.parse(output)
+        # Fallback counts PASS, OK, etc.
+        assert results.passed > 0
+
+
 class TestParserRegistry:
     """Tests for the parser registry."""
 
@@ -383,6 +432,34 @@ class TestParserRegistry:
         output = "5 passing"
         results = parse_test_output(output, "npm test")
         assert results.test_command == "npm test"
+
+    def test_singleton_parsers_reused(self):
+        """Registry should reuse singleton parser instances."""
+        registry = OutputParserRegistry()
+
+        # Parsers should be initialized once and reused
+        assert registry._pytest_parser is not None
+        assert registry._npm_parser is not None
+        assert registry._cargo_parser is not None
+        assert registry._go_parser is not None
+        assert registry._make_parser is not None
+
+        # Command parsers dict should reference the same instances
+        assert registry._command_parsers["pytest"] is registry._pytest_parser
+        assert registry._command_parsers["npm"] is registry._npm_parser
+        assert registry._command_parsers["cargo"] is registry._cargo_parser
+        assert registry._command_parsers["go test"] is registry._go_parser
+
+    def test_parsers_list_uses_instances(self):
+        """Registry's parser list should use singleton instances."""
+        registry = OutputParserRegistry()
+
+        # All parsers in list should be the singleton instances
+        assert registry._pytest_parser in registry._parsers
+        assert registry._npm_parser in registry._parsers
+        assert registry._cargo_parser in registry._parsers
+        assert registry._go_parser in registry._parsers
+        assert registry._make_parser in registry._parsers
 
 
 # =============================================================================

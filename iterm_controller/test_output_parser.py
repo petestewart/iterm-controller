@@ -464,7 +464,27 @@ class MakeTestParser(TestOutputParser):
     """Parser for make test output.
 
     This is a generic fallback that tries to detect test patterns.
+    Uses class-level singleton parsers to avoid object allocation on each parse.
     """
+
+    # Class-level singleton parsers for reuse
+    _pytest_parser: PytestParser | None = None
+    _npm_parser: NpmTestParser | None = None
+    _cargo_parser: CargoTestParser | None = None
+    _go_parser: GoTestParser | None = None
+
+    @classmethod
+    def _get_parsers(cls) -> list[TestOutputParser]:
+        """Get singleton parser instances, creating them if needed."""
+        if cls._pytest_parser is None:
+            cls._pytest_parser = PytestParser()
+        if cls._npm_parser is None:
+            cls._npm_parser = NpmTestParser()
+        if cls._cargo_parser is None:
+            cls._cargo_parser = CargoTestParser()
+        if cls._go_parser is None:
+            cls._go_parser = GoTestParser()
+        return [cls._pytest_parser, cls._npm_parser, cls._cargo_parser, cls._go_parser]
 
     def can_parse(self, output: str) -> bool:
         """Check if output looks like make test output."""
@@ -475,14 +495,8 @@ class MakeTestParser(TestOutputParser):
         results = UnitTestResults(raw_output=output)
 
         # Try to detect which test framework is being used
-        parsers = [
-            PytestParser(),
-            NpmTestParser(),
-            CargoTestParser(),
-            GoTestParser(),
-        ]
-
-        for parser in parsers:
+        # Uses singleton parsers to avoid allocation overhead
+        for parser in self._get_parsers():
             if parser.can_parse(output):
                 return parser.parse(output)
 
@@ -510,17 +524,33 @@ class OutputParserRegistry:
     """Registry of test output parsers.
 
     Automatically selects the appropriate parser for given output.
+    Uses singleton parsers to avoid object allocation on each parse.
     """
 
     def __init__(self) -> None:
-        """Initialize with default parsers."""
+        """Initialize with default parsers as singletons."""
+        # Create parser instances once at initialization
+        self._pytest_parser = PytestParser()
+        self._npm_parser = NpmTestParser()
+        self._cargo_parser = CargoTestParser()
+        self._go_parser = GoTestParser()
+        self._make_parser = MakeTestParser()
+
         self._parsers: list[TestOutputParser] = [
-            PytestParser(),
-            NpmTestParser(),
-            CargoTestParser(),
-            GoTestParser(),
-            MakeTestParser(),
+            self._pytest_parser,
+            self._npm_parser,
+            self._cargo_parser,
+            self._go_parser,
+            self._make_parser,
         ]
+
+        # Map command keywords to parsers for fast lookup
+        self._command_parsers: dict[str, TestOutputParser] = {
+            "pytest": self._pytest_parser,
+            "npm": self._npm_parser,
+            "cargo": self._cargo_parser,
+            "go test": self._go_parser,
+        }
 
     def add_parser(self, parser: TestOutputParser) -> None:
         """Add a custom parser (inserted at the beginning for priority)."""
@@ -538,22 +568,11 @@ class OutputParserRegistry:
         """
         # Try to select parser based on command if provided
         if test_command:
-            if "pytest" in test_command:
-                results = PytestParser().parse(output)
-                results.test_command = test_command
-                return results
-            elif "npm" in test_command:
-                results = NpmTestParser().parse(output)
-                results.test_command = test_command
-                return results
-            elif "cargo" in test_command:
-                results = CargoTestParser().parse(output)
-                results.test_command = test_command
-                return results
-            elif "go test" in test_command:
-                results = GoTestParser().parse(output)
-                results.test_command = test_command
-                return results
+            for keyword, parser in self._command_parsers.items():
+                if keyword in test_command:
+                    results = parser.parse(output)
+                    results.test_command = test_command
+                    return results
 
         # Try each parser in order
         for parser in self._parsers:
