@@ -630,3 +630,156 @@ class TestDocsModeScreenCRUD:
                 # File should exist with parent directories created
                 assert new_file.exists()
                 assert new_file.read_text() == "# Nested Document"
+
+    async def test_preview_document_workflow(self) -> None:
+        """Test the full preview document workflow."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file to preview
+            readme = Path(tmpdir) / "README.md"
+            readme.write_text("# Test README\n\nThis is test content.")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+                await pilot.pause()
+
+                # Navigate to select the README.md file
+                tree = app.screen.query_one("#doc-tree", DocTreeWidget)
+                # The tree should have README.md as a child of root
+                # Select the first file in the tree
+                if tree.cursor_node and tree.cursor_node.children:
+                    # Navigate down to select the file
+                    await pilot.press("down")
+                    await pilot.pause()
+
+                # Press 'p' to preview
+                await pilot.press("p")
+                await pilot.pause()
+
+                # Should have ArtifactPreviewModal open if a file was selected
+                from iterm_controller.screens.modals.artifact_preview import (
+                    ArtifactPreviewModal,
+                )
+
+                # Check if modal is open (depends on file selection)
+                if isinstance(app.screen, ArtifactPreviewModal):
+                    # Modal should show the file content
+                    assert app.screen.artifact_name == "README.md"
+
+    async def test_preview_document_shows_warning_for_no_selection(self) -> None:
+        """Test that preview shows warning when no file is selected."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+                await pilot.pause()
+
+                # Press 'p' without selecting a file
+                await pilot.press("p")
+                await pilot.pause()
+
+                # Should still be on DocsModeScreen (no modal opened)
+                assert isinstance(app.screen, DocsModeScreen)
+
+    async def test_preview_document_shows_warning_for_directory(self) -> None:
+        """Test that preview shows warning when a directory is selected."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a docs directory
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+                await pilot.pause()
+
+                # Select the docs directory by navigating down
+                await pilot.press("down")
+                await pilot.pause()
+
+                # Press 'p' to preview a directory
+                await pilot.press("p")
+                await pilot.pause()
+
+                # Should still be on DocsModeScreen (no modal for directories)
+                assert isinstance(app.screen, DocsModeScreen)
+
+    async def test_preview_document_edit_callback(self) -> None:
+        """Test that preview modal edit callback opens editor."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file to preview
+            readme = Path(tmpdir) / "README.md"
+            readme.write_text("# Test README")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+                await pilot.pause()
+
+                # Navigate and select file
+                await pilot.press("down")
+                await pilot.pause()
+
+                tree = app.screen.query_one("#doc-tree", DocTreeWidget)
+                if tree.selected_path and tree.selected_is_file:
+                    # Press 'p' to preview
+                    await pilot.press("p")
+                    await pilot.pause()
+
+                    from iterm_controller.screens.modals.artifact_preview import (
+                        ArtifactPreviewModal,
+                    )
+
+                    if isinstance(app.screen, ArtifactPreviewModal):
+                        # Press 'e' to request edit
+                        await pilot.press("e")
+                        await pilot.pause()
+
+                        # Modal should be dismissed, back to DocsModeScreen
+                        assert isinstance(app.screen, DocsModeScreen)

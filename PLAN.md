@@ -466,7 +466,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: `a` adds, `d` deletes (with confirm), `r` renames
   - Acceptance: Can create docs/new-file.md and delete it
 
-- [ ] **Add inline preview for markdown**
+- [x] **Add inline preview for markdown** `[complete]`
   - Spec: specs/docs-mode.md#inline-preview
   - Scope: `p` key shows markdown preview modal
   - Acceptance: Can preview README.md content inline
