@@ -14,6 +14,7 @@ from iterm_controller.session_monitor import (
     CLAUDE_WAITING_PATTERNS,
     CLAUDE_WORKING_PATTERNS,
     CONFIRMATION_PATTERNS,
+    MAX_OUTPUT_BUFFER_BYTES,
     MetricsCollector,
     MonitorConfig,
     MonitorMetrics,
@@ -24,6 +25,7 @@ from iterm_controller.session_monitor import (
     SessionMonitor,
     SessionNotFoundError,
     SHELL_PROMPT_PATTERNS,
+    truncate_output,
 )
 
 
@@ -1919,3 +1921,286 @@ class TestSessionMonitorAdaptivePolling:
         assert config.adaptive_min_interval_ms == 100
         assert config.adaptive_max_interval_ms == 2000
         assert config.adaptive_default_interval_ms == 500
+
+
+class TestTruncateOutput:
+    """Test truncate_output function for buffer size limiting."""
+
+    def test_short_output_unchanged(self):
+        """Output shorter than limit is returned unchanged."""
+        from iterm_controller.session_monitor import truncate_output
+
+        short_output = "Hello World"
+        result = truncate_output(short_output, max_bytes=1000)
+
+        assert result == short_output
+
+    def test_exactly_at_limit_unchanged(self):
+        """Output exactly at limit is returned unchanged."""
+        from iterm_controller.session_monitor import truncate_output
+
+        # 10 ASCII characters = 10 bytes
+        output = "0123456789"
+        result = truncate_output(output, max_bytes=10)
+
+        assert result == output
+
+    def test_output_over_limit_truncated(self):
+        """Output over limit is truncated from the beginning."""
+        from iterm_controller.session_monitor import truncate_output
+
+        output = "AAAA" + "BBBB"  # 8 bytes total
+        result = truncate_output(output, max_bytes=4)
+
+        # Should keep the end (most recent output)
+        assert result == "BBBB"
+
+    def test_truncation_preserves_end(self):
+        """Truncation preserves the end of the output (most recent)."""
+        from iterm_controller.session_monitor import truncate_output
+
+        output = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5"
+        result = truncate_output(output, max_bytes=20)
+
+        # Should keep the end, most recent lines
+        assert "Line 5" in result
+
+    def test_truncation_tries_to_start_at_newline(self):
+        """Truncation tries to start at a newline for cleaner output."""
+        from iterm_controller.session_monitor import truncate_output
+
+        # Create output where truncation point is in middle of a line
+        output = "X" * 10 + "\nLine after newline"
+        result = truncate_output(output, max_bytes=25)
+
+        # Should try to start at newline if it's in the first quarter
+        # The exact behavior depends on where the newline falls
+        assert len(result.encode("utf-8")) <= 25
+
+    def test_handles_multibyte_characters(self):
+        """Truncation handles multi-byte UTF-8 characters correctly."""
+        from iterm_controller.session_monitor import truncate_output
+
+        # Each emoji is 4 bytes in UTF-8
+        output = "🎉🎊🎈🎁"  # 16 bytes
+        result = truncate_output(output, max_bytes=8)
+
+        # Should have 2 emojis (8 bytes)
+        assert len(result.encode("utf-8")) <= 8
+        # Should not have broken characters
+        result.encode("utf-8")  # Should not raise
+
+    def test_handles_incomplete_utf8_at_boundary(self):
+        """Truncation handles incomplete UTF-8 sequences at truncation point."""
+        from iterm_controller.session_monitor import truncate_output
+
+        # Mix of ASCII and multi-byte to create potential boundary issues
+        output = "AAA" + "日本語" + "BBB"
+        result = truncate_output(output, max_bytes=10)
+
+        # Should be valid UTF-8 regardless of where truncation happens
+        result.encode("utf-8")  # Should not raise
+        assert len(result.encode("utf-8")) <= 10
+
+    def test_empty_output(self):
+        """Empty output returns empty string."""
+        from iterm_controller.session_monitor import truncate_output
+
+        result = truncate_output("", max_bytes=100)
+
+        assert result == ""
+
+    def test_default_max_bytes(self):
+        """Default max_bytes is MAX_OUTPUT_BUFFER_BYTES."""
+        from iterm_controller.session_monitor import (
+            MAX_OUTPUT_BUFFER_BYTES,
+            truncate_output,
+        )
+
+        # Short output should be unchanged with default
+        short_output = "Hello"
+        result = truncate_output(short_output)
+        assert result == short_output
+
+        # Large output should be truncated with default
+        large_output = "X" * (MAX_OUTPUT_BUFFER_BYTES + 1000)
+        result = truncate_output(large_output)
+        assert len(result.encode("utf-8")) <= MAX_OUTPUT_BUFFER_BYTES
+
+
+class TestOutputProcessorBufferLimit:
+    """Test OutputProcessor buffer size limiting."""
+
+    def test_default_buffer_limit(self):
+        """OutputProcessor uses MAX_OUTPUT_BUFFER_BYTES by default."""
+        from iterm_controller.session_monitor import (
+            MAX_OUTPUT_BUFFER_BYTES,
+            OutputProcessor,
+        )
+
+        processor = OutputProcessor()
+        assert processor._max_buffer_bytes == MAX_OUTPUT_BUFFER_BYTES
+
+    def test_custom_buffer_limit(self):
+        """OutputProcessor accepts custom buffer limit."""
+        processor = OutputProcessor(max_buffer_bytes=1000)
+        assert processor._max_buffer_bytes == 1000
+
+    def test_stored_output_truncated(self):
+        """Stored output is truncated to buffer limit."""
+        processor = OutputProcessor(max_buffer_bytes=50)
+
+        # First call stores truncated output
+        large_output = "X" * 100
+        processor.extract_new_output("session-1", large_output)
+
+        # Check stored output is truncated
+        stored = processor._last_output.get("session-1")
+        assert stored is not None
+        assert len(stored.encode("utf-8")) <= 50
+
+    def test_new_output_returned_unchanged(self):
+        """New output in change result is unchanged (for processing)."""
+        processor = OutputProcessor(max_buffer_bytes=50)
+
+        # Large output
+        large_output = "X" * 100
+        change = processor.extract_new_output("session-1", large_output)
+
+        # The new_output field should have the full output for processing
+        # (attention detection needs full output)
+        assert change.new_output == large_output
+
+    def test_multiple_updates_respect_limit(self):
+        """Multiple updates continue to respect buffer limit."""
+        processor = OutputProcessor(max_buffer_bytes=100)
+
+        for i in range(10):
+            output = f"Output batch {i}: " + "X" * 50
+            processor.extract_new_output("session-1", output)
+
+        # Stored output should stay within limit
+        stored = processor._last_output.get("session-1")
+        assert len(stored.encode("utf-8")) <= 100
+
+
+class TestMonitorConfigBufferLimit:
+    """Test MonitorConfig buffer limit setting."""
+
+    def test_default_buffer_limit(self):
+        """MonitorConfig has correct default buffer limit."""
+        from iterm_controller.session_monitor import MAX_OUTPUT_BUFFER_BYTES
+
+        config = MonitorConfig()
+        assert config.max_output_buffer_bytes == MAX_OUTPUT_BUFFER_BYTES
+
+    def test_custom_buffer_limit(self):
+        """MonitorConfig accepts custom buffer limit."""
+        config = MonitorConfig(max_output_buffer_bytes=50000)
+        assert config.max_output_buffer_bytes == 50000
+
+
+class TestSessionMonitorBufferLimit:
+    """Test SessionMonitor buffer limiting integration."""
+
+    def make_mock_controller(self):
+        """Create a mock controller."""
+        controller = MagicMock()
+        controller.app = MagicMock()
+        return controller
+
+    def make_mock_spawner(self, sessions=None):
+        """Create a mock spawner with optional sessions."""
+        spawner = MagicMock()
+        spawner.managed_sessions = sessions or {}
+        return spawner
+
+    def make_session(self, session_id="session-1"):
+        """Create a ManagedSession for testing."""
+        return ManagedSession(
+            id=session_id,
+            template_id="test-template",
+            project_id="test-project",
+            tab_id="tab-1",
+        )
+
+    def test_monitor_uses_config_buffer_limit(self):
+        """SessionMonitor passes buffer limit to OutputProcessor."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        config = MonitorConfig(max_output_buffer_bytes=5000)
+
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        assert monitor._processor._max_buffer_bytes == 5000
+
+    @pytest.mark.asyncio
+    async def test_poll_truncates_session_last_output(self):
+        """Poll truncates session.last_output to buffer limit."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        # Create large output
+        large_output = "X" * 1000
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(return_value=large_output)
+        controller.app.async_get_session_by_id = AsyncMock(
+            return_value=mock_iterm_session
+        )
+
+        config = MonitorConfig(max_output_buffer_bytes=100)
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        await monitor.poll_once()
+
+        # session.last_output should be truncated
+        assert len(session.last_output.encode("utf-8")) <= 100
+
+    @pytest.mark.asyncio
+    async def test_poll_truncates_preserves_recent_output(self):
+        """Poll truncation preserves the most recent output."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        # Create output with identifiable recent portion
+        old_output = "A" * 500
+        recent_output = "RECENT_OUTPUT_HERE"
+        combined = old_output + recent_output
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(return_value=combined)
+        controller.app.async_get_session_by_id = AsyncMock(
+            return_value=mock_iterm_session
+        )
+
+        config = MonitorConfig(max_output_buffer_bytes=100)
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        await monitor.poll_once()
+
+        # Recent output should be preserved in truncated result
+        assert "RECENT_OUTPUT_HERE" in session.last_output
+
+
+class TestMaxOutputBufferConstant:
+    """Test MAX_OUTPUT_BUFFER_BYTES constant."""
+
+    def test_constant_value(self):
+        """MAX_OUTPUT_BUFFER_BYTES is 100KB."""
+        from iterm_controller.session_monitor import MAX_OUTPUT_BUFFER_BYTES
+
+        assert MAX_OUTPUT_BUFFER_BYTES == 100 * 1024  # 100KB
+
+    def test_constant_is_reasonable(self):
+        """MAX_OUTPUT_BUFFER_BYTES is a reasonable size."""
+        from iterm_controller.session_monitor import MAX_OUTPUT_BUFFER_BYTES
+
+        # Should be at least 10KB for useful output
+        assert MAX_OUTPUT_BUFFER_BYTES >= 10 * 1024
+        # Should be at most 1MB to prevent memory issues
+        assert MAX_OUTPUT_BUFFER_BYTES <= 1024 * 1024

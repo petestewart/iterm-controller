@@ -683,7 +683,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 24: Performance Optimizations (Important)
 
-- [ ] **Add output buffer size limit** `[pending]`
+- [x] **Add output buffer size limit** `[complete]`
   - Scope: Limit stored session output to prevent memory bloat
   - Location: iterm_controller/session_monitor.py:491-552
   - Fix: Add MAX_OUTPUT_BUFFER constant (100KB), truncate older output

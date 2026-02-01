@@ -23,6 +23,53 @@ logger = logging.getLogger(__name__)
 
 
 # =============================================================================
+# Buffer Size Limits
+# =============================================================================
+
+# Maximum size for stored session output (100KB)
+# This prevents memory bloat from long-running sessions
+MAX_OUTPUT_BUFFER_BYTES = 100 * 1024  # 100KB
+
+
+def truncate_output(output: str, max_bytes: int = MAX_OUTPUT_BUFFER_BYTES) -> str:
+    """Truncate output to stay within the buffer size limit.
+
+    Truncation is done from the beginning to preserve the most recent output,
+    which is more relevant for attention state detection.
+
+    Args:
+        output: The output string to truncate.
+        max_bytes: Maximum size in bytes.
+
+    Returns:
+        The truncated output string.
+    """
+    if len(output.encode("utf-8")) <= max_bytes:
+        return output
+
+    # Binary search for the right truncation point
+    # We want to keep the end of the string (most recent output)
+    encoded = output.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return output
+
+    # Truncate from the beginning
+    truncated_bytes = encoded[-max_bytes:]
+
+    # Decode, handling potential incomplete UTF-8 sequences at the start
+    # by using 'ignore' errors to skip incomplete characters
+    result = truncated_bytes.decode("utf-8", errors="ignore")
+
+    # Try to start at a newline for cleaner truncation
+    newline_idx = result.find("\n")
+    if newline_idx > 0 and newline_idx < len(result) // 4:
+        # Only skip to newline if it's in the first quarter
+        result = result[newline_idx + 1 :]
+
+    return result
+
+
+# =============================================================================
 # Attention Detection Patterns
 # =============================================================================
 
@@ -489,10 +536,15 @@ class OutputChange:
 
 
 class OutputProcessor:
-    """Processes session output and detects changes."""
+    """Processes session output and detects changes.
 
-    def __init__(self) -> None:
+    Stored output is truncated to MAX_OUTPUT_BUFFER_BYTES to prevent
+    memory bloat from long-running sessions.
+    """
+
+    def __init__(self, max_buffer_bytes: int = MAX_OUTPUT_BUFFER_BYTES) -> None:
         self._last_output: dict[str, str] = {}
+        self._max_buffer_bytes = max_buffer_bytes
 
     def extract_new_output(self, session_id: str, current_output: str) -> OutputChange:
         """Extract new output since last poll.
@@ -506,9 +558,12 @@ class OutputProcessor:
         """
         old_output = self._last_output.get(session_id)
 
+        # Truncate current output for storage (preserve recent content)
+        truncated_current = truncate_output(current_output, self._max_buffer_bytes)
+
         if old_output is None:
             # First time seeing this session
-            self._last_output[session_id] = current_output
+            self._last_output[session_id] = truncated_current
             return OutputChange(
                 session_id=session_id,
                 old_output=None,
@@ -516,7 +571,7 @@ class OutputProcessor:
                 changed=True,
             )
 
-        if old_output == current_output:
+        if old_output == truncated_current:
             # No change
             return OutputChange(
                 session_id=session_id,
@@ -536,7 +591,7 @@ class OutputProcessor:
             # Treat entire current output as new
             new_content = current_output
 
-        self._last_output[session_id] = current_output
+        self._last_output[session_id] = truncated_current
         return OutputChange(
             session_id=session_id,
             old_output=old_output,
@@ -566,6 +621,9 @@ class MonitorConfig:
     lines_to_read: int = 50
     throttle_interval_ms: int = 100
     cache_max_entries: int = 100
+
+    # Output buffer limit (prevents memory bloat from long-running sessions)
+    max_output_buffer_bytes: int = MAX_OUTPUT_BUFFER_BYTES
 
     # Adaptive polling settings
     adaptive_polling_enabled: bool = False
@@ -616,7 +674,7 @@ class SessionMonitor:
 
         # Components
         self._reader = BatchOutputReader(controller, self.config.lines_to_read)
-        self._processor = OutputProcessor()
+        self._processor = OutputProcessor(self.config.max_output_buffer_bytes)
         self._cache = OutputCache(self.config.cache_max_entries)
         self._throttle = OutputThrottle(self.config.throttle_interval_ms)
         self._detector = AttentionDetector()
@@ -782,8 +840,10 @@ class SessionMonitor:
 
             if change.changed:
                 changes[session.id] = change
-                # Update session state
-                session.last_output = change.new_output
+                # Update session state (truncate to prevent memory bloat)
+                session.last_output = truncate_output(
+                    change.new_output, self.config.max_output_buffer_bytes
+                )
                 session.last_activity = datetime.now()
 
                 # Update adaptive polling for output activity
