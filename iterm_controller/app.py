@@ -1,0 +1,1 @@
+"""Main Textual app class."""

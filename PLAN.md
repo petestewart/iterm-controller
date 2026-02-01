@@ -29,7 +29,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 1: Project Foundation
 
-- [ ] **Set up Python package structure** `[pending]`
+- [x] **Set up Python package structure** `[complete]`
   - Spec: specs/README.md#package-structure
   - Scope: Create iterm_controller package with __init__.py, __main__.py, empty module files
   - Acceptance: `python -m iterm_controller` runs without import errors
