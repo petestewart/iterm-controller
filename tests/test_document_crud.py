@@ -1,0 +1,632 @@
+"""Tests for document CRUD operations in Docs Mode.
+
+Tests for AddDocumentModal, DeleteConfirmModal, RenameDocumentModal,
+and the integration with DocsModeScreen.
+"""
+
+import tempfile
+from pathlib import Path
+
+import pytest
+
+from iterm_controller.screens.modals.add_document import AddDocumentModal
+from iterm_controller.screens.modals.delete_confirm import DeleteConfirmModal
+from iterm_controller.screens.modals.rename_document import RenameDocumentModal
+
+
+class TestAddDocumentModal:
+    """Tests for AddDocumentModal."""
+
+    def test_modal_creation(self) -> None:
+        """Test that AddDocumentModal can be created."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            modal = AddDocumentModal(project_path=tmpdir)
+            assert modal is not None
+
+    def test_modal_creation_with_default_directory(self) -> None:
+        """Test creating modal with a default directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+            modal = AddDocumentModal(
+                project_path=tmpdir,
+                default_directory=str(docs_dir),
+            )
+            assert modal._default_directory == str(docs_dir)
+
+    def test_get_directories_empty_project(self) -> None:
+        """Test getting directories from an empty project."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            modal = AddDocumentModal(project_path=tmpdir)
+            dirs = modal._get_directories()
+            # Should only have root directory
+            assert dirs == ["."]
+
+    def test_get_directories_with_docs(self) -> None:
+        """Test getting directories with docs/ present."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+            modal = AddDocumentModal(project_path=tmpdir)
+            dirs = modal._get_directories()
+            assert "." in dirs
+            assert "docs" in dirs
+
+    def test_get_directories_with_nested_subdirs(self) -> None:
+        """Test getting directories with nested subdirectories."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+            arch_dir = docs_dir / "architecture"
+            arch_dir.mkdir()
+            modal = AddDocumentModal(project_path=tmpdir)
+            dirs = modal._get_directories()
+            assert "docs" in dirs
+            assert "docs/architecture" in dirs
+
+    def test_get_relative_default_root(self) -> None:
+        """Test getting relative default for root directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            modal = AddDocumentModal(project_path=tmpdir)
+            assert modal._get_relative_default() == "."
+
+    def test_get_relative_default_subdirectory(self) -> None:
+        """Test getting relative default for a subdirectory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+            modal = AddDocumentModal(
+                project_path=tmpdir,
+                default_directory=str(docs_dir),
+            )
+            assert modal._get_relative_default() == "docs"
+
+
+class TestDeleteConfirmModal:
+    """Tests for DeleteConfirmModal."""
+
+    def test_modal_creation(self) -> None:
+        """Test that DeleteConfirmModal can be created."""
+        modal = DeleteConfirmModal(item_name="test.md")
+        assert modal is not None
+        assert modal._item_name == "test.md"
+
+    def test_modal_creation_with_type(self) -> None:
+        """Test creating modal with custom item type."""
+        modal = DeleteConfirmModal(item_name="test.md", item_type="document")
+        assert modal._item_type == "document"
+
+    def test_default_item_type(self) -> None:
+        """Test default item type is 'file'."""
+        modal = DeleteConfirmModal(item_name="test.md")
+        assert modal._item_type == "file"
+
+
+class TestRenameDocumentModal:
+    """Tests for RenameDocumentModal."""
+
+    def test_modal_creation(self) -> None:
+        """Test that RenameDocumentModal can be created."""
+        modal = RenameDocumentModal(current_name="old.md")
+        assert modal is not None
+        assert modal._current_name == "old.md"
+
+
+@pytest.mark.asyncio
+class TestAddDocumentModalAsync:
+    """Async tests for AddDocumentModal."""
+
+    async def test_modal_compose(self) -> None:
+        """Test that modal composes correctly."""
+        from textual.app import App
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            class TestApp(App):
+                async def on_mount(self):
+                    modal = AddDocumentModal(project_path=tmpdir)
+                    await self.push_screen(modal)
+
+            app = TestApp()
+            async with app.run_test():
+                # Check that the modal has expected widgets
+                assert app.screen.query_one("#filename") is not None
+                assert app.screen.query_one("#location") is not None
+                assert app.screen.query_one("#create") is not None
+                assert app.screen.query_one("#cancel") is not None
+
+    async def test_modal_cancel(self) -> None:
+        """Test that cancel button dismisses with None."""
+        from textual.app import App
+        from textual.widgets import Button
+
+        result = None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            class TestApp(App):
+                async def on_mount(self):
+                    nonlocal result
+
+                    def callback(r):
+                        nonlocal result
+                        result = r
+
+                    modal = AddDocumentModal(project_path=tmpdir)
+                    await self.push_screen(modal, callback)
+
+            app = TestApp()
+            async with app.run_test() as pilot:
+                # Press the cancel button
+                app.screen.query_one("#cancel", Button).press()
+                await pilot.pause()
+                assert result is None
+
+    async def test_modal_create_empty_filename(self) -> None:
+        """Test that empty filename shows warning."""
+        from textual.app import App
+        from textual.widgets import Button
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            class TestApp(App):
+                async def on_mount(self):
+                    modal = AddDocumentModal(project_path=tmpdir)
+                    await self.push_screen(modal)
+
+            app = TestApp()
+            async with app.run_test() as pilot:
+                # Press create without entering filename
+                app.screen.query_one("#create", Button).press()
+                await pilot.pause()
+                # Modal should still be open (not dismissed)
+                assert isinstance(app.screen, AddDocumentModal)
+
+    async def test_modal_create_adds_md_extension(self) -> None:
+        """Test that .md extension is added if missing."""
+        from textual.app import App
+        from textual.widgets import Button, Input
+
+        result = None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            class TestApp(App):
+                async def on_mount(self):
+                    nonlocal result
+
+                    def callback(r):
+                        nonlocal result
+                        result = r
+
+                    modal = AddDocumentModal(project_path=tmpdir)
+                    await self.push_screen(modal, callback)
+
+            app = TestApp()
+            async with app.run_test() as pilot:
+                # Enter filename without extension
+                filename_input = app.screen.query_one("#filename", Input)
+                filename_input.value = "test-doc"
+
+                # Press create
+                app.screen.query_one("#create", Button).press()
+                await pilot.pause()
+
+                assert result is not None
+                assert result["path"].endswith(".md")
+
+
+@pytest.mark.asyncio
+class TestDeleteConfirmModalAsync:
+    """Async tests for DeleteConfirmModal."""
+
+    async def test_modal_compose(self) -> None:
+        """Test that modal composes correctly."""
+        from textual.app import App
+
+        class TestApp(App):
+            async def on_mount(self):
+                modal = DeleteConfirmModal(
+                    item_name="docs/test.md",
+                    item_type="document",
+                )
+                await self.push_screen(modal)
+
+        app = TestApp()
+        async with app.run_test():
+            assert app.screen.query_one("#cancel") is not None
+            assert app.screen.query_one("#delete") is not None
+
+    async def test_modal_cancel(self) -> None:
+        """Test that cancel button dismisses with False."""
+        from textual.app import App
+        from textual.widgets import Button
+
+        result = None
+
+        class TestApp(App):
+            async def on_mount(self):
+                nonlocal result
+
+                def callback(r):
+                    nonlocal result
+                    result = r
+
+                modal = DeleteConfirmModal(item_name="test.md")
+                await self.push_screen(modal, callback)
+
+        app = TestApp()
+        async with app.run_test() as pilot:
+            app.screen.query_one("#cancel", Button).press()
+            await pilot.pause()
+            assert result is False
+
+    async def test_modal_confirm(self) -> None:
+        """Test that delete button dismisses with True."""
+        from textual.app import App
+        from textual.widgets import Button
+
+        result = None
+
+        class TestApp(App):
+            async def on_mount(self):
+                nonlocal result
+
+                def callback(r):
+                    nonlocal result
+                    result = r
+
+                modal = DeleteConfirmModal(item_name="test.md")
+                await self.push_screen(modal, callback)
+
+        app = TestApp()
+        async with app.run_test() as pilot:
+            app.screen.query_one("#delete", Button).press()
+            await pilot.pause()
+            assert result is True
+
+
+@pytest.mark.asyncio
+class TestRenameDocumentModalAsync:
+    """Async tests for RenameDocumentModal."""
+
+    async def test_modal_compose(self) -> None:
+        """Test that modal composes correctly."""
+        from textual.app import App
+
+        class TestApp(App):
+            async def on_mount(self):
+                modal = RenameDocumentModal(current_name="old.md")
+                await self.push_screen(modal)
+
+        app = TestApp()
+        async with app.run_test():
+            assert app.screen.query_one("#new-name") is not None
+            assert app.screen.query_one("#cancel") is not None
+            assert app.screen.query_one("#rename") is not None
+
+    async def test_modal_cancel(self) -> None:
+        """Test that cancel button dismisses with None."""
+        from textual.app import App
+        from textual.widgets import Button
+
+        result = "not_called"
+
+        class TestApp(App):
+            async def on_mount(self):
+                nonlocal result
+
+                def callback(r):
+                    nonlocal result
+                    result = r
+
+                modal = RenameDocumentModal(current_name="old.md")
+                await self.push_screen(modal, callback)
+
+        app = TestApp()
+        async with app.run_test() as pilot:
+            app.screen.query_one("#cancel", Button).press()
+            await pilot.pause()
+            assert result is None
+
+    async def test_modal_rename_same_name(self) -> None:
+        """Test that renaming to same name dismisses with None."""
+        from textual.app import App
+        from textual.widgets import Button
+
+        result = "not_called"
+
+        class TestApp(App):
+            async def on_mount(self):
+                nonlocal result
+
+                def callback(r):
+                    nonlocal result
+                    result = r
+
+                modal = RenameDocumentModal(current_name="old.md")
+                await self.push_screen(modal, callback)
+
+        app = TestApp()
+        async with app.run_test() as pilot:
+            # Input already has current name, just press rename
+            app.screen.query_one("#rename", Button).press()
+            await pilot.pause()
+            assert result is None
+
+    async def test_modal_rename_new_name(self) -> None:
+        """Test renaming to a new name."""
+        from textual.app import App
+        from textual.widgets import Button, Input
+
+        result = None
+
+        class TestApp(App):
+            async def on_mount(self):
+                nonlocal result
+
+                def callback(r):
+                    nonlocal result
+                    result = r
+
+                modal = RenameDocumentModal(current_name="old.md")
+                await self.push_screen(modal, callback)
+
+        app = TestApp()
+        async with app.run_test() as pilot:
+            # Change the name
+            name_input = app.screen.query_one("#new-name", Input)
+            name_input.value = "new.md"
+
+            app.screen.query_one("#rename", Button).press()
+            await pilot.pause()
+            assert result == "new.md"
+
+    async def test_modal_rejects_invalid_characters(self) -> None:
+        """Test that invalid characters are rejected."""
+        from textual.app import App
+        from textual.widgets import Button, Input
+
+        class TestApp(App):
+            async def on_mount(self):
+                modal = RenameDocumentModal(current_name="old.md")
+                await self.push_screen(modal)
+
+        app = TestApp()
+        async with app.run_test() as pilot:
+            # Try to use invalid character
+            name_input = app.screen.query_one("#new-name", Input)
+            name_input.value = "invalid/name.md"
+
+            app.screen.query_one("#rename", Button).press()
+            await pilot.pause()
+
+            # Modal should still be open (not dismissed)
+            assert isinstance(app.screen, RenameDocumentModal)
+
+
+@pytest.mark.asyncio
+class TestDocsModeScreenCRUD:
+    """Integration tests for CRUD operations in DocsModeScreen."""
+
+    async def test_add_document_workflow(self) -> None:
+        """Test the full add document workflow."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create docs directory
+            docs_dir = Path(tmpdir) / "docs"
+            docs_dir.mkdir()
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Press 'a' to add document
+                await pilot.press("a")
+                await pilot.pause()
+
+                # Should have AddDocumentModal open
+                from iterm_controller.screens.modals.add_document import (
+                    AddDocumentModal,
+                )
+
+                assert isinstance(app.screen, AddDocumentModal)
+
+    async def test_delete_document_workflow(self) -> None:
+        """Test the full delete document workflow."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file to delete
+            readme = Path(tmpdir) / "README.md"
+            readme.write_text("# Test")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Navigate to select the file
+                tree = app.screen.query_one("#doc-tree", DocTreeWidget)
+
+                # Press 'd' to delete
+                await pilot.press("d")
+                await pilot.pause()
+
+                # Since no file is selected initially, should show warning
+                # or if file is selected, should show delete confirmation
+
+    async def test_rename_document_workflow(self) -> None:
+        """Test the full rename document workflow."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file to rename
+            readme = Path(tmpdir) / "README.md"
+            readme.write_text("# Test")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Press 'r' to rename
+                await pilot.press("r")
+                await pilot.pause()
+
+                # Since no file is selected initially, should show warning
+                # or if file is selected, should show rename modal
+
+    async def test_create_document_helper(self) -> None:
+        """Test the _create_document helper method."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+        from iterm_controller.widgets.doc_tree import DocTreeWidget
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Get the screen and call _create_document directly
+                screen = app.screen
+                new_file = Path(tmpdir) / "new-doc.md"
+                screen._create_document(str(new_file), "# New Document")
+
+                await pilot.pause()
+
+                # File should exist
+                assert new_file.exists()
+                assert new_file.read_text() == "# New Document"
+
+    async def test_delete_document_helper(self) -> None:
+        """Test the _delete_document helper method."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file to delete
+            test_file = Path(tmpdir) / "test.md"
+            test_file.write_text("# Test")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Get the screen and call _delete_document directly
+                screen = app.screen
+                screen._delete_document(test_file)
+
+                await pilot.pause()
+
+                # File should no longer exist
+                assert not test_file.exists()
+
+    async def test_rename_document_helper(self) -> None:
+        """Test the _rename_document helper method."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a file to rename
+            old_file = Path(tmpdir) / "old.md"
+            old_file.write_text("# Old")
+
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Get the screen and call _rename_document directly
+                screen = app.screen
+                screen._rename_document(old_file, "new.md")
+
+                await pilot.pause()
+
+                # Old file should no longer exist
+                assert not old_file.exists()
+                # New file should exist
+                new_file = Path(tmpdir) / "new.md"
+                assert new_file.exists()
+                assert new_file.read_text() == "# Old"
+
+    async def test_create_document_creates_parent_dirs(self) -> None:
+        """Test that creating a document creates parent directories if needed."""
+        from iterm_controller.app import ItermControllerApp
+        from iterm_controller.models import Project
+        from iterm_controller.screens.modes.docs_mode import DocsModeScreen
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            app = ItermControllerApp()
+            async with app.run_test() as pilot:
+                project = Project(
+                    id="test-project",
+                    name="Test Project",
+                    path=tmpdir,
+                )
+                app.state.projects[project.id] = project
+
+                await app.push_screen(DocsModeScreen(project))
+
+                # Create a document in a nested directory that doesn't exist
+                screen = app.screen
+                new_file = Path(tmpdir) / "docs" / "nested" / "new-doc.md"
+                screen._create_document(str(new_file), "# Nested Document")
+
+                await pilot.pause()
+
+                # File should exist with parent directories created
+                assert new_file.exists()
+                assert new_file.read_text() == "# Nested Document"

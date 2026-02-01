@@ -461,7 +461,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Arrow keys navigate, Enter opens/expands, Left/Right collapse/expand
   - Acceptance: Can navigate entire doc tree with keyboard
 
-- [ ] **Add document CRUD operations**
+- [x] **Add document CRUD operations** `[complete]`
   - Spec: specs/docs-mode.md#add-document-modal
   - Scope: `a` adds, `d` deletes (with confirm), `r` renames
   - Acceptance: Can create docs/new-file.md and delete it
