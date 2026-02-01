@@ -167,7 +167,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Main dashboard showing all sessions across all projects
   - Acceptance: Lists all active sessions, shows status, supports spawn/kill
 
-- [ ] **Build Project Dashboard screen** `[pending]`
+- [x] **Build Project Dashboard screen** `[complete]`
   - Spec: specs/ui.md#project-dashboard-screen
   - Scope: Single project view with tasks, sessions, workflow bar
   - Acceptance: Shows project-specific sessions, PLAN.md tasks, health status

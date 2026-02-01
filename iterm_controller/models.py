@@ -353,6 +353,7 @@ class Project:
     # Runtime state (not persisted)
     is_open: bool = field(default=False, repr=False)
     sessions: list[str] = field(default_factory=list, repr=False)  # Session IDs
+    workflow_state: WorkflowState = field(default_factory=WorkflowState, repr=False)
 
     @property
     def full_plan_path(self) -> Path:
@@ -397,10 +398,12 @@ class AppConfig:
 # =============================================================================
 
 
-def _datetime_encoder(obj: object) -> str:
-    """JSON encoder for datetime objects."""
+def _custom_encoder(obj: object) -> str | None:
+    """JSON encoder for datetime and Enum objects."""
     if isinstance(obj, datetime):
         return obj.isoformat()
+    if isinstance(obj, Enum):
+        return obj.value
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
 
 
@@ -427,7 +430,7 @@ def save_config(config: AppConfig, path: Path) -> None:
 
     data = asdict(config)
     with open(path, "w") as f:
-        json.dump(data, f, indent=2, default=_datetime_encoder)
+        json.dump(data, f, indent=2, default=_custom_encoder)
 
 
 def _convert_enums(obj: object) -> object:

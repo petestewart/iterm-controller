@@ -162,3 +162,30 @@ QuitConfirmModal #buttons Button {
     padding: 1;
     border-top: solid $surface-darken-2;
 }
+
+/* Project Dashboard */
+#tasks-header-row {
+    height: auto;
+}
+
+#tasks-header-row .section-header {
+    width: auto;
+    padding-right: 1;
+}
+
+#task-progress {
+    width: 1fr;
+    text-align: right;
+}
+
+#tasks {
+    height: 1fr;
+    min-height: 5;
+    overflow-y: auto;
+}
+
+#sessions {
+    height: auto;
+    min-height: 3;
+    max-height: 10;
+}
