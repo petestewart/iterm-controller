@@ -221,7 +221,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 8: Notifications & Health
 
-- [ ] **Implement macOS notifications** `[pending]`
+- [x] **Implement macOS notifications** `[complete]`
   - Spec: specs/notifications.md
   - Scope: Send notifications via terminal-notifier when session enters WAITING
   - Acceptance: Notification fires within 5 seconds of state change
