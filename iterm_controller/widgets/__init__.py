@@ -3,6 +3,7 @@
 from iterm_controller.widgets.active_work import ActiveWorkWidget
 from iterm_controller.widgets.artifact_list import ArtifactListWidget
 from iterm_controller.widgets.blocked_tasks import BlockedTasksWidget
+from iterm_controller.widgets.doc_tree import DocTreeWidget
 from iterm_controller.widgets.github_panel import GitHubPanelWidget
 from iterm_controller.widgets.health_status import HealthStatusWidget
 from iterm_controller.widgets.session_list import SessionListWidget
@@ -17,6 +18,7 @@ __all__ = [
     "ActiveWorkWidget",
     "ArtifactListWidget",
     "BlockedTasksWidget",
+    "DocTreeWidget",
     "GitHubPanelWidget",
     "HealthStatusWidget",
     "SessionListWidget",

@@ -451,7 +451,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 16: Docs Mode
 
-- [ ] **Create DocsModeScreen with tree widget**
+- [x] **Create DocsModeScreen with tree widget** `[complete]`
   - Spec: specs/docs-mode.md
   - Scope: Tree view of docs/, specs/, README.md, CHANGELOG.md
   - Acceptance: Documentation tree displays with folders collapsible

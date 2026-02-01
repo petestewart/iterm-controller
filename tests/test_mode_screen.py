@@ -96,6 +96,31 @@ class TestDocsModeScreen:
 
         assert screen.CURRENT_MODE == WorkflowMode.DOCS
 
+    def test_docs_mode_has_tree_bindings(self) -> None:
+        """Test that DocsModeScreen has tree action bindings."""
+        project = make_project()
+        screen = DocsModeScreen(project)
+        binding_keys = [b.key for b in screen.BINDINGS]
+
+        assert "enter" in binding_keys  # Open
+        assert "e" in binding_keys  # Edit
+        assert "a" in binding_keys  # Add
+        assert "d" in binding_keys  # Delete
+        assert "r" in binding_keys  # Rename
+        assert "p" in binding_keys  # Preview
+        assert "x" in binding_keys  # Refresh
+
+    def test_docs_mode_has_navigation_bindings(self) -> None:
+        """Test that DocsModeScreen has cursor navigation bindings."""
+        project = make_project()
+        screen = DocsModeScreen(project)
+        binding_keys = [b.key for b in screen.BINDINGS]
+
+        assert "j" in binding_keys  # Down (vim)
+        assert "k" in binding_keys  # Up (vim)
+        assert "down" in binding_keys  # Down arrow
+        assert "up" in binding_keys  # Up arrow
+
 
 class TestWorkModeScreen:
     """Tests for WorkModeScreen."""
