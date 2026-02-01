@@ -5,40 +5,17 @@ Displays unit test runner results with pass/fail counts.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from rich.text import Text
 from textual.widgets import Static
 
+# Import models from the parser module
+from iterm_controller.test_output_parser import TestResult, UnitTestResults
+
 if TYPE_CHECKING:
     pass
-
-
-@dataclass
-class TestResult:
-    """A single test result from the unit test runner."""
-
-    name: str  # Test name (e.g., "test_auth.py::test_login")
-    passed: bool
-    duration_ms: float = 0
-    error_message: str | None = None
-
-
-@dataclass
-class UnitTestResults:
-    """Results from running unit tests."""
-
-    passed: int = 0
-    failed: int = 0
-    skipped: int = 0
-    errors: int = 0
-    duration_seconds: float = 0
-    last_run: datetime | None = None
-    failed_tests: list[TestResult] = field(default_factory=list)
-    test_command: str = ""
-    is_running: bool = False
 
 
 class UnitTestWidget(Static):

@@ -434,7 +434,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Two-panel layout: TEST_PLAN.md steps and unit test results
   - Acceptance: Test steps displayed with status indicators
 
-- [ ] **Add unit test runner integration**
+- [x] **Add unit test runner integration** `[complete]`
   - Spec: specs/test-mode.md#secondary-unit-test-runner
   - Scope: Detect test command, `r` runs tests, display results
   - Acceptance: Can run pytest/npm test and see results

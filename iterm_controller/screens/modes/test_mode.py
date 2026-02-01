@@ -16,6 +16,7 @@ from textual.containers import Container, Horizontal, Vertical
 from textual.widgets import Footer, Header, Static
 
 from iterm_controller.models import (
+    AttentionState,
     ManagedSession,
     SessionTemplate,
     TestPlan,
@@ -29,6 +30,7 @@ from iterm_controller.state import (
     SessionSpawned,
     SessionStatusChanged,
 )
+from iterm_controller.test_output_parser import UnitTestResults, parse_test_output
 from iterm_controller.widgets.session_list import SessionListWidget
 from iterm_controller.widgets.test_plan import TestPlanWidget
 from iterm_controller.widgets.unit_tests import UnitTestWidget
@@ -163,6 +165,10 @@ class TestModeScreen(ModeScreen):
         self._test_plan_watcher: TestPlanWatcher | None = None
         self._sessions: dict[str, ManagedSession] = {}
         self._test_command: str = ""
+        # Track test runner sessions to capture their output
+        self._test_runner_session_id: str | None = None
+        self._test_runner_output: str = ""
+        self._unit_test_results: UnitTestResults | None = None
 
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
@@ -304,6 +310,10 @@ class TestModeScreen(ModeScreen):
         unit_tests = self.query_one("#unit-tests", UnitTestWidget)
         unit_tests.set_test_command(self._test_command)
 
+        # Also update with any stored results
+        if self._unit_test_results:
+            unit_tests.refresh_results(self._unit_test_results)
+
         # Update session list
         if sessions is not None:
             session_widget = self.query_one("#sessions", SessionListWidget)
@@ -313,27 +323,38 @@ class TestModeScreen(ModeScreen):
 
     def _update_progress_bar(self) -> None:
         """Update the progress bar text."""
-        if not self._test_plan:
-            return
+        progress_parts = []
 
-        summary = self._test_plan.summary
-        total = len(self._test_plan.all_steps)
-        if total == 0:
-            progress_bar = self.query_one("#progress-bar", Static)
-            progress_bar.update("No test steps defined")
-            return
+        # TEST_PLAN.md progress
+        if self._test_plan:
+            summary = self._test_plan.summary
+            total = len(self._test_plan.all_steps)
+            if total > 0:
+                passed = summary.get("passed", 0)
+                failed = summary.get("failed", 0)
+                percent = (passed / total) * 100
+                progress_parts.append(
+                    f"TEST_PLAN: {passed}/{total} ({percent:.0f}%)"
+                )
 
-        passed = summary.get("passed", 0)
-        failed = summary.get("failed", 0)
-        in_progress = summary.get("in_progress", 0)
-        pending = summary.get("pending", 0)
+        # Unit test results
+        if self._unit_test_results and self._unit_test_results.last_run:
+            results = self._unit_test_results
+            unit_total = results.passed + results.failed + results.skipped
+            if unit_total > 0:
+                progress_parts.append(
+                    f"Unit: {results.passed}/{unit_total} passed"
+                )
+                if results.failed > 0:
+                    progress_parts.append(f"{results.failed} failed")
+        elif self._test_runner_session_id:
+            progress_parts.append("Unit: Running...")
 
-        percent = (passed / total) * 100
-
-        progress_text = (
-            f"TEST_PLAN: {passed}/{total} passed ({percent:.0f}%)  |  "
-            f"{in_progress} in progress  |  {failed} failed  |  {pending} pending"
-        )
+        # Join parts
+        if progress_parts:
+            progress_text = "  |  ".join(progress_parts)
+        else:
+            progress_text = "No test data"
 
         progress_bar = self.query_one("#progress-bar", Static)
         progress_bar.update(progress_text)
@@ -556,13 +577,67 @@ class TestModeScreen(ModeScreen):
             self.notify("Not connected to iTerm2", severity="error")
             return
 
-        # Set running state
+        # Set running state and reset output tracking
         unit_tests = self.query_one("#unit-tests", UnitTestWidget)
         unit_tests.set_running(True)
+        self._test_runner_output = ""
 
-        # Spawn session with test command
-        self._spawn_qa_session("test-runner", command)
+        # Spawn session with test command and track it
+        self._spawn_test_runner_session(command)
         self.notify(f"Running: {command}")
+
+    def _spawn_test_runner_session(self, command: str) -> None:
+        """Spawn a test runner session and track it for output capture.
+
+        Args:
+            command: The test command to run.
+        """
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        async def _do_spawn() -> None:
+            try:
+                from iterm_controller.iterm_api import SessionSpawner
+
+                # Create a temporary template for the test runner session
+                template = SessionTemplate(
+                    id="test-runner",
+                    name="Test Runner",
+                    command=command,
+                    env={},
+                )
+
+                spawner = SessionSpawner(app.iterm)
+                result = await spawner.spawn_session(template, self.project)
+
+                if result.success:
+                    # Track this as our test runner session
+                    self._test_runner_session_id = result.session_id
+
+                    # Get the managed session
+                    managed = spawner.get_session(result.session_id)
+                    if managed:
+                        managed.metadata["test_runner"] = "true"
+                        managed.metadata["test_command"] = command
+                        app.state.add_session(managed)
+
+                    await self._load_data()
+                else:
+                    self.notify(f"Failed to spawn session: {result.error}", severity="error")
+                    self._reset_test_runner_state()
+
+            except Exception as e:
+                logger.exception("Error spawning test runner session")
+                self.notify(f"Error spawning session: {e}", severity="error")
+                self._reset_test_runner_state()
+
+        self.call_later(_do_spawn)
+
+    def _reset_test_runner_state(self) -> None:
+        """Reset test runner tracking state."""
+        self._test_runner_session_id = None
+        self._test_runner_output = ""
+        unit_tests = self.query_one("#unit-tests", UnitTestWidget)
+        unit_tests.set_running(False)
 
     def action_refresh(self) -> None:
         """Refresh all data."""
@@ -595,6 +670,9 @@ class TestModeScreen(ModeScreen):
         """
         # Only refresh if this session was for our project
         if event.session.project_id == self.project.id:
+            # Check if this was the test runner session
+            if event.session.id == self._test_runner_session_id:
+                self._on_test_runner_completed(event.session)
             self._on_session_changed(event.session)
 
     def on_session_status_changed(self, event: SessionStatusChanged) -> None:
@@ -605,7 +683,65 @@ class TestModeScreen(ModeScreen):
         """
         # Only refresh if this session is for our project
         if event.session.project_id == self.project.id:
+            # Check if this is the test runner session and capture its output
+            if event.session.id == self._test_runner_session_id:
+                self._capture_test_runner_output(event.session)
+
+                # If session becomes IDLE, tests may have completed
+                if event.session.attention_state == AttentionState.IDLE:
+                    self._on_test_runner_completed(event.session)
+
             self._on_session_changed(event.session)
+
+    def _capture_test_runner_output(self, session: ManagedSession) -> None:
+        """Capture output from the test runner session.
+
+        Args:
+            session: The test runner session.
+        """
+        if session.last_output:
+            # Accumulate output
+            if session.last_output not in self._test_runner_output:
+                self._test_runner_output += session.last_output
+
+    def _on_test_runner_completed(self, session: ManagedSession) -> None:
+        """Handle test runner completion - parse output and update UI.
+
+        Args:
+            session: The completed test runner session.
+        """
+        # Get full output from the session
+        if session.last_output:
+            self._test_runner_output = session.last_output
+
+        # Parse the test output
+        test_command = session.metadata.get("test_command", self._test_command)
+        results = parse_test_output(self._test_runner_output, test_command)
+        self._unit_test_results = results
+
+        # Update the widget
+        unit_tests = self.query_one("#unit-tests", UnitTestWidget)
+        unit_tests.refresh_results(results)
+
+        # Clear tracking state
+        self._test_runner_session_id = None
+
+        # Notify user of results
+        if results.failed > 0:
+            self.notify(
+                f"Tests complete: {results.passed} passed, {results.failed} failed",
+                severity="warning"
+            )
+        else:
+            self.notify(
+                f"Tests complete: {results.passed} passed",
+                severity="information"
+            )
+
+        logger.info(
+            f"Test run complete: {results.passed} passed, {results.failed} failed, "
+            f"{results.skipped} skipped in {results.duration_seconds:.2f}s"
+        )
 
     def _on_session_changed(self, session: ManagedSession) -> None:
         """Update display when a session changes.
