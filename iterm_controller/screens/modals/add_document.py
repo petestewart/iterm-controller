@@ -5,7 +5,10 @@ Modal dialog for creating new documentation files.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -122,8 +125,10 @@ class AddDocumentModal(ModalScreen[dict | None]):
                         try:
                             rel_path = subdir.relative_to(self._project_path)
                             directories.append(str(rel_path))
-                        except ValueError:
-                            pass
+                        except ValueError as e:
+                            logger.debug(
+                                "Subdir '%s' not relative to project: %s", subdir, e
+                            )
 
         return sorted(directories)
 

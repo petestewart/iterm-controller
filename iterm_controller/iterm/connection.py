@@ -137,9 +137,11 @@ async def with_reconnect(
                 logger.warning(f"Connection error on attempt {attempt + 1}, reconnecting...")
                 try:
                     await controller.reconnect()
-                except ItermConnectionError:
+                except ItermConnectionError as reconnect_error:
                     # If reconnect fails, continue to next attempt
-                    pass
+                    logger.debug(
+                        "Reconnect attempt %d failed: %s", attempt + 1, reconnect_error
+                    )
             else:
                 raise
 

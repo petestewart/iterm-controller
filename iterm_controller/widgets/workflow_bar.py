@@ -6,6 +6,7 @@ completed, and future stages.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from rich.text import Text
@@ -13,6 +14,8 @@ from textual.widgets import Static
 
 from iterm_controller.models import WorkflowStage, WorkflowState
 from iterm_controller.state import WorkflowStageChanged
+
+logger = logging.getLogger(__name__)
 
 
 class WorkflowBarWidget(Static):
@@ -157,9 +160,9 @@ class WorkflowBarWidget(Static):
             new_stage = WorkflowStage(message.stage)
             self._workflow_state.stage = new_stage
             self.update(self._render_bar())
-        except ValueError:
-            # Invalid stage value, ignore
-            pass
+        except ValueError as e:
+            # Invalid stage value, log and ignore
+            logger.debug("Invalid workflow stage value '%s': %s", message.stage, e)
 
     def advance_stage(self) -> WorkflowStage | None:
         """Advance to the next stage if possible.

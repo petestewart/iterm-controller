@@ -7,9 +7,12 @@ Opens selected documentation in the configured editor.
 from __future__ import annotations
 
 import asyncio
+import logging
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -229,8 +232,8 @@ class DocsPickerModal(ModalScreen[Path | None]):
                 index = int(button_id.split("-")[1]) - 1
                 if 0 <= index < len(self._docs):
                     await self._open_doc(self._docs[index])
-            except (ValueError, IndexError):
-                pass
+            except (ValueError, IndexError) as e:
+                logger.debug("Invalid doc button index '%s': %s", button_id, e)
 
     async def _open_doc(self, doc_path: Path) -> None:
         """Open documentation file in editor and dismiss modal.

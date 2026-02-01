@@ -6,7 +6,10 @@ in new sessions.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -146,8 +149,8 @@ class ScriptPickerModal(ModalScreen[SessionTemplate | None]):
                 index = int(button_id.split("-")[1]) - 1
                 if 0 <= index < len(self._templates):
                     self.dismiss(self._templates[index])
-            except (ValueError, IndexError):
-                pass
+            except (ValueError, IndexError) as e:
+                logger.debug("Invalid template button index '%s': %s", button_id, e)
 
     def _select_template(self, index: int) -> None:
         """Select template by 0-based index."""

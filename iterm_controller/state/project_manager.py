@@ -6,9 +6,12 @@ and updating projects.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING, Any, Callable
 
 from iterm_controller.models import Project
+
+logger = logging.getLogger(__name__)
 from iterm_controller.state.events import (
     ProjectClosed,
     ProjectOpened,
@@ -119,9 +122,9 @@ class ProjectStateManager:
 
             try:
                 save_callback(config)
-            except Exception:
+            except Exception as e:
                 # Log but don't crash on save errors
-                pass
+                logger.warning("Failed to save project config: %s", e)
 
     def get_project(self, project_id: str) -> Project | None:
         """Get a project by ID.

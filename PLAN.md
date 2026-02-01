@@ -749,10 +749,11 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Acceptance: Single cohesive class for auto mode
   - Result: Created unified AutoMode class (520 lines), kept backward compatibility wrappers for existing API (WorkflowStageInferrer, AutoModeController, AutoAdvanceHandler, AutoModeIntegration, create_controller_for_project) that delegate to AutoMode. All 63 tests pass.
 
-- [ ] **Add logging to silent exception handlers** `[pending]`
+- [x] **Add logging to silent exception handlers** `[complete]`
   - Scope: Add logging to exception handlers that currently silently swallow errors
-  - Location: iterm_controller/state.py:279-281 (comment says log but doesn't)
-  - Fix: Add `logger.warning("Subscriber error for %s: %s", event.value, e)`
+  - Location: Multiple files (project_manager.py, connection.py, github.py, work_mode.py, modals, widgets)
+  - Fix: Added debug/warning logging to all silent exception handlers
+  - Result: Added logging to 12 silent exception handlers across 10 files
   - Acceptance: All exception handlers log their errors
 
 - [ ] **Extract magic numbers to named constants** `[pending]`

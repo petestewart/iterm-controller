@@ -8,9 +8,12 @@ See specs/docs-mode.md for full specification.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from textual.message import Message
 from textual.widgets import Tree
@@ -207,7 +210,8 @@ class DocTreeWidget(Tree[DocNode]):
         # Add contents sorted: directories first, then files
         try:
             items = sorted(dir_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
-        except PermissionError:
+        except PermissionError as e:
+            logger.debug("Permission denied reading directory '%s': %s", dir_path, e)
             return node
 
         for item in items:

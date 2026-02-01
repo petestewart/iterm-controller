@@ -8,7 +8,10 @@ See specs/work-mode.md for full specification.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -592,9 +595,9 @@ class WorkModeScreen(ModeScreen):
             context_text = "\n".join(lines) + "\n"
             await session.async_send_text(context_text)
 
-        except Exception:
+        except Exception as e:
             # Don't fail the spawn if context sending fails
-            pass
+            logger.debug("Failed to send task context to session: %s", e)
 
     # =========================================================================
     # Session Event Handlers

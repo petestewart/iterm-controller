@@ -202,23 +202,23 @@ class GitHubIntegration:
             branch = result.strip().split("/")[-1]
             if branch:
                 return branch
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not get default branch from remote HEAD: %s", e)
 
         # Fallback: check if main or master exists
         try:
             result = await self._run_git(path, "branch", "-l", "main")
             if "main" in result:
                 return "main"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not check for 'main' branch: %s", e)
 
         try:
             result = await self._run_git(path, "branch", "-l", "master")
             if "master" in result:
                 return "master"
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not check for 'master' branch: %s", e)
 
         return "main"
 
@@ -240,8 +240,8 @@ class GitHubIntegration:
                 ahead = int(parts[0])
                 behind = int(parts[1])
                 return ahead, behind
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Could not get sync status: %s", e)
         return 0, 0
 
     async def _get_pr_info(self, path: str) -> PullRequest | None:

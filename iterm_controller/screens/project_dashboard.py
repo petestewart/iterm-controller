@@ -33,9 +33,12 @@ Layout:
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 from textual.app import ComposeResult
+
+logger = logging.getLogger(__name__)
 from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
@@ -442,8 +445,8 @@ class ProjectDashboardScreen(Screen):
             try:
                 stage = WorkflowStage(event.stage)
                 workflow_widget.set_stage(stage)
-            except ValueError:
-                pass
+            except ValueError as e:
+                logger.debug("Invalid workflow stage value '%s': %s", event.stage, e)
 
     # =========================================================================
     # Refresh Methods
