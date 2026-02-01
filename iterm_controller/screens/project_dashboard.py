@@ -52,6 +52,7 @@ from iterm_controller.state import (
     WorkflowStageChanged,
 )
 from iterm_controller.widgets import (
+    HealthStatusWidget,
     SessionListWidget,
     TaskListWidget,
     TaskProgressWidget,
@@ -117,7 +118,7 @@ class ProjectDashboardScreen(Screen):
                     Static("GitHub", id="github-header", classes="section-header"),
                     Static("[dim]Not connected[/dim]", id="github-panel"),
                     Static("Health", id="health-header", classes="section-header"),
-                    Static("[dim]No health checks[/dim]", id="health-panel"),
+                    HealthStatusWidget(id="health-panel"),
                     id="right-panel",
                 ),
                 id="panels",
@@ -143,6 +144,7 @@ class ProjectDashboardScreen(Screen):
         """Refresh all display elements."""
         await self._refresh_tasks()
         await self._refresh_sessions()
+        await self._refresh_health()
         await self._refresh_workflow()
 
     # =========================================================================
@@ -436,8 +438,11 @@ class ProjectDashboardScreen(Screen):
 
     async def _refresh_health(self) -> None:
         """Refresh the health status display."""
-        # TODO: Implement with health check widget when available
-        pass
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+        statuses = app.state.get_health_statuses(self.project_id)
+
+        health_widget = self.query_one("#health-panel", HealthStatusWidget)
+        health_widget.set_statuses(statuses)
 
     async def _refresh_workflow(self) -> None:
         """Refresh the workflow bar display."""

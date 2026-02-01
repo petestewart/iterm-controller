@@ -4,7 +4,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from iterm_controller.models import AttentionState, ManagedSession, Plan, Project
+from iterm_controller.models import (
+    AttentionState,
+    HealthStatus,
+    ManagedSession,
+    Plan,
+    Project,
+)
 from iterm_controller.state import (
     AppState,
     ConfigChanged,
@@ -409,7 +415,7 @@ class TestAppStateTextualMessages:
         mock_app = MagicMock()
         state.connect_app(mock_app)
 
-        state.update_health_status("p1", "api-health", "healthy")
+        state.update_health_status("p1", "api-health", HealthStatus.HEALTHY)
 
         mock_app.post_message.assert_called_once()
         posted = mock_app.post_message.call_args[0][0]
@@ -417,6 +423,52 @@ class TestAppStateTextualMessages:
         assert posted.project_id == "p1"
         assert posted.check_name == "api-health"
         assert posted.status == "healthy"
+
+    def test_update_health_status_stores_status(self) -> None:
+        """Test that health status update stores the status."""
+        state = AppState()
+
+        state.update_health_status("p1", "api", HealthStatus.HEALTHY)
+        state.update_health_status("p1", "db", HealthStatus.UNHEALTHY)
+
+        statuses = state.get_health_statuses("p1")
+        assert statuses["api"] == HealthStatus.HEALTHY
+        assert statuses["db"] == HealthStatus.UNHEALTHY
+
+    def test_get_health_statuses_returns_empty_for_unknown_project(self) -> None:
+        """Test that get_health_statuses returns empty dict for unknown project."""
+        state = AppState()
+
+        statuses = state.get_health_statuses("unknown-project")
+        assert statuses == {}
+
+    def test_get_health_statuses_returns_copy(self) -> None:
+        """Test that get_health_statuses returns a copy, not the original."""
+        state = AppState()
+        state.update_health_status("p1", "api", HealthStatus.HEALTHY)
+
+        statuses = state.get_health_statuses("p1")
+        statuses["api"] = HealthStatus.UNHEALTHY
+
+        # Original should be unchanged
+        assert state.get_health_statuses("p1")["api"] == HealthStatus.HEALTHY
+
+    def test_clear_health_statuses(self) -> None:
+        """Test that clear_health_statuses removes all statuses for project."""
+        state = AppState()
+        state.update_health_status("p1", "api", HealthStatus.HEALTHY)
+        state.update_health_status("p1", "db", HealthStatus.HEALTHY)
+
+        state.clear_health_statuses("p1")
+
+        assert state.get_health_statuses("p1") == {}
+
+    def test_clear_health_statuses_unknown_project_no_error(self) -> None:
+        """Test that clear_health_statuses doesn't error for unknown project."""
+        state = AppState()
+
+        # Should not raise
+        state.clear_health_statuses("unknown-project")
 
     def test_update_workflow_stage_posts_message(self) -> None:
         """Test that workflow stage update posts WorkflowStageChanged."""
@@ -445,7 +497,7 @@ class TestAppStateTextualMessages:
         state.remove_session("s1")
         state.set_plan("p1", Plan())
         state.update_task_status("p1", "1.1")
-        state.update_health_status("p1", "check", "healthy")
+        state.update_health_status("p1", "check", HealthStatus.HEALTHY)
         state.update_workflow_stage("p1", "execute")
 
 

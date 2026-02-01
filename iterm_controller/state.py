@@ -12,7 +12,13 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from textual.message import Message
 
-from iterm_controller.models import AppConfig, ManagedSession, Plan, Project
+from iterm_controller.models import (
+    AppConfig,
+    HealthStatus,
+    ManagedSession,
+    Plan,
+    Project,
+)
 
 if TYPE_CHECKING:
     from textual.app import App
@@ -166,6 +172,8 @@ class AppState:
     sessions: dict[str, ManagedSession] = field(default_factory=dict)
     config: AppConfig | None = None
     plans: dict[str, Plan] = field(default_factory=dict)  # project_id -> Plan
+    # Health statuses: project_id -> {check_name -> HealthStatus}
+    _health_statuses: dict[str, dict[str, HealthStatus]] = field(default_factory=dict)
 
     # Event subscribers
     _listeners: dict[StateEvent, list[Callable[..., Any]]] = field(
@@ -375,22 +383,46 @@ class AppState:
         self._post_message(TaskStatusChanged(task_id, project_id))
 
     def update_health_status(
-        self, project_id: str, check_name: str, status: str
+        self, project_id: str, check_name: str, status: HealthStatus
     ) -> None:
         """Notify about a health check status change.
 
         Args:
             project_id: The project ID.
             check_name: The name of the health check.
-            status: The new status.
+            status: The new health status.
         """
+        # Store the status
+        if project_id not in self._health_statuses:
+            self._health_statuses[project_id] = {}
+        self._health_statuses[project_id][check_name] = status
+
         self.emit(
             StateEvent.HEALTH_STATUS_CHANGED,
             project_id=project_id,
             check_name=check_name,
-            status=status,
+            status=status.value,
         )
-        self._post_message(HealthStatusChanged(project_id, check_name, status))
+        self._post_message(HealthStatusChanged(project_id, check_name, status.value))
+
+    def get_health_statuses(self, project_id: str) -> dict[str, HealthStatus]:
+        """Get all health check statuses for a project.
+
+        Args:
+            project_id: The project ID.
+
+        Returns:
+            Dictionary mapping check names to their health status.
+        """
+        return self._health_statuses.get(project_id, {}).copy()
+
+    def clear_health_statuses(self, project_id: str) -> None:
+        """Clear all health check statuses for a project.
+
+        Args:
+            project_id: The project ID.
+        """
+        self._health_statuses.pop(project_id, None)
 
     def update_workflow_stage(self, project_id: str, stage: str) -> None:
         """Notify about a workflow stage change.

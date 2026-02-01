@@ -231,7 +231,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Poll HTTP endpoints, resolve env placeholders, update status
   - Acceptance: Health indicators update correctly, handle timeouts/errors
 
-- [ ] **Build health status widget** `[pending]`
+- [x] **Build health status widget** `[complete]`
   - Spec: specs/health-checks.md#health-status-widget
   - Scope: Display health check status in project dashboard
   - Acceptance: Shows green/red indicators per service
