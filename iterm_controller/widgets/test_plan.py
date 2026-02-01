@@ -5,7 +5,7 @@ Displays TEST_PLAN.md steps with status indicators and selection.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.text import Text
 from textual.binding import Binding
@@ -79,7 +79,7 @@ class TestPlanWidget(Static, can_focus=True):
     def __init__(
         self,
         test_plan: TestPlan | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the test plan widget.
 

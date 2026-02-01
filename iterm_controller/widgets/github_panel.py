@@ -6,7 +6,7 @@ Handles unavailable/unauthenticated states gracefully.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.text import Text
 from textual.widgets import Static
@@ -53,7 +53,7 @@ class GitHubPanelWidget(Static):
         self,
         status: GitHubStatus | None = None,
         error_message: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the GitHub panel widget.
 

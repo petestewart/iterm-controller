@@ -6,7 +6,7 @@ Displays unit test runner results with pass/fail counts.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.text import Text
 from textual.widgets import Static
@@ -57,7 +57,7 @@ class UnitTestWidget(Static):
         self,
         results: UnitTestResults | None = None,
         test_command: str = "",
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the unit test widget.
 

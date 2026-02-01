@@ -7,7 +7,7 @@ references and shows warnings for missing files/sections.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.text import Text
 from textual.widgets import Static
@@ -73,7 +73,7 @@ class TaskListWidget(Static):
         plan: Plan | None = None,
         collapsed_phases: set[str] | None = None,
         project_path: str | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the task list widget.
 

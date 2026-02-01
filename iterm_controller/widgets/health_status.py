@@ -15,7 +15,7 @@ Status icons:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.text import Text
 from textual.widgets import Static
@@ -58,7 +58,7 @@ class HealthStatusWidget(Static):
         self,
         poller: HealthCheckPoller | None = None,
         statuses: dict[str, HealthStatus] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the health status widget.
 

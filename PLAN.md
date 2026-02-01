@@ -526,7 +526,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Import `Callable` from typing, use correct generic type
   - Acceptance: mypy passes without type errors
 
-- [ ] **Add type hints to **kwargs in widgets** `[pending]`
+- [x] **Add type hints to **kwargs in widgets** `[complete]`
   - Scope: Add `**kwargs: Any` type hint to widget constructors
   - Locations: widgets/session_list.py:61, widgets/task_list.py:76
   - Fix: Import `Any` from typing, add annotation

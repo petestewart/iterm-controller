@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from textual.message import Message
 from textual.widgets import Tree
@@ -106,7 +106,7 @@ class DocTreeWidget(Tree[DocNode]):
     def __init__(
         self,
         project_path: str | Path | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the documentation tree widget.
 

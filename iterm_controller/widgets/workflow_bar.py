@@ -6,7 +6,7 @@ completed, and future stages.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.text import Text
 from textual.widgets import Static
@@ -51,7 +51,7 @@ class WorkflowBarWidget(Static):
     def __init__(
         self,
         workflow_state: WorkflowState | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the workflow bar widget.
 

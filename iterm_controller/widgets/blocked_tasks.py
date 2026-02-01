@@ -6,6 +6,8 @@ the task queue panel.
 
 from __future__ import annotations
 
+from typing import Any
+
 from rich.text import Text
 from textual.widgets import Static
 
@@ -44,7 +46,7 @@ class BlockedTasksWidget(Static):
     def __init__(
         self,
         plan: Plan | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the blocked tasks widget.
 

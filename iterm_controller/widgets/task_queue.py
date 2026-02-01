@@ -6,7 +6,7 @@ Blocked tasks are shown with dimmed styling and blocked-by information.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.text import Text
 from textual.binding import Binding
@@ -59,7 +59,7 @@ class TaskQueueWidget(Static, can_focus=True):
     def __init__(
         self,
         plan: Plan | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the task queue widget.
 

@@ -5,7 +5,7 @@ Displays list of sessions with status icons (Working/Waiting/Idle).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 
 from rich.text import Text
 from textual.widgets import Static
@@ -57,7 +57,7 @@ class SessionListWidget(Static):
         self,
         sessions: Iterable[ManagedSession] | None = None,
         show_project: bool = True,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the session list widget.
 

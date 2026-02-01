@@ -6,6 +6,8 @@ by status (pending, in progress, complete, skipped, blocked).
 
 from __future__ import annotations
 
+from typing import Any
+
 from rich.text import Text
 from textual.widgets import Static
 
@@ -37,7 +39,7 @@ class TaskProgressWidget(Static):
         self,
         plan: Plan | None = None,
         show_breakdown: bool = False,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the task progress widget.
 

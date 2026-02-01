@@ -7,7 +7,7 @@ which artifacts exist and their current state.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.text import Text
 from textual.message import Message
@@ -68,7 +68,7 @@ class ArtifactListWidget(Static):
     def __init__(
         self,
         project: Project | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the artifact list widget.
 

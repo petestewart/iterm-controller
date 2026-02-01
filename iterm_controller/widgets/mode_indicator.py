@@ -8,6 +8,8 @@ See specs/workflow-modes.md#mode-indicator for specification.
 
 from __future__ import annotations
 
+from typing import Any
+
 from textual.app import ComposeResult
 from textual.widgets import Static
 
@@ -40,7 +42,7 @@ class ModeIndicatorWidget(Static):
     def __init__(
         self,
         current_mode: WorkflowMode | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the mode indicator.
 

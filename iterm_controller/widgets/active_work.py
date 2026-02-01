@@ -6,7 +6,7 @@ Displays tasks currently in progress with their assigned sessions and status.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from rich.text import Text
 from textual.binding import Binding
@@ -73,7 +73,7 @@ class ActiveWorkWidget(Static, can_focus=True):
         self,
         plan: Plan | None = None,
         sessions: dict[str, ManagedSession] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> None:
         """Initialize the active work widget.
 
