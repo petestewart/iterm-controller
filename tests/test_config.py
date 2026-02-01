@@ -21,6 +21,11 @@ from iterm_controller.config import (
     save_global_config,
     save_project_config,
 )
+from iterm_controller.exceptions import (
+    ConfigLoadError,
+    ConfigSaveError,
+    ConfigValidationError,
+)
 from iterm_controller.models import AppConfig, AppSettings, Project, SessionTemplate
 
 
@@ -385,3 +390,87 @@ class TestPathHelpers:
         project_path = Path("/path/to/project")
         config_path = get_project_config_path(project_path)
         assert config_path == project_path / PROJECT_CONFIG_FILENAME
+
+
+class TestConfigErrorHandling:
+    """Test configuration error handling."""
+
+    def test_load_invalid_json_raises_config_load_error(self):
+        """Loading invalid JSON raises ConfigLoadError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_path.write_text("{ invalid json }")
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    with pytest.raises(ConfigLoadError) as exc_info:
+                        load_global_config()
+                    assert "Invalid JSON" in str(exc_info.value)
+                    assert exc_info.value.context["file_path"] == str(config_path)
+
+    def test_load_invalid_schema_raises_config_validation_error(self):
+        """Loading config with invalid schema raises ConfigValidationError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            # settings should be a dict, not a list
+            config_path.write_text('{"settings": [1, 2, 3]}')
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    with pytest.raises(ConfigValidationError):
+                        load_global_config()
+
+    def test_load_project_config_invalid_json_raises_error(self):
+        """Loading project config with invalid JSON raises ConfigLoadError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / PROJECT_CONFIG_FILENAME
+            config_path.write_text("not valid json {")
+
+            with pytest.raises(ConfigLoadError) as exc_info:
+                load_project_config(tmpdir)
+            assert "Invalid JSON" in str(exc_info.value)
+
+    def test_save_config_to_readonly_raises_error(self):
+        """Saving config to readonly location raises ConfigSaveError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a directory with the same name as the config file
+            # This will cause a write error
+            config_path = Path(tmpdir) / "config.json"
+            config_path.mkdir()  # Create as directory, not file
+
+            config = AppConfig()
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    with pytest.raises(ConfigSaveError):
+                        save_global_config(config)
+
+    def test_merged_config_invalid_global_json_raises_error(self):
+        """Loading merged config with invalid global JSON raises ConfigLoadError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            global_path = Path(tmpdir) / "config.json"
+            global_path.write_text("{ broken json")
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", global_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    with pytest.raises(ConfigLoadError):
+                        load_merged_config()
+
+    def test_merged_config_invalid_project_json_raises_error(self):
+        """Loading merged config with invalid project JSON raises ConfigLoadError."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Valid global config
+            global_path = Path(tmpdir) / "global" / "config.json"
+            global_path.parent.mkdir(parents=True)
+            global_path.write_text('{"settings": {}}')
+
+            # Invalid project config
+            project_dir = Path(tmpdir) / "project"
+            project_dir.mkdir()
+            project_config = project_dir / PROJECT_CONFIG_FILENAME
+            project_config.write_text("invalid json")
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", global_path):
+                with patch("iterm_controller.config.CONFIG_DIR", global_path.parent):
+                    with pytest.raises(ConfigLoadError):
+                        load_merged_config(project_dir)

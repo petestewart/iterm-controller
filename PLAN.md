@@ -269,7 +269,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Add shortcuts for common actions (spawn, kill, navigate)
   - Acceptance: Shortcuts work and are documented in help
 
-- [ ] **Add error handling and logging** `[pending]`
+- [x] **Add error handling and logging** `[complete]`
   - Scope: Graceful error handling, structured logging for debugging
   - Acceptance: Errors don't crash app, can diagnose issues from logs
 

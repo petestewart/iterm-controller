@@ -8,10 +8,14 @@ Also provides PlanUpdater for updating PLAN.md files while preserving formatting
 
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
 
+from .exceptions import PlanParseError, PlanWriteError, record_error
 from .models import Phase, Plan, Task, TaskStatus
+
+logger = logging.getLogger(__name__)
 
 
 class PlanParser:
@@ -56,9 +60,45 @@ class PlanParser:
         return plan
 
     def parse_file(self, path: Path) -> Plan:
-        """Parse PLAN.md file from disk."""
-        content = path.read_text()
-        return self.parse(content)
+        """Parse PLAN.md file from disk.
+
+        Args:
+            path: Path to the PLAN.md file.
+
+        Returns:
+            Parsed Plan object.
+
+        Raises:
+            PlanParseError: If the file cannot be read or parsed.
+        """
+        try:
+            content = path.read_text(encoding="utf-8")
+            logger.debug("Read PLAN.md from %s (%d bytes)", path, len(content))
+        except OSError as e:
+            logger.error("Failed to read PLAN.md: %s", e)
+            record_error(e)
+            raise PlanParseError(
+                f"Failed to read PLAN.md: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e
+
+        try:
+            plan = self.parse(content)
+            logger.debug(
+                "Parsed %d phases with %d total tasks",
+                len(plan.phases),
+                len(plan.all_tasks),
+            )
+            return plan
+        except Exception as e:
+            logger.error("Failed to parse PLAN.md content: %s", e)
+            record_error(e)
+            raise PlanParseError(
+                f"Failed to parse PLAN.md content: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e
 
     def _parse_phases(self, content: str) -> list[Phase]:
         """Parse all phases from content."""
@@ -225,7 +265,11 @@ class PlanUpdater:
                 break
 
         if phase_start is None:
-            raise ValueError(f"Phase {phase_id} not found")
+            logger.warning("Phase %s not found in PLAN.md", phase_id)
+            raise PlanWriteError(
+                f"Phase {phase_id} not found in PLAN.md",
+                context={"phase_id": phase_id, "task_id": task_id},
+            )
 
         # Extract phase content
         phase_content = content[phase_start:phase_end]
@@ -274,7 +318,11 @@ class PlanUpdater:
 
         match = phase_pattern.search(content)
         if not match:
-            raise ValueError(f"Phase {phase_id} not found")
+            logger.warning("Phase %s not found for adding task", phase_id)
+            raise PlanWriteError(
+                f"Phase {phase_id} not found",
+                context={"phase_id": phase_id},
+            )
 
         # Find the end of this phase (start of next phase or end of content)
         next_phase_pattern = re.compile(r"^###\s+Phase\s+\d+:", re.MULTILINE)
@@ -344,10 +392,35 @@ class PlanUpdater:
             path: Path to the PLAN.md file
             task_id: The task ID to update (e.g., "2.1")
             new_status: The new status to set
+
+        Raises:
+            PlanParseError: If the file cannot be read.
+            PlanWriteError: If the file cannot be written.
         """
-        content = path.read_text()
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError as e:
+            logger.error("Failed to read PLAN.md for update: %s", e)
+            record_error(e)
+            raise PlanParseError(
+                f"Failed to read PLAN.md: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e
+
         updated_content = self.update_task_status(content, task_id, new_status)
-        path.write_text(updated_content)
+
+        try:
+            path.write_text(updated_content, encoding="utf-8")
+            logger.info("Updated task %s to %s in %s", task_id, new_status.value, path)
+        except OSError as e:
+            logger.error("Failed to write PLAN.md: %s", e)
+            record_error(e)
+            raise PlanWriteError(
+                f"Failed to write PLAN.md: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e
 
     def add_task_to_file(
         self,
@@ -361,7 +434,32 @@ class PlanUpdater:
             path: Path to the PLAN.md file
             phase_id: The phase to add the task to (e.g., "2")
             task: The task to add
+
+        Raises:
+            PlanParseError: If the file cannot be read.
+            PlanWriteError: If the file cannot be written.
         """
-        content = path.read_text()
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError as e:
+            logger.error("Failed to read PLAN.md for adding task: %s", e)
+            record_error(e)
+            raise PlanParseError(
+                f"Failed to read PLAN.md: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e
+
         updated_content = self.add_task(content, phase_id, task)
-        path.write_text(updated_content)
+
+        try:
+            path.write_text(updated_content, encoding="utf-8")
+            logger.info("Added task '%s' to phase %s in %s", task.title, phase_id, path)
+        except OSError as e:
+            logger.error("Failed to write PLAN.md: %s", e)
+            record_error(e)
+            raise PlanWriteError(
+                f"Failed to write PLAN.md: {e}",
+                file_path=str(path),
+                cause=e,
+            ) from e

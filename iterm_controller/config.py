@@ -7,12 +7,21 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 from enum import Enum
 from pathlib import Path
 
 import dacite
 
+from .exceptions import (
+    ConfigLoadError,
+    ConfigSaveError,
+    ConfigValidationError,
+    record_error,
+)
 from .models import AppConfig
+
+logger = logging.getLogger(__name__)
 
 # Configuration file locations
 CONFIG_DIR = Path.home() / ".config" / "iterm-controller"
@@ -62,20 +71,61 @@ def load_global_config() -> AppConfig:
 
     Returns:
         AppConfig instance with global settings
-    """
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
-    if GLOBAL_CONFIG_PATH.exists():
-        with open(GLOBAL_CONFIG_PATH) as f:
+    Raises:
+        ConfigLoadError: If the config file exists but cannot be parsed.
+    """
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.error("Failed to create config directory: %s", e)
+        record_error(e)
+        raise ConfigLoadError(
+            f"Failed to create config directory: {CONFIG_DIR}",
+            file_path=str(CONFIG_DIR),
+            cause=e,
+        ) from e
+
+    if not GLOBAL_CONFIG_PATH.exists():
+        logger.debug("No global config found, using defaults")
+        return AppConfig()
+
+    try:
+        with open(GLOBAL_CONFIG_PATH, encoding="utf-8") as f:
             data = json.load(f)
+        logger.debug("Loaded global config from %s", GLOBAL_CONFIG_PATH)
+    except json.JSONDecodeError as e:
+        logger.error("Invalid JSON in config file: %s", e)
+        record_error(e)
+        raise ConfigLoadError(
+            f"Invalid JSON in config file at line {e.lineno}",
+            file_path=str(GLOBAL_CONFIG_PATH),
+            context={"line": e.lineno, "column": e.colno},
+            cause=e,
+        ) from e
+    except OSError as e:
+        logger.error("Failed to read config file: %s", e)
+        record_error(e)
+        raise ConfigLoadError(
+            "Failed to read config file",
+            file_path=str(GLOBAL_CONFIG_PATH),
+            cause=e,
+        ) from e
+
+    try:
         return dacite.from_dict(
             data_class=AppConfig,
             data=data,
             config=dacite.Config(cast=[Enum]),
         )
-
-    # Return default config
-    return AppConfig()
+    except dacite.DaciteError as e:
+        logger.error("Config schema validation failed: %s", e)
+        record_error(e)
+        raise ConfigValidationError(
+            f"Config schema validation failed: {e}",
+            context={"file_path": str(GLOBAL_CONFIG_PATH)},
+            cause=e,
+        ) from e
 
 
 def save_global_config(config: AppConfig) -> None:
@@ -87,14 +137,44 @@ def save_global_config(config: AppConfig) -> None:
 
     Args:
         config: AppConfig instance to save
+
+    Raises:
+        ConfigSaveError: If the config cannot be saved.
     """
     from .models import model_to_dict
 
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        logger.error("Failed to create config directory: %s", e)
+        record_error(e)
+        raise ConfigSaveError(
+            f"Failed to create config directory: {CONFIG_DIR}",
+            file_path=str(CONFIG_DIR),
+            cause=e,
+        ) from e
 
-    data = model_to_dict(config)
-    with open(GLOBAL_CONFIG_PATH, "w") as f:
-        json.dump(data, f, indent=2)
+    try:
+        data = model_to_dict(config)
+        with open(GLOBAL_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+        logger.debug("Saved global config to %s", GLOBAL_CONFIG_PATH)
+    except OSError as e:
+        logger.error("Failed to write config file: %s", e)
+        record_error(e)
+        raise ConfigSaveError(
+            "Failed to write config file",
+            file_path=str(GLOBAL_CONFIG_PATH),
+            cause=e,
+        ) from e
+    except (TypeError, ValueError) as e:
+        logger.error("Failed to serialize config to JSON: %s", e)
+        record_error(e)
+        raise ConfigSaveError(
+            "Failed to serialize config to JSON",
+            file_path=str(GLOBAL_CONFIG_PATH),
+            cause=e,
+        ) from e
 
 
 def load_project_config(project_path: str | Path) -> dict:
@@ -106,14 +186,38 @@ def load_project_config(project_path: str | Path) -> dict:
 
     Returns:
         Dictionary of project-local overrides, or empty dict if no config exists
+
+    Raises:
+        ConfigLoadError: If the config file exists but cannot be parsed.
     """
     config_path = Path(project_path) / PROJECT_CONFIG_FILENAME
 
-    if config_path.exists():
-        with open(config_path) as f:
-            return json.load(f)
+    if not config_path.exists():
+        logger.debug("No project config found at %s", config_path)
+        return {}
 
-    return {}
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            data = json.load(f)
+        logger.debug("Loaded project config from %s", config_path)
+        return data
+    except json.JSONDecodeError as e:
+        logger.error("Invalid JSON in project config: %s", e)
+        record_error(e)
+        raise ConfigLoadError(
+            f"Invalid JSON in project config at line {e.lineno}",
+            file_path=str(config_path),
+            context={"line": e.lineno, "column": e.colno},
+            cause=e,
+        ) from e
+    except OSError as e:
+        logger.error("Failed to read project config: %s", e)
+        record_error(e)
+        raise ConfigLoadError(
+            "Failed to read project config",
+            file_path=str(config_path),
+            cause=e,
+        ) from e
 
 
 def save_project_config(project_path: str | Path, config: dict) -> None:
@@ -123,11 +227,32 @@ def save_project_config(project_path: str | Path, config: dict) -> None:
     Args:
         project_path: Path to the project root directory
         config: Configuration dictionary to save
+
+    Raises:
+        ConfigSaveError: If the config cannot be saved.
     """
     config_path = Path(project_path) / PROJECT_CONFIG_FILENAME
 
-    with open(config_path, "w") as f:
-        json.dump(config, f, indent=2)
+    try:
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+        logger.debug("Saved project config to %s", config_path)
+    except OSError as e:
+        logger.error("Failed to write project config: %s", e)
+        record_error(e)
+        raise ConfigSaveError(
+            "Failed to write project config",
+            file_path=str(config_path),
+            cause=e,
+        ) from e
+    except (TypeError, ValueError) as e:
+        logger.error("Failed to serialize project config to JSON: %s", e)
+        record_error(e)
+        raise ConfigSaveError(
+            "Failed to serialize project config to JSON",
+            file_path=str(config_path),
+            cause=e,
+        ) from e
 
 
 def load_merged_config(project_path: str | Path | None = None) -> AppConfig:
@@ -142,28 +267,61 @@ def load_merged_config(project_path: str | Path | None = None) -> AppConfig:
 
     Returns:
         AppConfig with merged configuration
+
+    Raises:
+        ConfigLoadError: If configuration files cannot be read.
+        ConfigValidationError: If the merged config is invalid.
     """
     # Start with global config as dict
-    if GLOBAL_CONFIG_PATH.exists():
-        with open(GLOBAL_CONFIG_PATH) as f:
-            global_data = json.load(f)
-    else:
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-        global_data = {}
+    try:
+        if GLOBAL_CONFIG_PATH.exists():
+            with open(GLOBAL_CONFIG_PATH, encoding="utf-8") as f:
+                global_data = json.load(f)
+            logger.debug("Loaded global config for merging")
+        else:
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            global_data = {}
+            logger.debug("Using empty global config for merging")
+    except json.JSONDecodeError as e:
+        logger.error("Invalid JSON in global config: %s", e)
+        record_error(e)
+        raise ConfigLoadError(
+            f"Invalid JSON in global config at line {e.lineno}",
+            file_path=str(GLOBAL_CONFIG_PATH),
+            context={"line": e.lineno, "column": e.colno},
+            cause=e,
+        ) from e
+    except OSError as e:
+        logger.error("Failed to read global config: %s", e)
+        record_error(e)
+        raise ConfigLoadError(
+            "Failed to read global config",
+            file_path=str(GLOBAL_CONFIG_PATH),
+            cause=e,
+        ) from e
 
     # Merge project config if provided
     if project_path is not None:
         project_data = load_project_config(project_path)
         merged_data = merge_configs(global_data, project_data)
+        logger.debug("Merged project config from %s", project_path)
     else:
         merged_data = global_data
 
     # Convert to AppConfig
-    return dacite.from_dict(
-        data_class=AppConfig,
-        data=merged_data,
-        config=dacite.Config(cast=[Enum]),
-    )
+    try:
+        return dacite.from_dict(
+            data_class=AppConfig,
+            data=merged_data,
+            config=dacite.Config(cast=[Enum]),
+        )
+    except dacite.DaciteError as e:
+        logger.error("Merged config validation failed: %s", e)
+        record_error(e)
+        raise ConfigValidationError(
+            f"Merged config validation failed: {e}",
+            cause=e,
+        ) from e
 
 
 def get_global_config_path() -> Path:

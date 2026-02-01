@@ -7,15 +7,19 @@ Supports environment variable placeholder resolution in URLs.
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 from typing import TYPE_CHECKING, Callable
 
 import httpx
 
+from .exceptions import HealthCheckError, HealthCheckTimeoutError, record_error
 from .models import HealthCheck, HealthStatus
 
 if TYPE_CHECKING:
     from .models import Project
+
+logger = logging.getLogger(__name__)
 
 
 class HealthCheckPoller:
@@ -70,6 +74,9 @@ class HealthCheckPoller:
                 task = asyncio.create_task(self._poll_loop(check))
                 self._tasks[check.name] = task
                 self._status[check.name] = HealthStatus.UNKNOWN
+                logger.debug(
+                    "Started polling %s every %.1fs", check.name, check.interval_seconds
+                )
 
     async def stop_polling(self) -> None:
         """Stop all polling tasks."""
@@ -105,6 +112,7 @@ class HealthCheckPoller:
         self._set_status(check.name, HealthStatus.CHECKING)
 
         url = self.resolve_url(check.url)
+        logger.debug("Checking %s at %s", check.name, url)
 
         try:
             async with httpx.AsyncClient() as client:
@@ -116,20 +124,45 @@ class HealthCheckPoller:
 
                 if response.status_code == check.expected_status:
                     new_status = HealthStatus.HEALTHY
+                    logger.debug("%s is healthy (status %d)", check.name, response.status_code)
                 else:
                     new_status = HealthStatus.UNHEALTHY
+                    logger.warning(
+                        "%s unhealthy: expected status %d, got %d",
+                        check.name,
+                        check.expected_status,
+                        response.status_code,
+                    )
 
-        except httpx.ConnectError:
+        except httpx.ConnectError as e:
+            logger.warning("%s connection refused: %s", check.name, e)
+            record_error(e)
             new_status = HealthStatus.UNHEALTHY
-        except httpx.TimeoutException:
+        except httpx.TimeoutException as e:
+            logger.warning(
+                "%s timed out after %.1fs", check.name, check.timeout_seconds
+            )
+            record_error(HealthCheckTimeoutError(
+                f"{check.name} timed out",
+                url=url,
+                timeout=check.timeout_seconds,
+            ))
             new_status = HealthStatus.UNHEALTHY
-        except Exception:
+        except Exception as e:
+            logger.error("%s check failed: %s", check.name, e)
+            record_error(e)
             new_status = HealthStatus.UNHEALTHY
 
         self._set_status(check.name, new_status)
 
         # Call callback on actual status change (not just CHECKING transitions)
         if self.on_status_change and old_status != new_status:
+            logger.info(
+                "%s status changed: %s -> %s",
+                check.name,
+                old_status.value if old_status else "unknown",
+                new_status.value,
+            )
             self.on_status_change(check.name, new_status)
 
         return new_status

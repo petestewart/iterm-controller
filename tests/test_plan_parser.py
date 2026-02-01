@@ -503,6 +503,8 @@ class TestPlanUpdaterTaskStatus:
         assert "  - Acceptance: It works" in result
 
     def test_update_nonexistent_phase_raises(self):
+        from iterm_controller.exceptions import PlanWriteError
+
         plan_md = """# Plan
 
 ### Phase 1: Test
@@ -510,7 +512,7 @@ class TestPlanUpdaterTaskStatus:
 - [ ] **Task A** `[pending]`
 """
         updater = PlanUpdater()
-        with pytest.raises(ValueError, match="Phase 99 not found"):
+        with pytest.raises(PlanWriteError, match="Phase 99 not found"):
             updater.update_task_status(plan_md, "99.1", TaskStatus.COMPLETE)
 
     def test_update_to_skipped(self):
@@ -657,6 +659,8 @@ class TestPlanUpdaterAddTask:
         assert "- [ ] **New Feature Task** `[pending]`" in result
 
     def test_add_task_nonexistent_phase_raises(self):
+        from iterm_controller.exceptions import PlanWriteError
+
         plan_md = """# Plan
 
 ### Phase 1: Test
@@ -666,7 +670,7 @@ class TestPlanUpdaterAddTask:
         task = Task(id="99.1", title="New Task", status=TaskStatus.PENDING)
 
         updater = PlanUpdater()
-        with pytest.raises(ValueError, match="Phase 99 not found"):
+        with pytest.raises(PlanWriteError, match="Phase 99 not found"):
             updater.add_task(plan_md, "99", task)
 
 

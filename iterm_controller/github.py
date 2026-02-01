@@ -8,20 +8,30 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from iterm_controller.exceptions import (
+    GitHubError,
+    GitHubUnavailableError,
+    NetworkError as BaseNetworkError,
+    RateLimitError as BaseRateLimitError,
+    record_error,
+)
 from iterm_controller.models import GitHubStatus, PullRequest
 
+logger = logging.getLogger(__name__)
 
-class RateLimitError(Exception):
+
+class RateLimitError(BaseRateLimitError):
     """Raised when GitHub API rate limit is hit."""
 
     pass
 
 
-class NetworkError(Exception):
+class NetworkError(BaseNetworkError):
     """Raised when network connection fails."""
 
     pass
@@ -48,6 +58,10 @@ class GitHubIntegration:
             True if GitHub integration is available, False otherwise.
         """
         self.available, self.error_message = await self._check_gh_available()
+        if self.available:
+            logger.info("GitHub integration initialized successfully")
+        else:
+            logger.info("GitHub integration unavailable: %s", self.error_message)
         return self.available
 
     async def _check_gh_available(self) -> tuple[bool, str | None]:
@@ -57,6 +71,7 @@ class GitHubIntegration:
             Tuple of (available, error_message).
         """
         try:
+            logger.debug("Checking gh CLI availability")
             proc = await asyncio.create_subprocess_exec(
                 "gh",
                 "auth",
@@ -67,16 +82,22 @@ class GitHubIntegration:
             _, stderr = await proc.communicate()
 
             if proc.returncode == 0:
+                logger.debug("gh CLI is available and authenticated")
                 return (True, None)
 
             stderr_text = stderr.decode() if stderr else ""
             if "not logged in" in stderr_text.lower():
+                logger.debug("gh CLI is installed but not authenticated")
                 return (False, "Not authenticated. Run: gh auth login")
+            logger.debug("gh auth check failed: %s", stderr_text)
             return (False, f"gh auth failed: {stderr_text}")
 
         except FileNotFoundError:
+            logger.debug("gh CLI not found")
             return (False, "gh CLI not installed")
         except Exception as e:
+            logger.warning("Error checking gh availability: %s", e)
+            record_error(e)
             return (False, str(e))
 
     async def get_status(self, project_path: str) -> GitHubStatus | None:
@@ -93,22 +114,35 @@ class GitHubIntegration:
             return None
 
         try:
+            logger.debug("Fetching GitHub status for %s", project_path)
             status = await self._fetch_status(project_path)
             self.cached_status[project_path] = status
+            logger.debug(
+                "GitHub status: branch=%s, ahead=%d, behind=%d",
+                status.current_branch,
+                status.ahead,
+                status.behind,
+            )
             return status
-        except RateLimitError:
+        except RateLimitError as e:
             # Return cached with rate limit indicator
+            logger.warning("GitHub rate limited: %s", e)
+            record_error(e)
             cached = self.cached_status.get(project_path)
             if cached:
                 cached.rate_limited = True
             return cached
-        except NetworkError:
+        except NetworkError as e:
             # Return cached with offline indicator
+            logger.warning("GitHub network error: %s", e)
+            record_error(e)
             cached = self.cached_status.get(project_path)
             if cached:
                 cached.offline = True
             return cached
-        except Exception:
+        except Exception as e:
+            logger.error("Unexpected error fetching GitHub status: %s", e)
+            record_error(e)
             return self.cached_status.get(project_path)
 
     async def _fetch_status(self, path: str) -> GitHubStatus:
@@ -236,7 +270,7 @@ class GitHubIntegration:
             if review_decision == "REVIEW_REQUIRED":
                 reviews_pending = 1  # At least one review required
 
-            return PullRequest(
+            pr = PullRequest(
                 number=data["number"],
                 title=data["title"],
                 url=data["url"],
@@ -247,7 +281,11 @@ class GitHubIntegration:
                 reviews_pending=reviews_pending,
                 checks_passing=await self._get_checks_status(path),
             )
-        except Exception:
+            logger.debug("Found PR #%d: %s", pr.number, pr.title)
+            return pr
+        except Exception as e:
+            # No PR for this branch is expected, so only log at debug level
+            logger.debug("No PR found for current branch: %s", e)
             return None
 
     async def _get_checks_status(self, path: str) -> bool | None:
@@ -284,41 +322,58 @@ class GitHubIntegration:
         except Exception:
             return None
 
-    async def _run_git(self, path: str, *args: str) -> str:
+    async def _run_git(
+        self, path: str, *args: str, timeout: float = 30.0
+    ) -> str:
         """Run a git command.
 
         Args:
             path: Working directory for the command.
             *args: Git subcommand and arguments.
+            timeout: Command timeout in seconds (default 30).
 
         Returns:
             Command stdout as string.
 
         Raises:
-            Exception: If command fails.
+            GitHubError: If command fails or times out.
         """
-        proc = await asyncio.create_subprocess_exec(
-            "git",
-            "-C",
-            path,
-            *args,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
+        logger.debug("Running git %s", " ".join(args))
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "git",
+                "-C",
+                path,
+                *args,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning("git %s timed out after %.1fs", args[0], timeout)
+            raise GitHubError(
+                f"git {args[0]} timed out after {timeout}s",
+                context={"timeout": timeout, "command": f"git {' '.join(args)}"},
+            )
 
         if proc.returncode != 0:
             error = stderr.decode() if stderr else "Unknown git error"
-            raise Exception(error)
+            logger.debug("git command failed: %s", error)
+            raise GitHubError(f"git {args[0]} failed: {error}")
 
         return stdout.decode()
 
-    async def _run_gh(self, path: str, *args: str) -> str:
+    async def _run_gh(
+        self, path: str, *args: str, timeout: float = 30.0
+    ) -> str:
         """Run a gh command.
 
         Args:
             path: Working directory for the command.
             *args: gh subcommand and arguments.
+            timeout: Command timeout in seconds (default 30).
 
         Returns:
             Command stdout as string.
@@ -326,28 +381,42 @@ class GitHubIntegration:
         Raises:
             RateLimitError: If rate limited.
             NetworkError: If network error occurs.
-            Exception: For other errors.
+            GitHubError: For other errors or timeout.
         """
-        proc = await asyncio.create_subprocess_exec(
-            "gh",
-            *args,
-            cwd=path,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
+        logger.debug("Running gh %s", " ".join(args))
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "gh",
+                *args,
+                cwd=path,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            logger.warning("gh %s timed out after %.1fs", args[0], timeout)
+            raise NetworkError(
+                f"gh {args[0]} timed out after {timeout}s",
+                url="github.com",
+            )
 
         if proc.returncode != 0:
             error = stderr.decode() if stderr else ""
 
             if "rate limit" in error.lower():
+                logger.warning("GitHub rate limit hit")
                 raise RateLimitError(error)
             if "network" in error.lower() or "connection" in error.lower():
-                raise NetworkError(error)
+                logger.warning("GitHub network error: %s", error)
+                raise NetworkError(error, url="github.com")
             if "could not resolve" in error.lower():
-                raise NetworkError(error)
+                logger.warning("GitHub DNS resolution failed")
+                raise NetworkError(error, url="github.com")
 
-            raise Exception(error)
+            logger.debug("gh command failed: %s", error)
+            raise GitHubError(f"gh {args[0]} failed: {error}")
 
         return stdout.decode()
 
@@ -367,6 +436,7 @@ class GitHubIntegration:
             return []
 
         try:
+            logger.debug("Fetching workflow runs for %s", path)
             result = await self._run_gh(
                 path,
                 "run",
@@ -377,7 +447,7 @@ class GitHubIntegration:
                 "databaseId,name,status,conclusion,createdAt,headBranch",
             )
             data = json.loads(result)
-            return [
+            runs = [
                 {
                     "id": r["databaseId"],
                     "name": r["name"],
@@ -388,7 +458,11 @@ class GitHubIntegration:
                 }
                 for r in data
             ]
-        except Exception:
+            logger.debug("Found %d workflow runs", len(runs))
+            return runs
+        except Exception as e:
+            logger.warning("Failed to fetch workflow runs: %s", e)
+            record_error(e)
             return []
 
     def clear_cache(self, project_path: str | None = None) -> None:

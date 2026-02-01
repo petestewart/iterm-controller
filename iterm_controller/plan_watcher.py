@@ -7,6 +7,7 @@ Detects changes within 1 second and triggers reload or conflict resolution.
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -14,8 +15,11 @@ from typing import Callable, TYPE_CHECKING
 
 from watchfiles import awatch, Change
 
+from .exceptions import PlanConflictError, PlanParseError, PlanWriteError, record_error
 from .models import Plan, Project, TaskStatus
 from .plan_parser import PlanParser, PlanUpdater
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .screens.modals import PlanConflictModal
@@ -137,10 +141,16 @@ class PlanWatcher:
     async def _on_file_change(self) -> None:
         """Handle file change event."""
         if self.plan_path is None or not self.plan_path.exists():
+            logger.debug("Plan path is None or doesn't exist, skipping change")
             return
 
         # Check if this is our own write
-        current_mtime = self.plan_path.stat().st_mtime
+        try:
+            current_mtime = self.plan_path.stat().st_mtime
+        except OSError as e:
+            logger.warning("Failed to stat PLAN.md: %s", e)
+            return
+
         if current_mtime == self.last_mtime:
             return
         self.last_mtime = current_mtime
@@ -149,23 +159,35 @@ class PlanWatcher:
         parser = PlanParser()
         try:
             new_plan = parser.parse_file(self.plan_path)
-        except Exception:
-            # If parsing fails, ignore this change
+            logger.debug("Parsed external change to PLAN.md")
+        except PlanParseError as e:
+            # If parsing fails, log and ignore this change
+            logger.warning("Failed to parse external PLAN.md change: %s", e)
+            record_error(e)
+            return
+        except Exception as e:
+            logger.error("Unexpected error parsing PLAN.md: %s", e)
+            record_error(e)
             return
 
         if self.has_pending_writes:
             # Queue reload for after our write completes
             self.queued_reload = new_plan
+            logger.debug("Queued PLAN.md reload (pending writes)")
         else:
             # Check for conflicts
             changes = self._compute_changes(new_plan)
             if changes:
                 # Conflict detected
+                logger.info(
+                    "Detected %d external changes to PLAN.md", len(changes)
+                )
                 if self.on_conflict_detected:
                     self.on_conflict_detected(new_plan, changes)
             else:
                 # Silent reload (no meaningful changes)
                 self.plan = new_plan
+                logger.debug("Silent reload of PLAN.md (no status changes)")
                 if self.on_plan_reloaded:
                     self.on_plan_reloaded(new_plan)
 
@@ -285,14 +307,30 @@ class PlanWatcher:
 
         Returns:
             The reloaded plan, or None if file doesn't exist
+
+        Raises:
+            PlanParseError: If the file cannot be read or parsed.
         """
         if self.plan_path is None or not self.plan_path.exists():
+            logger.debug("Cannot reload: plan path is None or doesn't exist")
             return None
 
         parser = PlanParser()
-        self.plan = parser.parse_file(self.plan_path)
-        self.last_mtime = self.plan_path.stat().st_mtime
-        return self.plan
+        try:
+            self.plan = parser.parse_file(self.plan_path)
+            self.last_mtime = self.plan_path.stat().st_mtime
+            logger.info("Reloaded PLAN.md from %s", self.plan_path)
+            return self.plan
+        except PlanParseError:
+            raise
+        except OSError as e:
+            logger.error("Failed to stat PLAN.md after reload: %s", e)
+            record_error(e)
+            raise PlanParseError(
+                f"Failed to access PLAN.md: {e}",
+                file_path=str(self.plan_path),
+                cause=e,
+            ) from e
 
     def accept_external_changes(self, new_plan: Plan) -> None:
         """Accept external changes and update the current plan.
@@ -431,13 +469,22 @@ class PlanWriteQueue:
 
         Args:
             write: The write operation to apply
+
+        Note:
+            Errors are logged but not raised to allow queue processing to continue.
         """
         plan_path = self.project.full_plan_path
         if not plan_path.exists():
+            logger.warning("PLAN.md does not exist at %s", plan_path)
             return
 
         # Read current content
-        content = plan_path.read_text()
+        try:
+            content = plan_path.read_text(encoding="utf-8")
+        except OSError as e:
+            logger.error("Failed to read PLAN.md for write: %s", e)
+            record_error(e)
+            return
 
         # Apply the update
         updater = PlanUpdater()
@@ -445,15 +492,29 @@ class PlanWriteQueue:
             new_content = updater.update_task_status(
                 content, write.task_id, write.new_status
             )
-        except ValueError:
+        except PlanWriteError as e:
             # Task or phase not found - skip this write
+            logger.warning("Failed to update task %s: %s", write.task_id, e)
+            return
+        except Exception as e:
+            logger.error("Unexpected error updating task %s: %s", write.task_id, e)
+            record_error(e)
             return
 
         # Write to disk
-        plan_path.write_text(new_content)
+        try:
+            plan_path.write_text(new_content, encoding="utf-8")
+            logger.debug("Wrote task %s status update to PLAN.md", write.task_id)
+        except OSError as e:
+            logger.error("Failed to write PLAN.md: %s", e)
+            record_error(e)
+            return
 
         # Update mtime tracking to avoid detecting our own write
-        self.watcher.last_mtime = plan_path.stat().st_mtime
+        try:
+            self.watcher.last_mtime = plan_path.stat().st_mtime
+        except OSError as e:
+            logger.warning("Failed to update mtime after write: %s", e)
 
         # Update in-memory plan if watcher has one
         if self.watcher.plan:
