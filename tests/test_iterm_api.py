@@ -8,14 +8,22 @@ from iterm_controller.iterm_api import (
     ItermConnectionError,
     ItermController,
     ItermNotConnectedError,
+    LayoutSpawnResult,
     SessionSpawner,
     SpawnResult,
     TabState,
+    WindowLayoutSpawner,
     WindowState,
     WindowTracker,
     with_reconnect,
 )
-from iterm_controller.models import Project, SessionTemplate
+from iterm_controller.models import (
+    Project,
+    SessionLayout,
+    SessionTemplate,
+    TabLayout,
+    WindowLayout,
+)
 
 
 class TestItermController:
@@ -970,3 +978,507 @@ class TestSessionSpawner:
 
         # Should not raise
         spawner.untrack_session("nonexistent")
+
+
+class TestLayoutSpawnResult:
+    """Test LayoutSpawnResult dataclass."""
+
+    def test_layout_spawn_result_success(self):
+        """LayoutSpawnResult with success state."""
+        from iterm_controller.iterm_api import LayoutSpawnResult
+
+        results = [
+            SpawnResult(session_id="s1", tab_id="t1", success=True),
+            SpawnResult(session_id="s2", tab_id="t1", success=True),
+        ]
+        result = LayoutSpawnResult(
+            window_id="window-1",
+            results=results,
+            success=True,
+        )
+        assert result.window_id == "window-1"
+        assert result.success is True
+        assert result.error is None
+        assert result.all_successful is True
+        assert result.spawned_session_ids == ["s1", "s2"]
+
+    def test_layout_spawn_result_partial_failure(self):
+        """LayoutSpawnResult with some failed sessions."""
+        from iterm_controller.iterm_api import LayoutSpawnResult
+
+        results = [
+            SpawnResult(session_id="s1", tab_id="t1", success=True),
+            SpawnResult(session_id="", tab_id="t1", success=False, error="Failed"),
+        ]
+        result = LayoutSpawnResult(
+            window_id="window-1",
+            results=results,
+            success=False,
+        )
+        assert result.all_successful is False
+        assert result.spawned_session_ids == ["s1"]
+
+    def test_layout_spawn_result_failure(self):
+        """LayoutSpawnResult with failure state."""
+        from iterm_controller.iterm_api import LayoutSpawnResult
+
+        result = LayoutSpawnResult(
+            window_id="",
+            results=[],
+            success=False,
+            error="Window creation failed",
+        )
+        assert result.success is False
+        assert result.error == "Window creation failed"
+        assert result.all_successful is True  # No results means all (zero) succeeded
+        assert result.spawned_session_ids == []
+
+
+class TestWindowLayoutSpawner:
+    """Test WindowLayoutSpawner window layout spawning functionality."""
+
+    def make_template(
+        self,
+        id: str = "test-template",
+        name: str = "Test Template",
+        command: str = "echo hello",
+        working_dir: str | None = None,
+        env: dict | None = None,
+    ) -> SessionTemplate:
+        """Create a test session template."""
+        return SessionTemplate(
+            id=id,
+            name=name,
+            command=command,
+            working_dir=working_dir,
+            env=env or {},
+        )
+
+    def make_project(
+        self,
+        id: str = "test-project",
+        name: str = "Test Project",
+        path: str = "/path/to/project",
+    ) -> Project:
+        """Create a test project."""
+        return Project(id=id, name=name, path=path)
+
+    def make_connected_controller(self) -> ItermController:
+        """Create a controller in connected state."""
+        controller = ItermController()
+        controller._connected = True
+        controller.connection = MagicMock()
+        controller.app = MagicMock()
+        return controller
+
+    def make_mock_session(self, session_id: str) -> MagicMock:
+        """Create a mock iTerm2 session."""
+        session = MagicMock()
+        session.session_id = session_id
+        session.async_send_text = AsyncMock()
+        session.async_split_pane = AsyncMock()
+        return session
+
+    def make_mock_tab(self, tab_id: str, session: MagicMock) -> MagicMock:
+        """Create a mock iTerm2 tab."""
+        tab = MagicMock()
+        tab.tab_id = tab_id
+        tab.current_session = session
+        tab.sessions = [session]
+        tab.async_set_title = AsyncMock()
+        return tab
+
+    def make_mock_window(self, window_id: str, tab: MagicMock) -> MagicMock:
+        """Create a mock iTerm2 window."""
+        window = MagicMock()
+        window.window_id = window_id
+        window.current_tab = tab
+        window.async_create_tab = AsyncMock()
+        return window
+
+    def test_init(self):
+        """WindowLayoutSpawner initializes correctly."""
+        from iterm_controller.iterm_api import WindowLayoutSpawner
+
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        layout_spawner = WindowLayoutSpawner(controller, spawner)
+
+        assert layout_spawner.controller is controller
+        assert layout_spawner.spawner is spawner
+
+    @pytest.mark.asyncio
+    async def test_spawn_layout_requires_connection(self):
+        """spawn_layout raises when not connected."""
+        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.models import WindowLayout
+
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        layout_spawner = WindowLayoutSpawner(controller, spawner)
+
+        layout = WindowLayout(id="test", name="Test Layout")
+        project = self.make_project()
+
+        with pytest.raises(ItermNotConnectedError):
+            await layout_spawner.spawn_layout(layout, project, {})
+
+    @pytest.mark.asyncio
+    async def test_spawn_layout_empty_tabs(self):
+        """spawn_layout handles layout with no tabs."""
+        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.models import WindowLayout
+
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        layout_spawner = WindowLayoutSpawner(controller, spawner)
+
+        mock_window = MagicMock()
+        mock_window.window_id = "window-empty"
+
+        with patch("iterm2.Window.async_create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_window
+
+            layout = WindowLayout(id="empty", name="Empty Layout", tabs=[])
+            project = self.make_project()
+
+            result = await layout_spawner.spawn_layout(layout, project, {})
+
+        assert result.success is True
+        assert result.window_id == "window-empty"
+        assert result.results == []
+
+    @pytest.mark.asyncio
+    async def test_spawn_layout_single_tab_single_session(self):
+        """spawn_layout creates a single tab with one session."""
+        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
+
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        layout_spawner = WindowLayoutSpawner(controller, spawner)
+
+        mock_session = self.make_mock_session("session-1")
+        mock_tab = self.make_mock_tab("tab-1", mock_session)
+        mock_window = self.make_mock_window("window-1", mock_tab)
+
+        with patch("iterm2.Window.async_create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_window
+
+            template = self.make_template(id="tmpl-1", command="npm start")
+            layout = WindowLayout(
+                id="single",
+                name="Single Session",
+                tabs=[
+                    TabLayout(
+                        name="Main",
+                        sessions=[SessionLayout(template_id="tmpl-1")],
+                    )
+                ],
+            )
+            project = self.make_project(path="/app")
+
+            result = await layout_spawner.spawn_layout(
+                layout, project, {"tmpl-1": template}
+            )
+
+        assert result.success is True
+        assert result.window_id == "window-1"
+        assert len(result.results) == 1
+        assert result.results[0].success is True
+        assert result.results[0].session_id == "session-1"
+
+        # Verify tab title was set
+        mock_tab.async_set_title.assert_called_once_with("Main")
+
+        # Verify command was sent to session
+        mock_session.async_send_text.assert_called_once()
+        call_arg = mock_session.async_send_text.call_args[0][0]
+        assert "cd /app" in call_arg
+        assert "npm start" in call_arg
+
+    @pytest.mark.asyncio
+    async def test_spawn_layout_multiple_tabs(self):
+        """spawn_layout creates multiple tabs."""
+        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
+
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        layout_spawner = WindowLayoutSpawner(controller, spawner)
+
+        # First tab uses window's default
+        mock_session1 = self.make_mock_session("session-1")
+        mock_tab1 = self.make_mock_tab("tab-1", mock_session1)
+
+        # Second tab is created
+        mock_session2 = self.make_mock_session("session-2")
+        mock_tab2 = self.make_mock_tab("tab-2", mock_session2)
+
+        mock_window = self.make_mock_window("window-multi", mock_tab1)
+        mock_window.async_create_tab = AsyncMock(return_value=mock_tab2)
+
+        with patch("iterm2.Window.async_create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_window
+
+            templates = {
+                "server": self.make_template(id="server", command="npm run server"),
+                "client": self.make_template(id="client", command="npm run client"),
+            }
+            layout = WindowLayout(
+                id="multi",
+                name="Multi Tab",
+                tabs=[
+                    TabLayout(
+                        name="Server",
+                        sessions=[SessionLayout(template_id="server")],
+                    ),
+                    TabLayout(
+                        name="Client",
+                        sessions=[SessionLayout(template_id="client")],
+                    ),
+                ],
+            )
+            project = self.make_project()
+
+            result = await layout_spawner.spawn_layout(layout, project, templates)
+
+        assert result.success is True
+        assert len(result.results) == 2
+
+        # First tab uses window's default tab
+        mock_tab1.async_set_title.assert_called_once_with("Server")
+
+        # Second tab is created
+        mock_window.async_create_tab.assert_called_once()
+        mock_tab2.async_set_title.assert_called_once_with("Client")
+
+    @pytest.mark.asyncio
+    async def test_spawn_layout_with_splits(self):
+        """spawn_layout creates split panes within a tab."""
+        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
+
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        layout_spawner = WindowLayoutSpawner(controller, spawner)
+
+        # Main session
+        mock_session1 = self.make_mock_session("session-main")
+        # Split session
+        mock_session2 = self.make_mock_session("session-split")
+        mock_session1.async_split_pane = AsyncMock(return_value=mock_session2)
+
+        mock_tab = self.make_mock_tab("tab-split", mock_session1)
+        mock_tab.tab = mock_tab  # For spawn_split to get tab_id
+        mock_session1.tab = mock_tab
+
+        mock_window = self.make_mock_window("window-split", mock_tab)
+
+        with patch("iterm2.Window.async_create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_window
+
+            templates = {
+                "main": self.make_template(id="main", command="npm start"),
+                "logs": self.make_template(id="logs", command="tail -f logs"),
+            }
+            layout = WindowLayout(
+                id="splits",
+                name="With Splits",
+                tabs=[
+                    TabLayout(
+                        name="Dev",
+                        sessions=[
+                            SessionLayout(template_id="main"),
+                            SessionLayout(template_id="logs", split="vertical"),
+                        ],
+                    )
+                ],
+            )
+            project = self.make_project()
+
+            result = await layout_spawner.spawn_layout(layout, project, templates)
+
+        assert result.success is True
+        assert len(result.results) == 2
+        assert result.results[0].session_id == "session-main"
+        assert result.results[1].session_id == "session-split"
+
+        # First session used directly
+        assert mock_session1.async_send_text.called
+
+        # Second session created via split
+        mock_session1.async_split_pane.assert_called_once_with(vertical=True)
+
+    @pytest.mark.asyncio
+    async def test_spawn_layout_horizontal_split(self):
+        """spawn_layout creates horizontal splits correctly."""
+        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
+
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        layout_spawner = WindowLayoutSpawner(controller, spawner)
+
+        mock_session1 = self.make_mock_session("session-1")
+        mock_session2 = self.make_mock_session("session-2")
+        mock_session1.async_split_pane = AsyncMock(return_value=mock_session2)
+        mock_session1.tab = MagicMock(tab_id="tab-1")
+
+        mock_tab = self.make_mock_tab("tab-1", mock_session1)
+        mock_window = self.make_mock_window("window-1", mock_tab)
+
+        with patch("iterm2.Window.async_create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_window
+
+            templates = {
+                "top": self.make_template(id="top"),
+                "bottom": self.make_template(id="bottom"),
+            }
+            layout = WindowLayout(
+                id="horizontal",
+                name="Horizontal Split",
+                tabs=[
+                    TabLayout(
+                        name="Split",
+                        sessions=[
+                            SessionLayout(template_id="top"),
+                            SessionLayout(template_id="bottom", split="horizontal"),
+                        ],
+                    )
+                ],
+            )
+            project = self.make_project()
+
+            await layout_spawner.spawn_layout(layout, project, templates)
+
+        # Horizontal split means vertical=False
+        mock_session1.async_split_pane.assert_called_once_with(vertical=False)
+
+    @pytest.mark.asyncio
+    async def test_spawn_layout_missing_template(self):
+        """spawn_layout handles missing template gracefully."""
+        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
+
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        layout_spawner = WindowLayoutSpawner(controller, spawner)
+
+        mock_session = self.make_mock_session("session-1")
+        mock_tab = self.make_mock_tab("tab-1", mock_session)
+        mock_window = self.make_mock_window("window-1", mock_tab)
+
+        with patch("iterm2.Window.async_create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_window
+
+            # No templates provided
+            layout = WindowLayout(
+                id="missing",
+                name="Missing Template",
+                tabs=[
+                    TabLayout(
+                        name="Tab",
+                        sessions=[SessionLayout(template_id="nonexistent")],
+                    )
+                ],
+            )
+            project = self.make_project()
+
+            result = await layout_spawner.spawn_layout(layout, project, {})
+
+        assert result.success is False
+        assert len(result.results) == 1
+        assert result.results[0].success is False
+        assert "nonexistent" in result.results[0].error
+
+    @pytest.mark.asyncio
+    async def test_spawn_layout_tracks_sessions(self):
+        """spawn_layout registers sessions in managed_sessions."""
+        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
+
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        layout_spawner = WindowLayoutSpawner(controller, spawner)
+
+        mock_session = self.make_mock_session("tracked-session")
+        mock_tab = self.make_mock_tab("tab-1", mock_session)
+        mock_window = self.make_mock_window("window-1", mock_tab)
+
+        with patch("iterm2.Window.async_create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_window
+
+            template = self.make_template(id="tmpl-tracked")
+            layout = WindowLayout(
+                id="track",
+                name="Track Test",
+                tabs=[
+                    TabLayout(
+                        name="Main",
+                        sessions=[SessionLayout(template_id="tmpl-tracked")],
+                    )
+                ],
+            )
+            project = self.make_project(id="test-proj")
+
+            await layout_spawner.spawn_layout(
+                layout, project, {"tmpl-tracked": template}
+            )
+
+        assert "tracked-session" in spawner.managed_sessions
+        managed = spawner.managed_sessions["tracked-session"]
+        assert managed.template_id == "tmpl-tracked"
+        assert managed.project_id == "test-proj"
+
+    @pytest.mark.asyncio
+    async def test_spawn_layout_window_creation_failure(self):
+        """spawn_layout handles window creation failure."""
+        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.models import WindowLayout
+
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        layout_spawner = WindowLayoutSpawner(controller, spawner)
+
+        with patch("iterm2.Window.async_create", new_callable=AsyncMock) as mock_create:
+            mock_create.side_effect = Exception("Window creation failed")
+
+            layout = WindowLayout(id="fail", name="Fail Layout")
+            project = self.make_project()
+
+            result = await layout_spawner.spawn_layout(layout, project, {})
+
+        assert result.success is False
+        assert result.window_id == ""
+        assert "Window creation failed" in result.error
+
+    @pytest.mark.asyncio
+    async def test_spawn_layout_tab_with_no_sessions(self):
+        """spawn_layout handles tabs with no sessions defined."""
+        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.models import TabLayout, WindowLayout
+
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        layout_spawner = WindowLayoutSpawner(controller, spawner)
+
+        mock_session = self.make_mock_session("session-1")
+        mock_tab = self.make_mock_tab("tab-1", mock_session)
+        mock_window = self.make_mock_window("window-1", mock_tab)
+
+        with patch("iterm2.Window.async_create", new_callable=AsyncMock) as mock_create:
+            mock_create.return_value = mock_window
+
+            layout = WindowLayout(
+                id="empty-tab",
+                name="Empty Tab",
+                tabs=[TabLayout(name="Empty", sessions=[])],
+            )
+            project = self.make_project()
+
+            result = await layout_spawner.spawn_layout(layout, project, {})
+
+        assert result.success is True
+        assert result.results == []
+        mock_tab.async_set_title.assert_called_once_with("Empty")

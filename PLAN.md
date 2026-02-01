@@ -81,7 +81,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Apply pattern matching for WAITING/WORKING/IDLE states
   - Acceptance: Detects Claude prompts, shell prompts, and activity correctly
 
-- [ ] **Add window layout spawning** `[pending]`
+- [x] **Add window layout spawning** `[complete]`
   - Spec: specs/iterm.md#window-layout-spawning
   - Scope: Launch new iTerm2 windows with predefined tab/session layouts
   - Acceptance: WindowLayout configurations spawn correct structure
