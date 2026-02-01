@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Callable
 from iterm_controller.models import AttentionState
 
 if TYPE_CHECKING:
-    from iterm_controller.iterm_api import ItermController, SessionSpawner
+    from iterm_controller.iterm import ItermController, SessionSpawner
     from iterm_controller.models import ManagedSession
 
 logger = logging.getLogger(__name__)

@@ -617,7 +617,7 @@ class TestModeScreen(ModeScreen):
 
         async def _do_spawn() -> None:
             try:
-                from iterm_controller.iterm_api import SessionSpawner
+                from iterm_controller.iterm import SessionSpawner
 
                 # Create a temporary template for the test runner session
                 template = SessionTemplate(

@@ -28,7 +28,7 @@ if TYPE_CHECKING:
     from textual.app import App
 
     from .github import GitHubIntegration
-    from .iterm_api import ItermController
+    from .iterm import ItermController
     from .state import AppState
 
 logger = logging.getLogger(__name__)

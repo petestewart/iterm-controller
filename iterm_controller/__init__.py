@@ -116,7 +116,7 @@ from iterm_controller.state import (
 # iTerm2 Integration
 # =============================================================================
 
-from iterm_controller.iterm_api import (
+from iterm_controller.iterm import (
     ItermController,
     SessionSpawner,
     SessionTerminator,

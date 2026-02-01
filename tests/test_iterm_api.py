@@ -4,11 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from iterm_controller.iterm_api import (
-    CloseResult,
+from iterm_controller.exceptions import (
     ItermConnectionError,
-    ItermController,
     ItermNotConnectedError,
+)
+from iterm_controller.iterm import (
+    CloseResult,
+    ItermController,
     LayoutSpawnResult,
     SessionSpawner,
     SessionTerminator,
@@ -1188,7 +1190,7 @@ class TestLayoutSpawnResult:
 
     def test_layout_spawn_result_success(self):
         """LayoutSpawnResult with success state."""
-        from iterm_controller.iterm_api import LayoutSpawnResult
+        from iterm_controller.iterm import LayoutSpawnResult
 
         results = [
             SpawnResult(session_id="s1", tab_id="t1", success=True),
@@ -1207,7 +1209,7 @@ class TestLayoutSpawnResult:
 
     def test_layout_spawn_result_partial_failure(self):
         """LayoutSpawnResult with some failed sessions."""
-        from iterm_controller.iterm_api import LayoutSpawnResult
+        from iterm_controller.iterm import LayoutSpawnResult
 
         results = [
             SpawnResult(session_id="s1", tab_id="t1", success=True),
@@ -1223,7 +1225,7 @@ class TestLayoutSpawnResult:
 
     def test_layout_spawn_result_failure(self):
         """LayoutSpawnResult with failure state."""
-        from iterm_controller.iterm_api import LayoutSpawnResult
+        from iterm_controller.iterm import LayoutSpawnResult
 
         result = LayoutSpawnResult(
             window_id="",
@@ -1301,7 +1303,7 @@ class TestWindowLayoutSpawner:
 
     def test_init(self):
         """WindowLayoutSpawner initializes correctly."""
-        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.iterm import WindowLayoutSpawner
 
         controller = ItermController()
         spawner = SessionSpawner(controller)
@@ -1313,7 +1315,7 @@ class TestWindowLayoutSpawner:
     @pytest.mark.asyncio
     async def test_spawn_layout_requires_connection(self):
         """spawn_layout raises when not connected."""
-        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.iterm import WindowLayoutSpawner
         from iterm_controller.models import WindowLayout
 
         controller = ItermController()
@@ -1329,7 +1331,7 @@ class TestWindowLayoutSpawner:
     @pytest.mark.asyncio
     async def test_spawn_layout_empty_tabs(self):
         """spawn_layout handles layout with no tabs."""
-        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.iterm import WindowLayoutSpawner
         from iterm_controller.models import WindowLayout
 
         controller = self.make_connected_controller()
@@ -1354,7 +1356,7 @@ class TestWindowLayoutSpawner:
     @pytest.mark.asyncio
     async def test_spawn_layout_single_tab_single_session(self):
         """spawn_layout creates a single tab with one session."""
-        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.iterm import WindowLayoutSpawner
         from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
 
         controller = self.make_connected_controller()
@@ -1403,7 +1405,7 @@ class TestWindowLayoutSpawner:
     @pytest.mark.asyncio
     async def test_spawn_layout_multiple_tabs(self):
         """spawn_layout creates multiple tabs."""
-        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.iterm import WindowLayoutSpawner
         from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
 
         controller = self.make_connected_controller()
@@ -1459,7 +1461,7 @@ class TestWindowLayoutSpawner:
     @pytest.mark.asyncio
     async def test_spawn_layout_with_splits(self):
         """spawn_layout creates split panes within a tab."""
-        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.iterm import WindowLayoutSpawner
         from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
 
         controller = self.make_connected_controller()
@@ -1516,7 +1518,7 @@ class TestWindowLayoutSpawner:
     @pytest.mark.asyncio
     async def test_spawn_layout_horizontal_split(self):
         """spawn_layout creates horizontal splits correctly."""
-        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.iterm import WindowLayoutSpawner
         from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
 
         controller = self.make_connected_controller()
@@ -1561,7 +1563,7 @@ class TestWindowLayoutSpawner:
     @pytest.mark.asyncio
     async def test_spawn_layout_missing_template(self):
         """spawn_layout handles missing template gracefully."""
-        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.iterm import WindowLayoutSpawner
         from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
 
         controller = self.make_connected_controller()
@@ -1598,7 +1600,7 @@ class TestWindowLayoutSpawner:
     @pytest.mark.asyncio
     async def test_spawn_layout_tracks_sessions(self):
         """spawn_layout registers sessions in managed_sessions."""
-        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.iterm import WindowLayoutSpawner
         from iterm_controller.models import SessionLayout, TabLayout, WindowLayout
 
         controller = self.make_connected_controller()
@@ -1637,7 +1639,7 @@ class TestWindowLayoutSpawner:
     @pytest.mark.asyncio
     async def test_spawn_layout_window_creation_failure(self):
         """spawn_layout handles window creation failure."""
-        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.iterm import WindowLayoutSpawner
         from iterm_controller.models import WindowLayout
 
         controller = self.make_connected_controller()
@@ -1659,7 +1661,7 @@ class TestWindowLayoutSpawner:
     @pytest.mark.asyncio
     async def test_spawn_layout_tab_with_no_sessions(self):
         """spawn_layout handles tabs with no sessions defined."""
-        from iterm_controller.iterm_api import WindowLayoutSpawner
+        from iterm_controller.iterm import WindowLayoutSpawner
         from iterm_controller.models import TabLayout, WindowLayout
 
         controller = self.make_connected_controller()

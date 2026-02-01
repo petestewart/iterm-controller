@@ -54,7 +54,7 @@ from .exceptions import (
     TestPlanParseError,
     TestPlanWriteError,
 )
-from .iterm_api import (
+from .iterm import (
     CloseResult,
     ItermController,
     LayoutSpawnResult,

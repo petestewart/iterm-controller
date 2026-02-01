@@ -650,9 +650,9 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### Phase 23: Architecture Improvements (Important)
 
-- [ ] **Split iterm_api.py into focused modules** `[pending]`
+- [x] **Split iterm_api.py into focused modules** `[complete]`
   - Scope: Break 1207-line file into separate modules
-  - New structure: iterm_controller/iterm/connection.py, spawner.py, terminator.py, tracker.py, layouts.py
+  - New structure: iterm_controller/iterm/connection.py, spawner.py, terminator.py, tracker.py, layout_spawner.py, layout_manager.py
   - Acceptance: Each module < 300 lines with single responsibility
 
 - [ ] **Refactor AppState into focused state managers** `[pending]`

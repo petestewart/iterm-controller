@@ -25,7 +25,7 @@ from iterm_controller.health_checker import (
     HealthCheckPoller,
     ProjectHealthManager,
 )
-from iterm_controller.iterm_api import (
+from iterm_controller.iterm import (
     ItermController,
     SessionSpawner,
     SessionTerminator,

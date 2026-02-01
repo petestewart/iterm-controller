@@ -12,7 +12,7 @@ from textual.binding import Binding
 
 from iterm_controller.api import AppAPI
 from iterm_controller.github import GitHubIntegration
-from iterm_controller.iterm_api import ItermController
+from iterm_controller.iterm import ItermController
 from iterm_controller.notifications import Notifier
 from iterm_controller.screens.modes import (
     DocsModeScreen,

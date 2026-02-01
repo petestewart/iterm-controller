@@ -380,7 +380,7 @@ class NewProjectScreen(Screen):
             project: The project to spawn sessions for.
             template: The template containing session definitions.
         """
-        from iterm_controller.iterm_api import SessionSpawner
+        from iterm_controller.iterm import SessionSpawner
 
         app: ItermControllerApp = self.app  # type: ignore[assignment]
 
