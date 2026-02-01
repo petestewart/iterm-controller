@@ -71,7 +71,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Create tabs/panes in iTerm2 windows, send initial commands from SessionTemplate
   - Acceptance: Can spawn tabs and split panes per configuration
 
-- [ ] **Build output polling system** `[pending]`
+- [x] **Build output polling system** `[complete]`
   - Spec: specs/session-monitor.md#polling-architecture
   - Scope: Poll session output at configurable interval (default 500ms)
   - Acceptance: Captures session output reliably without performance degradation
