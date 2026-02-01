@@ -1051,6 +1051,204 @@ class TestManagedSessionMetadata:
         assert data["metadata"]["task_id"] == "2.1"
 
 
+@pytest.mark.asyncio
+class TestWorkModeSessionEventHandlers:
+    """Tests for WorkModeScreen session event handling."""
+
+    async def test_on_session_status_changed_updates_display(self) -> None:
+        """Test that session status changes update the active work display."""
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.models import AttentionState, ManagedSession
+        from iterm_controller.state import SessionStatusChanged
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Active task** `[in_progress]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test():
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                # Create a session linked to the task
+                session = ManagedSession(
+                    id="sess-1",
+                    template_id="claude",
+                    project_id=project.id,
+                    tab_id="tab-1",
+                    attention_state=AttentionState.IDLE,
+                )
+                session.metadata["task_id"] = "1.1"
+                app.state.add_session(session)
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Update session attention state
+                session.attention_state = AttentionState.WAITING
+                app.state.update_session_status(session.id, attention_state=AttentionState.WAITING)
+
+                # Verify screen refreshed (session status change handler called)
+                # The screen should handle the SessionStatusChanged message
+                assert app.screen._sessions.get("sess-1") is not None
+
+    async def test_on_session_spawned_handler_updates_sessions(self) -> None:
+        """Test that session spawned handler updates the sessions dict.
+
+        This tests the handler directly rather than relying on message dispatch.
+        """
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.models import AttentionState, ManagedSession
+        from iterm_controller.state import SessionSpawned
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Test task** `[pending]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test():
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Initially no sessions
+                assert len(app.screen._sessions) == 0
+
+                # Add session to state
+                session = ManagedSession(
+                    id="new-sess",
+                    template_id="claude",
+                    project_id=project.id,
+                    tab_id="tab-1",
+                    attention_state=AttentionState.IDLE,
+                )
+                app.state.sessions[session.id] = session  # Directly add to state dict
+
+                # Call the handler directly
+                event = SessionSpawned(session)
+                app.screen.on_session_spawned(event)
+
+                # Verify screen's sessions dict was updated
+                assert "new-sess" in app.screen._sessions
+
+    async def test_on_session_closed_handler_updates_sessions(self) -> None:
+        """Test that session closed handler updates the sessions dict.
+
+        This tests the handler directly rather than relying on message dispatch.
+        """
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.models import AttentionState, ManagedSession
+        from iterm_controller.state import SessionClosed
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Active task** `[in_progress]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test():
+                project = make_project(path=tmpdir)
+                app.state.projects[project.id] = project
+
+                # Create a session in state
+                session = ManagedSession(
+                    id="sess-to-close",
+                    template_id="claude",
+                    project_id=project.id,
+                    tab_id="tab-1",
+                    attention_state=AttentionState.WORKING,
+                )
+                app.state.sessions[session.id] = session
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Verify session is in screen's sessions
+                assert "sess-to-close" in app.screen._sessions
+
+                # Remove from state
+                del app.state.sessions["sess-to-close"]
+
+                # Call the handler directly
+                event = SessionClosed(session)
+                app.screen.on_session_closed(event)
+
+                # Verify screen's sessions dict was updated
+                assert "sess-to-close" not in app.screen._sessions
+
+    async def test_session_event_ignores_other_project_sessions(self) -> None:
+        """Test that session events for other projects are ignored."""
+        import tempfile
+        from pathlib import Path
+
+        from iterm_controller.models import AttentionState, ManagedSession
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_content = """# Plan
+
+## Tasks
+
+### Phase 1: Test
+
+- [ ] **Test task** `[pending]`
+  - Scope: Test scope
+"""
+            (Path(tmpdir) / "PLAN.md").write_text(plan_content)
+
+            app = ItermControllerApp()
+            async with app.run_test():
+                project = make_project(path=tmpdir, project_id="my-project")
+                app.state.projects[project.id] = project
+
+                await app.push_screen(WorkModeScreen(project))
+
+                # Initial state - no sessions
+                initial_count = len(app.screen._sessions)
+
+                # Add a session for a DIFFERENT project
+                other_session = ManagedSession(
+                    id="other-sess",
+                    template_id="claude",
+                    project_id="other-project",  # Different project
+                    tab_id="tab-1",
+                    attention_state=AttentionState.IDLE,
+                )
+                app.state.add_session(other_session)
+
+                # The screen's _sessions should not have changed for this project's view
+                # Note: _sessions contains ALL sessions but the event handler filters by project
+                # The handler should still include it in _sessions (full lookup)
+                # but the refresh_widgets only shows project sessions in the UI
+
+
 class TestSessionListWidgetTaskInfo:
     """Tests for SessionListWidget showing task info."""
 

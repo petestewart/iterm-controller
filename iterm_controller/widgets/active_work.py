@@ -138,14 +138,27 @@ class ActiveWorkWidget(Static, can_focus=True):
     def get_session_for_task(self, task: Task) -> ManagedSession | None:
         """Get the session linked to a task.
 
+        Looks up the session in two ways:
+        1. By task.session_id if set (direct link)
+        2. By searching sessions for one whose metadata["task_id"] matches (reverse lookup)
+
         Args:
             task: The task to look up.
 
         Returns:
             The linked session, or None if not linked.
         """
+        # First try direct lookup via task.session_id
         if task.session_id:
-            return self._sessions.get(task.session_id)
+            session = self._sessions.get(task.session_id)
+            if session:
+                return session
+
+        # Reverse lookup: search sessions for one linked to this task
+        for session in self._sessions.values():
+            if session.metadata.get("task_id") == task.id:
+                return session
+
         return None
 
     def select_next(self) -> None:

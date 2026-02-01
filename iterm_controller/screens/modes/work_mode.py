@@ -24,6 +24,11 @@ from iterm_controller.models import (
     WorkflowMode,
 )
 from iterm_controller.screens.mode_screen import ModeScreen
+from iterm_controller.state import (
+    SessionClosed,
+    SessionSpawned,
+    SessionStatusChanged,
+)
 from iterm_controller.widgets.active_work import ActiveWorkWidget
 from iterm_controller.widgets.session_list import SessionListWidget
 from iterm_controller.widgets.task_queue import TaskQueueWidget
@@ -192,12 +197,12 @@ class WorkModeScreen(ModeScreen):
 
         # Build session lookup
         self._sessions = {}
-        for session in app.state.sessions:
+        for session in app.state.sessions.values():
             self._sessions[session.id] = session
 
         # Filter sessions for this project
         project_sessions = [
-            s for s in app.state.sessions
+            s for s in app.state.sessions.values()
             if s.project_id == self.project.id
         ]
 
@@ -592,3 +597,68 @@ class WorkModeScreen(ModeScreen):
         except Exception:
             # Don't fail the spawn if context sending fails
             pass
+
+    # =========================================================================
+    # Session Event Handlers
+    # =========================================================================
+
+    def on_session_spawned(self, event: SessionSpawned) -> None:
+        """Handle session spawned event.
+
+        Updates the display when a new session is spawned.
+
+        Args:
+            event: The session spawned event.
+        """
+        # Only refresh if this session is for our project
+        if event.session.project_id == self.project.id:
+            self._on_session_changed(event.session)
+
+    def on_session_closed(self, event: SessionClosed) -> None:
+        """Handle session closed event.
+
+        Updates the display when a session is closed.
+
+        Args:
+            event: The session closed event.
+        """
+        # Only refresh if this session was for our project
+        if event.session.project_id == self.project.id:
+            self._on_session_changed(event.session)
+
+    def on_session_status_changed(self, event: SessionStatusChanged) -> None:
+        """Handle session status changed event.
+
+        Updates the active work display when a session's attention state changes.
+        This keeps the status indicators in sync with session activity.
+
+        Args:
+            event: The session status changed event.
+        """
+        # Only refresh if this session is for our project
+        if event.session.project_id == self.project.id:
+            self._on_session_changed(event.session)
+
+    def _on_session_changed(self, session: ManagedSession) -> None:
+        """Update display when a session changes.
+
+        Refreshes the session dictionary and updates widgets.
+
+        Args:
+            session: The session that changed.
+        """
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        # Rebuild session lookup with current state
+        self._sessions = {}
+        for s in app.state.sessions.values():
+            self._sessions[s.id] = s
+
+        # Get project sessions for the session list widget
+        project_sessions = [
+            s for s in app.state.sessions.values()
+            if s.project_id == self.project.id
+        ]
+
+        # Update widgets
+        self._refresh_widgets(project_sessions)

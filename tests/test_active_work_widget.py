@@ -179,6 +179,54 @@ class TestActiveWorkSessionLinking:
 
         assert result is None
 
+    def test_get_session_for_task_reverse_lookup(self) -> None:
+        """Test getting session via metadata reverse lookup.
+
+        When task has no session_id set, the widget should search
+        sessions for one whose metadata["task_id"] matches the task.
+        """
+        session = make_session(session_id="sess-1")
+        session.metadata["task_id"] = "1.1"  # Link via metadata
+        session.metadata["task_title"] = "Test Task"
+
+        # Task has no session_id but should still find session via metadata
+        task = make_task(task_id="1.1", session_id=None, status=TaskStatus.IN_PROGRESS)
+        phase = make_phase(tasks=[task])
+        plan = make_plan(phases=[phase])
+
+        widget = ActiveWorkWidget(plan=plan, sessions={"sess-1": session})
+
+        result = widget.get_session_for_task(task)
+
+        assert result == session
+
+    def test_get_session_for_task_prefers_direct_link(self) -> None:
+        """Test that direct link via session_id takes priority.
+
+        If both task.session_id and a session's metadata match,
+        the direct link should be used.
+        """
+        direct_session = make_session(session_id="direct-sess")
+        metadata_session = make_session(session_id="metadata-sess")
+        metadata_session.metadata["task_id"] = "1.1"
+
+        # Task has explicit session_id
+        task = make_task(task_id="1.1", session_id="direct-sess", status=TaskStatus.IN_PROGRESS)
+        phase = make_phase(tasks=[task])
+        plan = make_plan(phases=[phase])
+
+        widget = ActiveWorkWidget(
+            plan=plan,
+            sessions={
+                "direct-sess": direct_session,
+                "metadata-sess": metadata_session,
+            },
+        )
+
+        result = widget.get_session_for_task(task)
+
+        assert result == direct_session
+
 
 class TestActiveWorkRendering:
     """Tests for active work rendering."""

@@ -402,7 +402,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: When spawning for task, link session to task, show in active work
   - Acceptance: Session shows which task it's working on
 
-- [ ] **Show active work with session status**
+- [x] **Show active work with session status** `[complete]`
   - Spec: specs/work-mode.md#active-work-panel
   - Scope: Display task with assigned session, started time, attention state
   - Acceptance: Active tasks show linked session status
