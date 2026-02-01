@@ -18,6 +18,7 @@ from iterm_controller.models import (
     ManagedSession,
     Plan,
     Project,
+    TestPlan,
 )
 
 if TYPE_CHECKING:
@@ -38,6 +39,11 @@ class StateEvent(Enum):
     CONFIG_CHANGED = "config_changed"
     HEALTH_STATUS_CHANGED = "health_status_changed"
     WORKFLOW_STAGE_CHANGED = "workflow_stage_changed"
+    # TEST_PLAN.md events
+    TEST_PLAN_RELOADED = "test_plan_reloaded"
+    TEST_PLAN_DELETED = "test_plan_deleted"
+    TEST_PLAN_CONFLICT = "test_plan_conflict"
+    TEST_STEP_UPDATED = "test_step_updated"
 
 
 # =============================================================================
@@ -145,6 +151,41 @@ class WorkflowStageChanged(StateMessage):
         self.stage = stage
 
 
+class TestPlanReloaded(StateMessage):
+    """Posted when a TEST_PLAN.md file is reloaded."""
+
+    def __init__(self, project_id: str, test_plan: TestPlan) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.test_plan = test_plan
+
+
+class TestPlanDeleted(StateMessage):
+    """Posted when a TEST_PLAN.md file is deleted."""
+
+    def __init__(self, project_id: str) -> None:
+        super().__init__()
+        self.project_id = project_id
+
+
+class TestPlanConflict(StateMessage):
+    """Posted when an external change to TEST_PLAN.md is detected."""
+
+    def __init__(self, project_id: str, new_plan: TestPlan) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.new_plan = new_plan
+
+
+class TestStepUpdated(StateMessage):
+    """Posted when a test step's status changes."""
+
+    def __init__(self, project_id: str, step_id: str) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.step_id = step_id
+
+
 @dataclass
 class AppState:
     """Reactive application state with event dispatch.
@@ -172,6 +213,7 @@ class AppState:
     sessions: dict[str, ManagedSession] = field(default_factory=dict)
     config: AppConfig | None = None
     plans: dict[str, Plan] = field(default_factory=dict)  # project_id -> Plan
+    test_plans: dict[str, TestPlan] = field(default_factory=dict)  # project_id -> TestPlan
     # Health statuses: project_id -> {check_name -> HealthStatus}
     _health_statuses: dict[str, dict[str, HealthStatus]] = field(default_factory=dict)
 
@@ -470,3 +512,59 @@ class AppState:
             stage=stage,
         )
         self._post_message(WorkflowStageChanged(project_id, stage))
+
+    # =========================================================================
+    # TEST_PLAN.md Management
+    # =========================================================================
+
+    def set_test_plan(self, project_id: str, test_plan: TestPlan) -> None:
+        """Set or update the test plan for a project.
+
+        Args:
+            project_id: The project ID.
+            test_plan: The parsed test plan.
+        """
+        self.test_plans[project_id] = test_plan
+        self.emit(StateEvent.TEST_PLAN_RELOADED, project_id=project_id, test_plan=test_plan)
+        self._post_message(TestPlanReloaded(project_id, test_plan))
+
+    def get_test_plan(self, project_id: str) -> TestPlan | None:
+        """Get the test plan for a project.
+
+        Args:
+            project_id: The project ID.
+
+        Returns:
+            The test plan if one exists, None otherwise.
+        """
+        return self.test_plans.get(project_id)
+
+    def clear_test_plan(self, project_id: str) -> None:
+        """Clear the test plan for a project (e.g., when file is deleted).
+
+        Args:
+            project_id: The project ID.
+        """
+        self.test_plans.pop(project_id, None)
+        self.emit(StateEvent.TEST_PLAN_DELETED, project_id=project_id)
+        self._post_message(TestPlanDeleted(project_id))
+
+    def notify_test_plan_conflict(self, project_id: str, new_plan: TestPlan) -> None:
+        """Notify about a TEST_PLAN.md conflict.
+
+        Args:
+            project_id: The project ID.
+            new_plan: The new plan from the external change.
+        """
+        self.emit(StateEvent.TEST_PLAN_CONFLICT, project_id=project_id, new_plan=new_plan)
+        self._post_message(TestPlanConflict(project_id, new_plan))
+
+    def update_test_step_status(self, project_id: str, step_id: str) -> None:
+        """Notify about a test step status change.
+
+        Args:
+            project_id: The project ID.
+            step_id: The step that changed.
+        """
+        self.emit(StateEvent.TEST_STEP_UPDATED, project_id=project_id, step_id=step_id)
+        self._post_message(TestStepUpdated(project_id, step_id))

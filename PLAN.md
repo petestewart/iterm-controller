@@ -424,7 +424,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Parse markdown checkboxes with [ ]/[~]/[x]/[!] markers
   - Acceptance: Parses sections, steps, statuses, notes
 
-- [ ] **Create TestPlanWatcher for file changes**
+- [x] **Create TestPlanWatcher for file changes** `[complete]`
   - Spec: specs/test-plan-parser.md#file-watching
   - Scope: Watch TEST_PLAN.md, emit events on change, handle conflicts
   - Acceptance: External edits detected within 1 second

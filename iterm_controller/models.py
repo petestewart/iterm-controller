@@ -525,6 +525,11 @@ class Project:
         """Return full path to the plan file."""
         return Path(self.path) / self.plan_path
 
+    @property
+    def full_test_plan_path(self) -> Path:
+        """Return full path to the test plan file."""
+        return Path(self.path) / self.test_plan_path
+
 
 @dataclass
 class ProjectTemplate:
