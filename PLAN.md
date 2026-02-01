@@ -579,7 +579,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Exports: ItermController, SessionSpawner, AppState, Project, ManagedSession, Task, Plan, config functions
   - Acceptance: Can `from iterm_controller import Controller, Project` etc.
 
-- [ ] **Document agent integration patterns** `[pending]`
+- [x] **Document agent integration patterns** `[complete]`
   - Scope: Create documentation showing programmatic usage
   - Acceptance: README includes example of API usage without TUI
 
