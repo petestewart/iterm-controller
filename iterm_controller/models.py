@@ -397,6 +397,21 @@ class AutoModeConfig:
     designated_session: str | None = None  # Session to run commands in
     mode_commands: dict[str, str] = field(default_factory=dict)
     # e.g., {"plan": "claude /prd", "test": "claude /qa", "work": "claude /plan"}
+    allowed_commands: list[str] = field(default_factory=lambda: [
+        # Claude command patterns - only allow specific Claude slash commands
+        r"^claude\s+/prd$",
+        r"^claude\s+/plan$",
+        r"^claude\s+/review$",
+        r"^claude\s+/qa$",
+        r"^claude\s+/commit$",
+        # Common development commands
+        r"^npm\s+(run\s+)?(test|lint|build|start|dev)$",
+        r"^yarn\s+(test|lint|build|start|dev)$",
+        r"^pnpm\s+(run\s+)?(test|lint|build|start|dev)$",
+        r"^pytest(\s+-[vxs]+)?$",
+        r"^make\s+(test|lint|build|check)$",
+    ])
+    # Regex patterns for allowed commands. Commands must match one pattern.
 
 
 @dataclass

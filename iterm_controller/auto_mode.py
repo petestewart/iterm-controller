@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable
 
+from .exceptions import CommandNotAllowedError
 from .models import (
     AutoModeConfig,
     GitHubStatus,
@@ -30,6 +32,32 @@ if TYPE_CHECKING:
     from .state import AppState
 
 logger = logging.getLogger(__name__)
+
+
+def validate_command(command: str, allowed_patterns: list[str]) -> bool:
+    """Validate a command against the allowlist patterns.
+
+    Args:
+        command: The command string to validate.
+        allowed_patterns: List of regex patterns that commands must match.
+
+    Returns:
+        True if the command matches at least one pattern.
+    """
+    if not allowed_patterns:
+        # Empty allowlist means nothing is allowed
+        return False
+
+    command_stripped = command.strip()
+    for pattern in allowed_patterns:
+        try:
+            if re.match(pattern, command_stripped):
+                return True
+        except re.error as e:
+            logger.warning(f"Invalid regex pattern '{pattern}': {e}")
+            continue
+
+    return False
 
 
 @dataclass
@@ -417,8 +445,15 @@ class AutoAdvanceHandler:
                     error="User declined confirmation",
                 )
 
-        # Execute the command
-        return await self._execute_command(command)
+        # Execute the command (validates against allowlist)
+        try:
+            return await self._execute_command(command)
+        except CommandNotAllowedError as e:
+            return CommandExecutionResult(
+                success=False,
+                command=command,
+                error=f"Command not allowed: {e.command}",
+            )
 
     async def handle_mode_enter(
         self,
@@ -457,8 +492,15 @@ class AutoAdvanceHandler:
                     error="User declined confirmation",
                 )
 
-        # Execute the command
-        return await self._execute_command(command)
+        # Execute the command (validates against allowlist)
+        try:
+            return await self._execute_command(command)
+        except CommandNotAllowedError as e:
+            return CommandExecutionResult(
+                success=False,
+                command=command,
+                error=f"Command not allowed: {e.command}",
+            )
 
     async def _show_mode_command_modal(
         self,
@@ -542,12 +584,29 @@ class AutoAdvanceHandler:
         1. The designated session (if configured and exists)
         2. The current session in the current terminal window (fallback)
 
+        Security: The command is validated against allowed_commands patterns
+        before execution to prevent arbitrary command execution.
+
         Args:
             command: The command to execute.
 
         Returns:
             CommandExecutionResult with execution status.
+
+        Raises:
+            CommandNotAllowedError: If command doesn't match any allowed pattern.
         """
+        # Validate command against allowlist
+        if not validate_command(command, self.config.allowed_commands):
+            logger.warning(
+                f"Command not allowed: {command}. "
+                f"Allowed patterns: {self.config.allowed_commands}"
+            )
+            raise CommandNotAllowedError(
+                command=command,
+                allowed_patterns=self.config.allowed_commands,
+            )
+
         if self.iterm is None or not self.iterm.is_connected:
             logger.warning("iTerm not connected, cannot execute command")
             return CommandExecutionResult(

@@ -497,6 +497,44 @@ class NotificationUnavailableError(NotificationError):
 
 
 # =============================================================================
+# Auto Mode Errors
+# =============================================================================
+
+
+class AutoModeError(ItermControllerError):
+    """Base class for auto mode errors."""
+
+    pass
+
+
+class CommandNotAllowedError(AutoModeError):
+    """Raised when a command is not in the allowed commands list.
+
+    This error is raised when auto mode tries to execute a command
+    that hasn't been explicitly allowlisted. This prevents arbitrary
+    command execution via configuration files.
+    """
+
+    def __init__(
+        self,
+        command: str,
+        *,
+        allowed_patterns: list[str] | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> None:
+        ctx = context or {}
+        ctx["command"] = command
+        if allowed_patterns:
+            ctx["allowed_patterns"] = allowed_patterns
+        super().__init__(
+            f"Command not allowed: {command}",
+            context=ctx,
+        )
+        self.command = command
+        self.allowed_patterns = allowed_patterns
+
+
+# =============================================================================
 # Error Registry for Categorization
 # =============================================================================
 

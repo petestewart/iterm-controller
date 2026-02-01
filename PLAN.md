@@ -506,7 +506,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Fix: Use `shlex.quote()` for all values, validate env keys with regex `^[A-Za-z_][A-Za-z0-9_]*$`
   - Acceptance: Cannot inject commands via template.env values or keys
 
-- [ ] **Fix arbitrary command execution in auto mode** `[pending]`
+- [x] **Fix arbitrary command execution in auto mode** `[complete]`
   - Scope: Implement command allowlisting for auto mode commands
   - Location: iterm_controller/auto_mode.py:535-621
   - Fix: Add command validation against expected patterns or allowlist
