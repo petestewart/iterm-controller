@@ -353,6 +353,8 @@ class DocsModeScreen(ModeScreen):
             """Handle the content type selection."""
             if content_type == ContentType.FILE:
                 self._show_add_file_modal()
+            elif content_type == ContentType.BROWSE:
+                self._show_file_browser_modal()
             elif content_type == ContentType.URL:
                 self._show_add_url_modal()
 
@@ -384,6 +386,103 @@ class DocsModeScreen(ModeScreen):
             ),
             handle_add_result,
         )
+
+    def _show_file_browser_modal(self) -> None:
+        """Show the file browser modal for selecting an existing file."""
+        from iterm_controller.screens.modals.file_browser import FileBrowserModal
+
+        def handle_browse_result(result: Path | None) -> None:
+            """Handle the result from the file browser modal."""
+            if result:
+                self._add_existing_file(result)
+
+        self.app.push_screen(
+            FileBrowserModal(
+                project_path=self.project.path,
+                title="Select File to Add",
+                description="Browse and select an existing file to include in documentation",
+            ),
+            handle_browse_result,
+        )
+
+    def _add_existing_file(self, file_path: Path) -> None:
+        """Add an existing file to the documentation tree.
+
+        If the file is already in a documentation directory (docs/, specs/, etc.),
+        it's already visible in the tree. If it's elsewhere in the project,
+        we copy it to a documentation directory.
+
+        Args:
+            file_path: Path to the file to add.
+        """
+        project_path = Path(self.project.path)
+
+        # Validate file is within project
+        try:
+            rel_path = file_path.relative_to(project_path)
+        except ValueError:
+            self.notify(
+                "Cannot add files from outside the project",
+                severity="error",
+            )
+            return
+
+        rel_parts = rel_path.parts
+
+        # Check if already in a doc directory or is a root doc file
+        doc_dirs = {"docs", "specs", "documentation"}
+        root_docs = {"README.md", "CHANGELOG.md", "CONTRIBUTING.md", "LICENSE"}
+
+        already_in_tree = (
+            (rel_parts and rel_parts[0] in doc_dirs)
+            or (len(rel_parts) == 1 and rel_parts[0] in root_docs)
+        )
+
+        if already_in_tree:
+            self.notify(f"{rel_path} is already in the documentation tree")
+            tree = self.query_one("#doc-tree", DocTreeWidget)
+            tree.refresh_tree()
+            self._update_status_bar()
+            return
+
+        # File is in project but not in doc directories - copy it to docs/
+        self._copy_file_to_docs(file_path, rel_path)
+
+    def _copy_file_to_docs(self, source_path: Path, rel_path: Path) -> None:
+        """Copy a file to the docs directory.
+
+        Args:
+            source_path: Absolute path to the source file.
+            rel_path: Path relative to project root.
+        """
+        import shutil
+
+        project_path = Path(self.project.path)
+        docs_dir = project_path / "docs"
+
+        # Create docs directory if needed
+        docs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Determine destination path
+        dest_path = docs_dir / source_path.name
+
+        # Handle name collision
+        counter = 1
+        base_name = source_path.stem
+        extension = source_path.suffix
+        while dest_path.exists():
+            dest_path = docs_dir / f"{base_name}_{counter}{extension}"
+            counter += 1
+
+        try:
+            shutil.copy2(source_path, dest_path)
+            tree = self.query_one("#doc-tree", DocTreeWidget)
+            tree.refresh_tree()
+            self._update_status_bar()
+            self.notify(f"Copied {source_path.name} to docs/")
+        except Exception as e:
+            logger.exception("Failed to copy file to docs")
+            self.notify(f"Failed to copy file: {e}", severity="error")
 
     def _show_add_url_modal(self, existing_reference: DocReference | None = None) -> None:
         """Show the add/edit URL reference modal.

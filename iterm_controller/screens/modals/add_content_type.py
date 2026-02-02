@@ -18,18 +18,20 @@ class ContentType(Enum):
     """Type of content to add."""
 
     FILE = "file"
+    BROWSE = "browse"
     URL = "url"
 
 
 class AddContentTypeModal(ModalScreen[ContentType | None]):
     """Modal for choosing between adding a file or URL reference.
 
-    Returns ContentType.FILE or ContentType.URL, or None if cancelled.
+    Returns ContentType.FILE, ContentType.BROWSE, ContentType.URL, or None if cancelled.
     """
 
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
-        Binding("f", "select_file", "File"),
+        Binding("n", "select_file", "New File"),
+        Binding("b", "select_browse", "Browse"),
         Binding("u", "select_url", "URL"),
     ]
 
@@ -39,7 +41,7 @@ class AddContentTypeModal(ModalScreen[ContentType | None]):
     }
 
     AddContentTypeModal #dialog {
-        width: 50;
+        width: 55;
         height: auto;
         border: thick $accent;
         background: $surface;
@@ -84,9 +86,15 @@ class AddContentTypeModal(ModalScreen[ContentType | None]):
             Static("What would you like to add?", id="description"),
             Vertical(
                 Button(
-                    "📄 [F] New File - Create a markdown file",
+                    "📄 [N] New File - Create a markdown file",
                     variant="primary",
                     id="file",
+                    classes="option-button",
+                ),
+                Button(
+                    "📁 [B] Browse - Select an existing file",
+                    variant="default",
+                    id="browse",
                     classes="option-button",
                 ),
                 Button(
@@ -114,6 +122,8 @@ class AddContentTypeModal(ModalScreen[ContentType | None]):
             self.dismiss(None)
         elif event.button.id == "file":
             self.dismiss(ContentType.FILE)
+        elif event.button.id == "browse":
+            self.dismiss(ContentType.BROWSE)
         elif event.button.id == "url":
             self.dismiss(ContentType.URL)
 
@@ -124,6 +134,10 @@ class AddContentTypeModal(ModalScreen[ContentType | None]):
     def action_select_file(self) -> None:
         """Select file option."""
         self.dismiss(ContentType.FILE)
+
+    def action_select_browse(self) -> None:
+        """Select browse option."""
+        self.dismiss(ContentType.BROWSE)
 
     def action_select_url(self) -> None:
         """Select URL option."""

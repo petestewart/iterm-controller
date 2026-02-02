@@ -9,6 +9,7 @@ from .create_artifact import CreateArtifactModal, CreateArtifactResult
 from .delete_confirm import DeleteConfirmModal
 from .dependency_chain import DependencyChainModal
 from .docs_picker import DocsPickerModal
+from .file_browser import FileBrowserModal
 from .github_actions import GitHubActionsModal
 from .help_modal import HelpModal
 from .mode_command import ModeCommandModal
@@ -32,6 +33,7 @@ __all__ = [
     "DeleteConfirmModal",
     "DependencyChainModal",
     "DocsPickerModal",
+    "FileBrowserModal",
     "GitHubActionsModal",
     "HelpModal",
     "ModeCommandModal",

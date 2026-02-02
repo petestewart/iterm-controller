@@ -832,7 +832,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: "Add" action should allow user to add a URL or a file
   - Acceptance: User can add external URLs as documentation references
 
-- [ ] **Add file browser for adding documents**
+- [x] **Add file browser for adding documents** `[complete]`
   - Scope: When adding a file, provide a file browser/picker instead of requiring typed paths
   - Acceptance: User can browse and select files visually when adding documents
 
