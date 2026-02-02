@@ -106,6 +106,9 @@ class SpawnResultData:
     error: str | None = None
     """Error message if spawn failed."""
 
+    window_id: str = ""
+    """ID of the window containing the session (for same-window spawning)."""
+
 
 @dataclass
 class CloseResultData:

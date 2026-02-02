@@ -1184,6 +1184,36 @@ class TestSessionSpawner:
         # Should not raise
         spawner.untrack_session("nonexistent")
 
+    @pytest.mark.asyncio
+    async def test_spawn_session_tracks_window_id(self):
+        """spawn_session stores window_id in ManagedSession and SpawnResult."""
+        controller = self.make_connected_controller()
+        spawner = SessionSpawner(controller)
+        template = self.make_template()
+        project = self.make_project()
+
+        mock_session = MagicMock()
+        mock_session.session_id = "session-with-window"
+        mock_session.async_send_text = AsyncMock()
+
+        mock_tab = MagicMock()
+        mock_tab.tab_id = "tab-with-window"
+        mock_tab.current_session = mock_session
+
+        mock_window = MagicMock()
+        mock_window.window_id = "window-123"
+        mock_window.async_create_tab = AsyncMock(return_value=mock_tab)
+
+        result = await spawner.spawn_session(template, project, window=mock_window)
+
+        assert result.success is True
+        assert result.window_id == "window-123"
+
+        # Check ManagedSession also has window_id
+        managed = spawner.get_session(result.session_id)
+        assert managed is not None
+        assert managed.window_id == "window-123"
+
 
 class TestLayoutSpawnResult:
     """Test LayoutSpawnResult dataclass."""

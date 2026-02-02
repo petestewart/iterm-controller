@@ -45,6 +45,7 @@ class ManagedSession:
     template_id: str  # Which template spawned this
     project_id: str  # Parent project
     tab_id: str  # iTerm2 tab ID
+    window_id: str = ""  # iTerm2 window ID (for spawning in same window)
 
     # Runtime state
     attention_state: AttentionState = AttentionState.IDLE

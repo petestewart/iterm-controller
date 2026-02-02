@@ -35,6 +35,7 @@ class SpawnResult:
     tab_id: str
     success: bool
     error: str | None = None
+    window_id: str = ""  # iTerm2 window ID for tracking
 
 
 class SessionSpawner:
@@ -151,24 +152,27 @@ class SessionSpawner:
             full_command = self._build_command(template, project)
             await session.async_send_text(full_command + "\n")
 
-            # Track session
+            # Track session with window_id for same-window spawning
+            window_id = window.window_id if window else ""
             managed = ManagedSession(
                 id=session.session_id,
                 template_id=template.id,
                 project_id=project.id,
                 tab_id=tab.tab_id,
+                window_id=window_id,
             )
             self.managed_sessions[session.session_id] = managed
 
             logger.info(
                 f"Spawned session {session.session_id} from template '{template.name}' "
-                f"in tab {tab.tab_id}"
+                f"in tab {tab.tab_id} (window {window_id})"
             )
 
             return SpawnResult(
                 session_id=session.session_id,
                 tab_id=tab.tab_id,
                 success=True,
+                window_id=window_id,
             )
 
         except Exception as e:
@@ -211,9 +215,15 @@ class SessionSpawner:
             full_command = self._build_command(template, project)
             await session.async_send_text(full_command + "\n")
 
-            # Get tab_id from parent session's tab
+            # Get tab_id and window_id from parent session's tab
             # Note: session.tab is available after split
             tab_id = parent_session.tab.tab_id if parent_session.tab else ""
+            window_id = ""
+            if parent_session.tab:
+                # Get window from the parent session's managed entry if available
+                parent_managed = self.managed_sessions.get(parent_session.session_id)
+                if parent_managed:
+                    window_id = parent_managed.window_id
 
             # Track session
             managed = ManagedSession(
@@ -221,18 +231,20 @@ class SessionSpawner:
                 template_id=template.id,
                 project_id=project.id,
                 tab_id=tab_id,
+                window_id=window_id,
             )
             self.managed_sessions[session.session_id] = managed
 
             logger.info(
                 f"Spawned split session {session.session_id} from template '{template.name}' "
-                f"(vertical={vertical})"
+                f"(vertical={vertical}, window {window_id})"
             )
 
             return SpawnResult(
                 session_id=session.session_id,
                 tab_id=tab_id,
                 success=True,
+                window_id=window_id,
             )
 
         except Exception as e:

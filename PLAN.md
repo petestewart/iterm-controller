@@ -799,6 +799,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 #### App Issues
 
+- [x] **Launch sessions in same window** `[complete]`
+  - Scope: Sessions should launch new tabs in the same iTerm2 window rather than spawning separate windows
+  - Acceptance: New sessions appear as tabs in the current project's window
+
 - [ ] **Add --dangerously-skip-permissions config option**
   - Scope: Add setting to global/project config for --dangerously-skip-permissions flag
   - Acceptance: When enabled, all Claude sessions launch with the flag

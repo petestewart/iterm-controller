@@ -238,23 +238,31 @@ class WindowLayoutSpawner:
                 full_command = self.spawner._build_command(template, project)
                 await current_session.async_send_text(full_command + "\n")
 
+                # Get window_id from the tab's window
+                window_id = ""
+                if tab.window:
+                    window_id = tab.window.window_id
+
                 # Track session
                 managed = ManagedSession(
                     id=current_session.session_id,
                     template_id=template.id,
                     project_id=project.id,
                     tab_id=tab.tab_id,
+                    window_id=window_id,
                 )
                 self.spawner.managed_sessions[current_session.session_id] = managed
 
                 logger.info(
-                    f"Initialized tab's default session with template '{template.name}'"
+                    f"Initialized tab's default session with template '{template.name}' "
+                    f"in window {window_id}"
                 )
 
                 return SpawnResult(
                     session_id=current_session.session_id,
                     tab_id=tab.tab_id,
                     success=True,
+                    window_id=window_id,
                 )
             else:
                 # Subsequent sessions are splits

@@ -42,6 +42,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    import iterm2
+
     from .services import ServiceContainer
 
 from .config import (
@@ -185,6 +187,35 @@ class ItermControllerAPI:
     def state(self) -> AppState:
         """Get the current application state."""
         return self._state
+
+    async def _get_project_window(self, project_id: str) -> "iterm2.Window | None":
+        """Get the iTerm2 window associated with a project's sessions.
+
+        Finds the window by looking at existing sessions for the project
+        and retrieving their associated window.
+
+        Args:
+            project_id: The project ID to find the window for.
+
+        Returns:
+            The iTerm2 Window if found, None otherwise.
+        """
+        if not self._iterm.app:
+            return None
+
+        # Get existing sessions for this project
+        project_sessions = self._state.get_sessions_for_project(project_id)
+        if not project_sessions:
+            return None
+
+        # Find a session with a window_id and get that window
+        for session in project_sessions:
+            if session.window_id:
+                window = self._iterm.app.get_window_by_id(session.window_id)
+                if window:
+                    return window
+
+        return None
 
     async def initialize(self, connect_iterm: bool = True) -> APIResult:
         """Initialize the API.
@@ -536,7 +567,9 @@ class ItermControllerAPI:
             return SessionResult(success=False, error="Spawner not initialized")
 
         try:
-            result = await self._spawner.spawn_session(template, project)
+            # Find the project's existing window to spawn in the same window
+            window = await self._get_project_window(project_id)
+            result = await self._spawner.spawn_session(template, project, window)
 
             if result.success:
                 session = self._spawner.get_session(result.session_id)
@@ -1550,6 +1583,35 @@ class AppAPI:
         """Get the app's state."""
         return self._app.state
 
+    async def _get_project_window(self, project_id: str) -> "iterm2.Window | None":
+        """Get the iTerm2 window associated with a project's sessions.
+
+        Finds the window by looking at existing sessions for the project
+        and retrieving their associated window.
+
+        Args:
+            project_id: The project ID to find the window for.
+
+        Returns:
+            The iTerm2 Window if found, None otherwise.
+        """
+        if not self._app.iterm.app:
+            return None
+
+        # Get existing sessions for this project
+        project_sessions = self._app.state.get_sessions_for_project(project_id)
+        if not project_sessions:
+            return None
+
+        # Find a session with a window_id and get that window
+        for session in project_sessions:
+            if session.window_id:
+                window = self._app.iterm.app.get_window_by_id(session.window_id)
+                if window:
+                    return window
+
+        return None
+
     # =========================================================================
     # Session Operations
     # =========================================================================
@@ -1589,7 +1651,9 @@ class AppAPI:
             return SessionResult(success=False, error="Spawner not initialized")
 
         try:
-            result = await self._spawner.spawn_session(template, project)
+            # Find the project's existing window to spawn in the same window
+            window = await self._get_project_window(project_id)
+            result = await self._spawner.spawn_session(template, project, window)
 
             if result.success:
                 session = self._spawner.get_session(result.session_id)
@@ -1640,7 +1704,9 @@ class AppAPI:
             return SessionResult(success=False, error="Spawner not initialized")
 
         try:
-            result = await self._spawner.spawn_session(template, project)
+            # Find the project's existing window to spawn in the same window
+            window = await self._get_project_window(project.id)
+            result = await self._spawner.spawn_session(template, project, window)
 
             if result.success:
                 session = self._spawner.get_session(result.session_id)

@@ -73,6 +73,7 @@ class ItermSpawnerAdapter:
             tab_id=result.tab_id,
             success=result.success,
             error=result.error,
+            window_id=result.window_id,
         )
 
     async def spawn_session(

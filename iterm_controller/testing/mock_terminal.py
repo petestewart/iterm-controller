@@ -103,11 +103,14 @@ class MockSessionSpawner:
         self._spawn_should_fail = False
         self._fail_message = "Mock spawn failure"
         self._tab_counter = 0
+        self._window_counter = 0
+        self._current_window_id = ""
 
     async def spawn_session(
         self,
         template: SessionTemplate,
         project: Project,
+        window: object = None,  # Accept window parameter for API compatibility
     ) -> SpawnResultData:
         if self._spawn_should_fail:
             return SpawnResultData(
@@ -120,6 +123,17 @@ class MockSessionSpawner:
         session_id = f"mock-session-{uuid.uuid4().hex[:8]}"
         self._tab_counter += 1
         tab_id = f"mock-tab-{self._tab_counter}"
+
+        # Generate or reuse window_id (simulates same-window spawning)
+        if window is not None:
+            # Window provided - use its id if it has one
+            window_id = getattr(window, "window_id", None) or self._current_window_id
+        elif not self._current_window_id:
+            self._window_counter += 1
+            window_id = f"mock-window-{self._window_counter}"
+            self._current_window_id = window_id
+        else:
+            window_id = self._current_window_id
 
         mock_session = MockSession(
             id=session_id,
@@ -134,6 +148,7 @@ class MockSessionSpawner:
             template_id=template.id,
             project_id=project.id,
             tab_id=tab_id,
+            window_id=window_id,
         )
         self._managed_sessions[session_id] = managed
 
@@ -141,6 +156,7 @@ class MockSessionSpawner:
             session_id=session_id,
             tab_id=tab_id,
             success=True,
+            window_id=window_id,
         )
 
     async def spawn_split(
@@ -170,6 +186,10 @@ class MockSessionSpawner:
         session_id = f"mock-session-{uuid.uuid4().hex[:8]}"
         tab_id = parent.tab_id  # Split stays in same tab
 
+        # Get window_id from parent session
+        parent_managed = self._managed_sessions.get(parent_session_id)
+        window_id = parent_managed.window_id if parent_managed else ""
+
         mock_session = MockSession(
             id=session_id,
             tab_id=tab_id,
@@ -183,6 +203,7 @@ class MockSessionSpawner:
             template_id=template.id,
             project_id=project.id,
             tab_id=tab_id,
+            window_id=window_id,
         )
         self._managed_sessions[session_id] = managed
 
@@ -190,6 +211,7 @@ class MockSessionSpawner:
             session_id=session_id,
             tab_id=tab_id,
             success=True,
+            window_id=window_id,
         )
 
     def get_session(self, session_id: str) -> ManagedSession | None:
