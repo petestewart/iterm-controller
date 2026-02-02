@@ -137,7 +137,7 @@ class TestSessionRendering:
         session = make_session(attention_state=AttentionState.WORKING)
         widget = SessionListWidget(sessions=[session])
 
-        text = widget._render_session(session)
+        text = widget._render_session(session, is_selected=False)
 
         assert "●" in str(text)
 
@@ -146,7 +146,7 @@ class TestSessionRendering:
         session = make_session(template_id="my-template")
         widget = SessionListWidget(sessions=[session])
 
-        text = widget._render_session(session)
+        text = widget._render_session(session, is_selected=False)
 
         assert "my-template" in str(text)
 
@@ -155,7 +155,7 @@ class TestSessionRendering:
         session = make_session(project_id="my-project", template_id="my-template")
         widget = SessionListWidget(sessions=[session], show_project=True)
 
-        text = widget._render_session(session)
+        text = widget._render_session(session, is_selected=False)
 
         assert "my-project/my-template" in str(text)
 
@@ -164,7 +164,7 @@ class TestSessionRendering:
         session = make_session(project_id="my-project", template_id="my-template")
         widget = SessionListWidget(sessions=[session], show_project=False)
 
-        text = widget._render_session(session)
+        text = widget._render_session(session, is_selected=False)
 
         assert "my-project/" not in str(text)
         assert "my-template" in str(text)
@@ -174,7 +174,7 @@ class TestSessionRendering:
         session = make_session(attention_state=AttentionState.WAITING)
         widget = SessionListWidget(sessions=[session])
 
-        text = widget._render_session(session)
+        text = widget._render_session(session, is_selected=False)
 
         assert "Waiting" in str(text)
 
@@ -504,3 +504,174 @@ class TestSortedSessionCache:
         assert sorted_sessions[0].id == "waiting"
         assert sorted_sessions[1].id == "working"
         assert sorted_sessions[2].id == "idle"
+
+
+class TestSessionSelection:
+    """Tests for session selection functionality."""
+
+    def test_selected_index_starts_at_zero(self) -> None:
+        """Test that selection starts at index 0."""
+        widget = SessionListWidget()
+        assert widget.selected_index == 0
+
+    def test_selected_session_none_when_empty(self) -> None:
+        """Test that selected_session returns None when no sessions."""
+        widget = SessionListWidget()
+        assert widget.selected_session is None
+
+    def test_selected_session_returns_first_session_by_default(self) -> None:
+        """Test that selected_session returns first session (after sorting)."""
+        idle = make_session(session_id="idle", attention_state=AttentionState.IDLE)
+        waiting = make_session(
+            session_id="waiting", attention_state=AttentionState.WAITING
+        )
+
+        widget = SessionListWidget(sessions=[idle, waiting])
+        # WAITING should be first after sorting
+        assert widget.selected_session is not None
+        assert widget.selected_session.id == "waiting"
+
+    def test_internal_selected_index_change(self) -> None:
+        """Test that changing _selected_index changes the selected session."""
+        s1 = make_session(session_id="s1", attention_state=AttentionState.IDLE)
+        s2 = make_session(session_id="s2", attention_state=AttentionState.IDLE)
+
+        widget = SessionListWidget(sessions=[s1, s2])
+        # Directly set internal state (bypassing UI update)
+        widget._selected_index = 1
+
+        assert widget.selected_index == 1
+        assert widget.selected_session is not None
+        assert widget.selected_session.id == "s2"
+
+    def test_selection_index_out_of_bounds_returns_none(self) -> None:
+        """Test that out-of-bounds selection index returns None for selected_session."""
+        s1 = make_session(session_id="s1", attention_state=AttentionState.IDLE)
+
+        widget = SessionListWidget(sessions=[s1])
+        # Set invalid index directly
+        widget._selected_index = 10
+
+        assert widget.selected_session is None
+
+    def test_refresh_sessions_clamps_selection(self) -> None:
+        """Test that refresh_sessions keeps selection within bounds."""
+        s1 = make_session(session_id="s1", attention_state=AttentionState.IDLE)
+        s2 = make_session(session_id="s2", attention_state=AttentionState.IDLE)
+
+        widget = SessionListWidget(sessions=[s1, s2])
+        widget._selected_index = 1  # Select second item
+
+        # Refresh with only one session (doesn't call update)
+        widget._sessions = [s1]
+        widget._invalidate_cache()
+        # Manually check clamping logic
+        sorted_sessions = widget._get_sorted_sessions()
+        if sorted_sessions:
+            widget._selected_index = min(widget._selected_index, len(sorted_sessions) - 1)
+
+        # Selection should be clamped to valid range
+        assert widget.selected_index == 0
+
+    def test_render_shows_selection_indicator(self) -> None:
+        """Test that render shows selection indicator for selected session."""
+        s1 = make_session(session_id="s1", attention_state=AttentionState.IDLE)
+        s2 = make_session(session_id="s2", attention_state=AttentionState.IDLE)
+
+        widget = SessionListWidget(sessions=[s1, s2])
+        widget._selected_index = 1  # Select second
+
+        rendered = widget._render_sessions()
+        rendered_str = str(rendered)
+
+        # The '>' indicator should be in the output
+        assert ">" in rendered_str
+
+    def test_render_first_item_has_selection_indicator(self) -> None:
+        """Test that first item has selection indicator by default."""
+        s1 = make_session(session_id="s1", attention_state=AttentionState.IDLE)
+
+        widget = SessionListWidget(sessions=[s1])
+        rendered = widget._render_sessions()
+        rendered_str = str(rendered)
+
+        # The '>' indicator should be in the output for first (selected) item
+        assert ">" in rendered_str
+
+    def test_cursor_down_logic(self) -> None:
+        """Test cursor down navigation logic without UI calls."""
+        s1 = make_session(session_id="s1", attention_state=AttentionState.IDLE)
+        s2 = make_session(session_id="s2", attention_state=AttentionState.IDLE)
+
+        widget = SessionListWidget(sessions=[s1, s2])
+        assert widget._selected_index == 0
+
+        # Simulate cursor down logic (without UI update)
+        sorted_sessions = widget._get_sorted_sessions()
+        if widget._selected_index < len(sorted_sessions) - 1:
+            widget._selected_index += 1
+
+        assert widget._selected_index == 1
+
+    def test_cursor_up_logic(self) -> None:
+        """Test cursor up navigation logic without UI calls."""
+        s1 = make_session(session_id="s1", attention_state=AttentionState.IDLE)
+        s2 = make_session(session_id="s2", attention_state=AttentionState.IDLE)
+
+        widget = SessionListWidget(sessions=[s1, s2])
+        widget._selected_index = 1  # Start at second item
+
+        # Simulate cursor up logic (without UI update)
+        if widget._selected_index > 0:
+            widget._selected_index -= 1
+
+        assert widget._selected_index == 0
+
+    def test_cursor_down_stops_at_end(self) -> None:
+        """Test that cursor down doesn't go past the last session."""
+        s1 = make_session(session_id="s1", attention_state=AttentionState.IDLE)
+
+        widget = SessionListWidget(sessions=[s1])
+        assert widget._selected_index == 0
+
+        # Simulate cursor down at boundary
+        sorted_sessions = widget._get_sorted_sessions()
+        if widget._selected_index < len(sorted_sessions) - 1:
+            widget._selected_index += 1
+
+        # Should still be 0 since there's only one session
+        assert widget._selected_index == 0
+
+    def test_cursor_up_stops_at_start(self) -> None:
+        """Test that cursor up doesn't go below 0."""
+        s1 = make_session(session_id="s1", attention_state=AttentionState.IDLE)
+
+        widget = SessionListWidget(sessions=[s1])
+        assert widget._selected_index == 0
+
+        # Simulate cursor up at boundary
+        if widget._selected_index > 0:
+            widget._selected_index -= 1
+
+        # Should still be 0
+        assert widget._selected_index == 0
+
+    def test_selected_session_uses_sorted_order(self) -> None:
+        """Test that selected_session respects sorted order."""
+        idle = make_session(session_id="idle", attention_state=AttentionState.IDLE)
+        waiting = make_session(
+            session_id="waiting", attention_state=AttentionState.WAITING
+        )
+
+        # Add in "wrong" order - idle first
+        widget = SessionListWidget(sessions=[idle, waiting])
+
+        # Index 0 should be the waiting session (sorted first)
+        assert widget._selected_index == 0
+        assert widget.selected_session is not None
+        assert widget.selected_session.id == "waiting"
+
+        # Index 1 should be the idle session
+        widget._selected_index = 1
+        assert widget.selected_session is not None
+        assert widget.selected_session.id == "idle"

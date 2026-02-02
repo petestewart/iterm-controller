@@ -788,6 +788,53 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Acceptance: No TODO comments in production code
   - Result: Implemented delete confirmation modal in project_list.py and created TestPlanConflictModal for test_mode.py; added tests for both
 
+### Phase 26: UI & UX Improvements
+
+#### UI Issues
+
+- [ ] **Show mode labels in workflow bar**
+  - Scope: Display "1 Plan   2 Docs   3 Work   4 Test" instead of just "1 2 3 4" in the row at the top of Project screen
+  - Acceptance: Mode labels are visible alongside their numbers in the workflow bar
+
+#### App Issues
+
+- [ ] **Launch sessions in same window**
+  - Scope: Sessions should launch new tabs in the same iTerm2 window rather than spawning separate windows
+  - Acceptance: New sessions appear as tabs in the current project's window
+
+- [ ] **Add --dangerously-skip-permissions config option**
+  - Scope: Add setting to global/project config for --dangerously-skip-permissions flag
+  - Acceptance: When enabled, all Claude sessions launch with the flag
+
+- [ ] **Fix session focus error in Sessions view**
+  - Scope: Selecting a session throws "Error focusing session: 'App' object has no attribute 'async_get_session_by_id'"
+  - Fix: Add missing `async_get_session_by_id` method to App class or fix the call site
+  - Acceptance: Selecting a session in Sessions view focuses it without error
+
+#### Plan Screen
+
+- [ ] **Show project name and Jira ticket in Plan screen header**
+  - Scope: Display project name and Jira ticket (if configured) at the top of the Plan screen persistently
+  - Acceptance: Project name and Jira ticket visible at all times on Plan screen
+
+- [ ] **Add Agent collaboration option for docs in Plan screen**
+  - Scope: When selecting a doc, add option alongside Edit/Close to collaborate with an agent (e.g., "[A] Agent")
+  - Acceptance: User can launch agent collaboration on selected document
+
+- [ ] **Add create options for missing artifacts in Plan screen**
+  - Scope: When pressing Enter on an uncreated item, show dialogue with options: create with agent (spawn Claude session with appropriate slash command) or manually (create file and launch in editor)
+  - Acceptance: Both creation paths work correctly for missing artifacts
+
+#### Docs Screen
+
+- [ ] **Support adding URLs in Docs screen**
+  - Scope: "Add" action should allow user to add a URL or a file
+  - Acceptance: User can add external URLs as documentation references
+
+- [ ] **Add file browser for adding documents**
+  - Scope: When adding a file, provide a file browser/picker instead of requiring typed paths
+  - Acceptance: User can browse and select files visually when adding documents
+
 ## Open Questions
 
 - [~] **Multi-window support**: Should projects span multiple iTerm2 windows? Current design assumes single window per project.

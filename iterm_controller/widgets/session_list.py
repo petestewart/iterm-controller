@@ -1,6 +1,7 @@
-"""Session list widget with status indicators.
+"""Session list widget with status indicators and selection support.
 
 Displays list of sessions with status icons (Working/Waiting/Idle).
+Supports arrow key navigation and selection.
 """
 
 from __future__ import annotations
@@ -8,6 +9,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Iterable
 
 from rich.text import Text
+from textual.binding import Binding
+from textual.message import Message
 from textual.widgets import Static
 
 from iterm_controller.models import AttentionState, ManagedSession
@@ -24,8 +27,8 @@ if TYPE_CHECKING:
     from textual.app import ComposeResult
 
 
-class SessionListWidget(Static):
-    """Displays list of sessions with status indicators.
+class SessionListWidget(Static, can_focus=True):
+    """Displays list of sessions with status indicators and selection.
 
     This widget shows all sessions with their attention state:
     - ⧖ Waiting: Session needs user input (highest priority)
@@ -33,10 +36,11 @@ class SessionListWidget(Static):
     - ○ Idle: Session is at prompt, not doing anything
 
     Sessions are listed with their template ID and current status.
+    Use arrow keys to navigate, Enter to select.
 
     Example display:
         ● my-project/API Server         Working
-        ⧖ my-project/Claude             Waiting
+      > ⧖ my-project/Claude             Waiting   <- selected
         ○ my-project/Tests              Idle
     """
 
@@ -46,7 +50,25 @@ class SessionListWidget(Static):
         min-height: 3;
         padding: 0 1;
     }
+
+    SessionListWidget:focus {
+        border: solid $accent;
+    }
     """
+
+    BINDINGS = [
+        Binding("up", "cursor_up", "Up", show=False),
+        Binding("down", "cursor_down", "Down", show=False),
+        Binding("k", "cursor_up", "Up", show=False),
+        Binding("j", "cursor_down", "Down", show=False),
+    ]
+
+    class Selected(Message):
+        """Posted when the selected session changes."""
+
+        def __init__(self, session: ManagedSession | None) -> None:
+            super().__init__()
+            self.session = session
 
     def __init__(
         self,
@@ -65,6 +87,7 @@ class SessionListWidget(Static):
         self._sessions: list[ManagedSession] = list(sessions) if sessions else []
         self._show_project = show_project
         self._sorted_cache: list[ManagedSession] | None = None
+        self._selected_index: int = 0
 
     def on_mount(self) -> None:
         """Initialize the session list content when mounted."""
@@ -75,6 +98,36 @@ class SessionListWidget(Static):
         """Get the current list of sessions."""
         return self._sessions
 
+    @property
+    def selected_session(self) -> ManagedSession | None:
+        """Get the currently selected session."""
+        sorted_sessions = self._get_sorted_sessions()
+        if not sorted_sessions:
+            return None
+        if self._selected_index < 0 or self._selected_index >= len(sorted_sessions):
+            return None
+        return sorted_sessions[self._selected_index]
+
+    @property
+    def selected_index(self) -> int:
+        """Get the current selection index."""
+        return self._selected_index
+
+    def select_index(self, index: int) -> None:
+        """Select a session by index.
+
+        Args:
+            index: The 0-based index to select.
+        """
+        sorted_sessions = self._get_sorted_sessions()
+        if not sorted_sessions:
+            return
+
+        # Clamp to valid range
+        self._selected_index = max(0, min(index, len(sorted_sessions) - 1))
+        self.update(self._render_sessions())
+        self.post_message(self.Selected(self.selected_session))
+
     def refresh_sessions(self, sessions: Iterable[ManagedSession]) -> None:
         """Update displayed sessions.
 
@@ -83,6 +136,14 @@ class SessionListWidget(Static):
         """
         self._sessions = list(sessions)
         self._invalidate_cache()
+
+        # Keep selection in bounds
+        sorted_sessions = self._get_sorted_sessions()
+        if sorted_sessions:
+            self._selected_index = min(self._selected_index, len(sorted_sessions) - 1)
+        else:
+            self._selected_index = 0
+
         self.update(self._render_sessions())
 
     def _invalidate_cache(self) -> None:
@@ -112,6 +173,14 @@ class SessionListWidget(Static):
         )
         return self._sorted_cache
 
+    def get_sorted_sessions(self) -> list[ManagedSession]:
+        """Get sessions sorted by attention state priority (display order).
+
+        Returns:
+            Sessions sorted with WAITING first, then WORKING, then IDLE.
+        """
+        return self._get_sorted_sessions()
+
     def _get_status_icon(self, state: AttentionState) -> str:
         """Get the icon for a given attention state.
 
@@ -134,11 +203,12 @@ class SessionListWidget(Static):
         """
         return get_attention_color(state)
 
-    def _render_session(self, session: ManagedSession) -> Text:
+    def _render_session(self, session: ManagedSession, is_selected: bool) -> Text:
         """Render a single session row.
 
         Args:
             session: The session to render.
+            is_selected: Whether this session is currently selected.
 
         Returns:
             Rich Text object for the session row.
@@ -148,6 +218,12 @@ class SessionListWidget(Static):
         status = session.attention_state.value.title()
 
         text = Text()
+
+        # Selection indicator
+        if is_selected:
+            text.append("> ", style="bold cyan")
+        else:
+            text.append("  ")
 
         # Icon with color
         text.append(f"{icon} ", style=color)
@@ -160,7 +236,10 @@ class SessionListWidget(Static):
 
         # Pad name to align columns
         name_padded = f"{name:<{SESSION_NAME_WIDTH}}"
-        text.append(name_padded)
+        if is_selected:
+            text.append(name_padded, style="bold")
+        else:
+            text.append(name_padded)
 
         # Task info if session is linked to a task
         task_id = session.metadata.get("task_id", "")
@@ -188,8 +267,9 @@ class SessionListWidget(Static):
         sorted_sessions = self._get_sorted_sessions()
 
         lines = []
-        for session in sorted_sessions:
-            lines.append(self._render_session(session))
+        for i, session in enumerate(sorted_sessions):
+            is_selected = i == self._selected_index
+            lines.append(self._render_session(session, is_selected))
 
         result = Text()
         for i, line in enumerate(lines):
@@ -206,6 +286,21 @@ class SessionListWidget(Static):
             Rich Text object to display.
         """
         return self._render_sessions()
+
+    def action_cursor_up(self) -> None:
+        """Move selection up."""
+        if self._selected_index > 0:
+            self._selected_index -= 1
+            self.update(self._render_sessions())
+            self.post_message(self.Selected(self.selected_session))
+
+    def action_cursor_down(self) -> None:
+        """Move selection down."""
+        sorted_sessions = self._get_sorted_sessions()
+        if self._selected_index < len(sorted_sessions) - 1:
+            self._selected_index += 1
+            self.update(self._render_sessions())
+            self.post_message(self.Selected(self.selected_session))
 
     def on_session_spawned(self, message: SessionSpawned) -> None:
         """Handle session spawned event.
@@ -228,6 +323,14 @@ class SessionListWidget(Static):
         """
         self._sessions = [s for s in self._sessions if s.id != message.session.id]
         self._invalidate_cache()
+
+        # Keep selection in bounds
+        sorted_sessions = self._get_sorted_sessions()
+        if sorted_sessions:
+            self._selected_index = min(self._selected_index, len(sorted_sessions) - 1)
+        else:
+            self._selected_index = 0
+
         self.update(self._render_sessions())
 
     def on_session_status_changed(self, message: SessionStatusChanged) -> None:

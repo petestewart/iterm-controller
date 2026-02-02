@@ -141,23 +141,9 @@ class ControlRoomScreen(Screen):
 
     @property
     def selected_session(self) -> ManagedSession | None:
-        """Get the currently selected session, if any.
-
-        For now, return the first WAITING session or the first session.
-        """
-        app: ItermControllerApp = self.app  # type: ignore[assignment]
-        sessions = list(app.state.sessions.values())
-
-        if not sessions:
-            return None
-
-        # Prioritize WAITING sessions
+        """Get the currently selected session from the widget."""
         widget = self.query_one("#sessions", SessionListWidget)
-        waiting = widget.get_waiting_sessions()
-        if waiting:
-            return waiting[0]
-
-        return sessions[0]
+        return widget.selected_session
 
     def action_new_session(self) -> None:
         """Spawn a new session from template.
@@ -260,7 +246,10 @@ class ControlRoomScreen(Screen):
             num: The 1-based session number to focus.
         """
         app: ItermControllerApp = self.app  # type: ignore[assignment]
-        sessions = list(app.state.sessions.values())
+
+        # Get sessions from the widget (sorted by priority to match display order)
+        widget = self.query_one("#sessions", SessionListWidget)
+        sessions = widget.get_sorted_sessions()
 
         # Convert to 0-based index
         index = num - 1
@@ -268,6 +257,8 @@ class ControlRoomScreen(Screen):
             self.notify(f"No session #{num}", severity="warning")
             return
 
+        # Update widget selection to match
+        widget.select_index(index)
         session = sessions[index]
 
         result = await app.api.focus_session(session.id)

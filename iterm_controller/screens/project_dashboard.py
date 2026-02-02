@@ -376,20 +376,13 @@ class ProjectDashboardScreen(Screen):
             self.notify(f"Failed to close session: {result.error}", severity="error")
 
     def _get_selected_session(self) -> ManagedSession | None:
-        """Get the currently selected session.
-
-        Prioritizes WAITING sessions, then returns the first session.
+        """Get the currently selected session from the widget.
 
         Returns:
             The selected session, or None if no sessions exist.
         """
         session_widget = self.query_one("#sessions", SessionListWidget)
-        waiting = session_widget.get_waiting_sessions()
-        if waiting:
-            return waiting[0]
-        if session_widget.sessions:
-            return session_widget.sessions[0]
-        return None
+        return session_widget.selected_session
 
     # =========================================================================
     # State Event Handlers

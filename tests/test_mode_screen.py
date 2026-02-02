@@ -1303,7 +1303,7 @@ class TestSessionListWidgetTaskInfo:
         session.metadata["task_title"] = "Build API layer"
 
         widget = SessionListWidget(sessions=[session], show_project=False)
-        rendered = widget._render_session(session)
+        rendered = widget._render_session(session, is_selected=False)
 
         # Should contain task ID
         assert "Task 1.3" in str(rendered)
@@ -1322,7 +1322,7 @@ class TestSessionListWidgetTaskInfo:
         # No task linked
 
         widget = SessionListWidget(sessions=[session], show_project=False)
-        rendered = widget._render_session(session)
+        rendered = widget._render_session(session, is_selected=False)
 
         # Should contain dash placeholder
         assert "—" in str(rendered)
