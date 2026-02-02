@@ -44,9 +44,9 @@ class ArtifactListWidget(Static):
     DEFAULT_CSS = """
     ArtifactListWidget {
         height: auto;
-        min-height: 5;
+        min-height: 8;
         padding: 1;
-        border: solid $surface;
+        border: solid $surface-lighten-1;
     }
     """
 
@@ -76,12 +76,13 @@ class ArtifactListWidget(Static):
             project: Project to check artifacts for.
             **kwargs: Additional arguments passed to Static.
         """
-        super().__init__(**kwargs)
         self._project = project
         self._artifact_status: dict[str, ArtifactStatus] = {}
         self._spec_files: list[str] = []
         self._selected_index = 0
         self._expanded_specs = True
+        # Pass initial content to Static constructor
+        super().__init__("Loading artifacts...", **kwargs)
 
     @property
     def project(self) -> Project | None:
@@ -128,26 +129,26 @@ class ArtifactListWidget(Static):
         if not self._project:
             self._artifact_status = {}
             self._spec_files = []
-            self.update(self._render_content())
+            self.update(self._build_content_text())
             return
 
         project_path = Path(self._project.path)
         self._artifact_status = check_artifact_status(project_path)
         self._spec_files = get_spec_files(project_path)
-        self.update(self._render_content())
+        self.update(self._build_content_text())
 
     def select_next(self) -> None:
         """Select the next artifact."""
         items = self._get_selectable_items()
         if items:
             self._selected_index = min(self._selected_index + 1, len(items) - 1)
-            self.update(self._render_content())
+            self.update(self._build_content_text())
 
     def select_previous(self) -> None:
         """Select the previous artifact."""
         if self._selected_index > 0:
             self._selected_index -= 1
-            self.update(self._render_content())
+            self.update(self._build_content_text())
 
     def toggle_specs_expanded(self) -> None:
         """Toggle expansion of specs directory."""
@@ -160,7 +161,7 @@ class ArtifactListWidget(Static):
                 if name == "specs/":
                     self._selected_index = i
                     break
-        self.update(self._render_content())
+        self.update(self._build_content_text())
 
     def get_selected_path(self) -> Path | None:
         """Get the full path to the selected artifact.
@@ -247,7 +248,7 @@ class ArtifactListWidget(Static):
 
         return text
 
-    def _render_content(self) -> Text:
+    def _build_content_text(self) -> Text:
         """Render the artifact list as a Text object.
 
         Returns:
@@ -288,7 +289,12 @@ class ArtifactListWidget(Static):
 
     def on_mount(self) -> None:
         """Update content when mounted."""
-        self.update(self._render_content())
+        # If we have a project, do a full refresh to check file status
+        if self._project:
+            self.refresh_status()
+        else:
+            self.update("No project selected")
+
 
 
 def check_artifact_status(project_path: Path) -> dict[str, ArtifactStatus]:
