@@ -814,7 +814,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 #### Plan Screen
 
-- [ ] **Show project name and Jira ticket in Plan screen header**
+- [x] **Show project name and Jira ticket in Plan screen header** `[complete]`
   - Scope: Display project name and Jira ticket (if configured) at the top of the Plan screen persistently
   - Acceptance: Project name and Jira ticket visible at all times on Plan screen
 

@@ -22,6 +22,7 @@ from iterm_controller.screens.modals.artifact_preview import ArtifactPreviewModa
 from iterm_controller.security import get_safe_editor_command
 from iterm_controller.widgets.artifact_list import ArtifactListWidget
 from iterm_controller.widgets.mode_indicator import ModeIndicatorWidget
+from iterm_controller.widgets.project_header import ProjectHeaderWidget
 from iterm_controller.widgets.workflow_bar import WorkflowBarWidget
 
 if TYPE_CHECKING:
@@ -70,6 +71,23 @@ class PlanModeScreen(ModeScreen):
     DEFAULT_CSS = """
     PlanModeScreen {
         layout: vertical;
+    }
+
+    PlanModeScreen #project-header {
+        dock: top;
+        width: 100%;
+        height: 1;
+        background: $primary;
+        padding: 0 1;
+    }
+
+    PlanModeScreen #project-header .project-name {
+        text-style: bold;
+        color: $text;
+    }
+
+    PlanModeScreen #project-header .jira-ticket {
+        color: $text-muted;
     }
 
     PlanModeScreen #mode-indicator {
@@ -127,6 +145,7 @@ class PlanModeScreen(ModeScreen):
     def compose(self) -> ComposeResult:
         """Compose the screen layout."""
         yield Header()
+        yield ProjectHeaderWidget(project=self.project, id="project-header")
         yield ModeIndicatorWidget(current_mode=self.CURRENT_MODE, id="mode-indicator")
         yield Container(
             Vertical(
