@@ -134,7 +134,7 @@ def mock_iterm_app() -> MagicMock:
     mock_app = MagicMock()
     mock_app.current_terminal_window = mock_window
     mock_app.terminal_windows = [mock_window]
-    mock_app.async_get_session_by_id = AsyncMock(return_value=mock_session)
+    mock_app.get_session_by_id = MagicMock(return_value=mock_session)
 
     return mock_app
 
@@ -248,7 +248,7 @@ class TestProjectLifecycleWorkflow:
         managed = spawner.managed_sessions["mock-session-1"]
 
         # Close session gracefully (mock session closes immediately)
-        mock_session = connected_controller.app.async_get_session_by_id.return_value
+        mock_session = connected_controller.app.get_session_by_id.return_value
         mock_session.async_get_screen_contents.side_effect = Exception("Session closed")
 
         closed, results = await terminator.close_all_managed([managed], spawner)
@@ -788,7 +788,7 @@ class TestEndToEndWorkflows:
 
         # 6. Close session
         terminator = SessionTerminator(connected_controller)
-        mock_session = connected_controller.app.async_get_session_by_id.return_value
+        mock_session = connected_controller.app.get_session_by_id.return_value
         mock_session.async_get_screen_contents.side_effect = Exception("Closed")
 
         await terminator.close_all_managed([managed], spawner)

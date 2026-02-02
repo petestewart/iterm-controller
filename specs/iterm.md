@@ -230,7 +230,7 @@ class SessionTerminator:
         closed = 0
         for managed in sessions:
             try:
-                session = await controller.app.async_get_session_by_id(managed.id)
+                session = await controller.app.get_session_by_id(managed.id)
                 if session:
                     await self.close_session(session)
                     closed += 1

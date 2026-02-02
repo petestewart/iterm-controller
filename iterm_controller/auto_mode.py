@@ -583,7 +583,7 @@ class AutoMode:
 
             # Try designated session first
             if self.config.designated_session:
-                session = await self.iterm.app.async_get_session_by_id(
+                session = self.iterm.app.get_session_by_id(
                     self.config.designated_session
                 )
                 if session:

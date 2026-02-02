@@ -668,7 +668,7 @@ class TestAutoAdvanceHandler:
         mock_session.async_send_text = AsyncMock()
 
         mock_app = MagicMock()
-        mock_app.async_get_session_by_id = AsyncMock(return_value=mock_session)
+        mock_app.get_session_by_id = MagicMock(return_value=mock_session)
         mock_app.current_terminal_window = None  # Should not be used
 
         mock_iterm = MagicMock()
@@ -687,7 +687,7 @@ class TestAutoAdvanceHandler:
 
         assert result.success is True
         assert result.session_id == "designated-session-id"
-        mock_app.async_get_session_by_id.assert_called_once_with(
+        mock_app.get_session_by_id.assert_called_once_with(
             "designated-session-id"
         )
 

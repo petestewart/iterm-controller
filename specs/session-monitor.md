@@ -62,7 +62,7 @@ class SessionMonitor:
     async def _poll_session(self, session: "ManagedSession"):
         """Poll a single session for output."""
         try:
-            iterm_session = await self.controller.app.async_get_session_by_id(session.id)
+            iterm_session = await self.controller.app.get_session_by_id(session.id)
             if not iterm_session:
                 return
 
@@ -315,7 +315,7 @@ class BatchOutputReader:
 
     async def _read_one(self, session_id: str) -> str:
         """Read output from a single session."""
-        session = await self.controller.app.async_get_session_by_id(session_id)
+        session = await self.controller.app.get_session_by_id(session_id)
         if not session:
             raise SessionNotFoundError(session_id)
 

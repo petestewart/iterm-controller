@@ -2093,14 +2093,14 @@ class TestSessionTerminator:
             side_effect=Exception("Closed")
         )
 
-        async def get_session(session_id):
+        def get_session(session_id):
             if session_id == "s1":
                 return mock_session1
             elif session_id == "s2":
                 return mock_session2
             return None
 
-        controller.app.async_get_session_by_id = AsyncMock(side_effect=get_session)
+        controller.app.get_session_by_id = MagicMock(side_effect=get_session)
 
         closed, results = await terminator.close_all_managed([s1, s2], spawner)
 
@@ -2133,14 +2133,14 @@ class TestSessionTerminator:
         mock_session2 = self.make_mock_session("s2")
         mock_session2.async_send_text = AsyncMock(side_effect=Exception("Send failed"))
 
-        async def get_session(session_id):
+        def get_session(session_id):
             if session_id == "s1":
                 return mock_session1
             elif session_id == "s2":
                 return mock_session2
             return None
 
-        controller.app.async_get_session_by_id = AsyncMock(side_effect=get_session)
+        controller.app.get_session_by_id = MagicMock(side_effect=get_session)
 
         closed, results = await terminator.close_all_managed([s1, s2], spawner)
 
@@ -2171,7 +2171,7 @@ class TestSessionTerminator:
         spawner.managed_sessions = {"s1": s1}
 
         # Session not found (already closed)
-        controller.app.async_get_session_by_id = AsyncMock(return_value=None)
+        controller.app.get_session_by_id = MagicMock(return_value=None)
 
         closed, results = await terminator.close_all_managed([s1], spawner)
 
@@ -2196,7 +2196,7 @@ class TestSessionTerminator:
         spawner.managed_sessions = {"s1": s1}
 
         mock_session = self.make_mock_session("s1")
-        controller.app.async_get_session_by_id = AsyncMock(return_value=mock_session)
+        controller.app.get_session_by_id = MagicMock(return_value=mock_session)
 
         closed, results = await terminator.close_all_managed([s1], spawner, force=True)
 

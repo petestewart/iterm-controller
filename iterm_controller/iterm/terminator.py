@@ -194,7 +194,7 @@ class SessionTerminator:
         # Gather all close operations to run in parallel
         async def close_one(managed: ManagedSession) -> CloseResult:
             try:
-                session = await self.controller.app.async_get_session_by_id(managed.id)
+                session = self.controller.app.get_session_by_id(managed.id)
                 if session:
                     result = await self.close_session(session, force=force)
                     if result.success:

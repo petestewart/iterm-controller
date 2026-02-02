@@ -507,7 +507,7 @@ class BatchOutputReader:
         if not self.controller.app:
             raise SessionNotFoundError(f"Not connected to iTerm2")
 
-        session = await self.controller.app.async_get_session_by_id(session_id)
+        session = self.controller.app.get_session_by_id(session_id)
         if not session:
             raise SessionNotFoundError(f"Session {session_id} not found")
 

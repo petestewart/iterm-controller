@@ -617,7 +617,7 @@ class ItermControllerAPI:
             if not self._iterm.app:
                 return APIResult.fail("iTerm app not available")
 
-            iterm_session = await self._iterm.app.async_get_session_by_id(session_id)
+            iterm_session = self._iterm.app.get_session_by_id(session_id)
             if not iterm_session:
                 # Session already gone, just clean up tracking
                 self._spawner.untrack_session(session_id)
@@ -657,7 +657,7 @@ class ItermControllerAPI:
             if not self._iterm.app:
                 return APIResult.fail("iTerm app not available")
 
-            iterm_session = await self._iterm.app.async_get_session_by_id(session_id)
+            iterm_session = self._iterm.app.get_session_by_id(session_id)
             if not iterm_session:
                 return APIResult.fail("Session no longer exists in iTerm2")
 
@@ -701,7 +701,7 @@ class ItermControllerAPI:
             if not self._iterm.app:
                 return APIResult.fail("iTerm app not available")
 
-            iterm_session = await self._iterm.app.async_get_session_by_id(session_id)
+            iterm_session = self._iterm.app.get_session_by_id(session_id)
             if not iterm_session:
                 return APIResult.fail("Session no longer exists in iTerm2")
 
@@ -1751,9 +1751,7 @@ class AppAPI:
             if not self._app.iterm.app:
                 return APIResult.fail("iTerm app not available")
 
-            iterm_session = await self._app.iterm.app.async_get_session_by_id(
-                session_id
-            )
+            iterm_session = self._app.iterm.app.get_session_by_id(session_id)
             if not iterm_session:
                 # Session already gone, just clean up tracking
                 self._spawner.untrack_session(session_id)
@@ -1793,9 +1791,7 @@ class AppAPI:
             if not self._app.iterm.app:
                 return APIResult.fail("iTerm app not available")
 
-            iterm_session = await self._app.iterm.app.async_get_session_by_id(
-                session_id
-            )
+            iterm_session = self._app.iterm.app.get_session_by_id(session_id)
             if not iterm_session:
                 return APIResult.fail("Session no longer exists in iTerm2")
 
@@ -1827,9 +1823,7 @@ class AppAPI:
             if not self._app.iterm.app:
                 return APIResult.fail("iTerm app not available")
 
-            iterm_session = await self._app.iterm.app.async_get_session_by_id(
-                session_id
-            )
+            iterm_session = self._app.iterm.app.get_session_by_id(session_id)
             if not iterm_session:
                 return APIResult.fail("Session no longer exists in iTerm2")
 

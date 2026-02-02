@@ -182,10 +182,8 @@ class WindowLayoutSpawner:
                     if result.success and session_index > 0:
                         # After a split, continue splitting from the new session
                         try:
-                            new_session = (
-                                await self.controller.app.async_get_session_by_id(
-                                    result.session_id
-                                )
+                            new_session = self.controller.app.get_session_by_id(
+                                result.session_id
                             )
                             if new_session:
                                 current_session = new_session

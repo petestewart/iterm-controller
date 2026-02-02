@@ -587,7 +587,7 @@ class WorkModeScreen(ModeScreen):
             if not app.iterm.is_connected or not app.iterm.app:
                 return
 
-            session = await app.iterm.app.async_get_session_by_id(session_id)
+            session = app.iterm.app.get_session_by_id(session_id)
             if not session:
                 return
 

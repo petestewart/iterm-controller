@@ -101,7 +101,7 @@ class ItermSpawnerAdapter:
                 error="Not connected to iTerm2",
             )
 
-        parent_session = await controller.app.async_get_session_by_id(parent_session_id)
+        parent_session = controller.app.get_session_by_id(parent_session_id)
         if not parent_session:
             return SpawnResultData(
                 session_id="",
@@ -162,7 +162,7 @@ class ItermTerminatorAdapter:
                 error="Not connected to iTerm2",
             )
 
-        session = await self._controller.app.async_get_session_by_id(session_id)
+        session = self._controller.app.get_session_by_id(session_id)
         if not session:
             # Session not found - already closed
             return CloseResultData(

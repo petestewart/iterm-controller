@@ -185,7 +185,7 @@ class AutoModeController:
         session_id = self.config.designated_session
 
         if session_id:
-            session = await self.iterm.app.async_get_session_by_id(session_id)
+            session = await self.iterm.app.get_session_by_id(session_id)
             if session:
                 await session.async_send_text(command + "\n")
                 return

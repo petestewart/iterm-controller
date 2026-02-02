@@ -807,9 +807,9 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Add setting to global/project config for --dangerously-skip-permissions flag
   - Acceptance: When enabled, all Claude sessions launch with the flag
 
-- [ ] **Fix session focus error in Sessions view**
+- [x] **Fix session focus error in Sessions view** `[complete]`
   - Scope: Selecting a session throws "Error focusing session: 'App' object has no attribute 'async_get_session_by_id'"
-  - Fix: Add missing `async_get_session_by_id` method to App class or fix the call site
+  - Fix: Changed `async_get_session_by_id` to `get_session_by_id` (correct iTerm2 API method name - synchronous, not async)
   - Acceptance: Selecting a session in Sessions view focuses it without error
 
 #### Plan Screen

@@ -283,7 +283,7 @@ class TestBatchOutputReader:
         mock_session = MagicMock()
         mock_session.async_get_contents = AsyncMock(return_value="Session output")
 
-        controller.app.async_get_session_by_id = AsyncMock(return_value=mock_session)
+        controller.app.get_session_by_id = MagicMock(return_value=mock_session)
 
         reader = BatchOutputReader(controller)
         result = await reader.read_batch(["session-1"])
@@ -305,10 +305,10 @@ class TestBatchOutputReader:
             ),
         }
 
-        async def get_session(session_id):
+        def get_session(session_id):
             return sessions.get(session_id)
 
-        controller.app.async_get_session_by_id = AsyncMock(side_effect=get_session)
+        controller.app.get_session_by_id = MagicMock(side_effect=get_session)
 
         reader = BatchOutputReader(controller)
         result = await reader.read_batch(["session-1", "session-2"])
@@ -319,7 +319,7 @@ class TestBatchOutputReader:
     async def test_read_batch_session_not_found(self):
         """Read batch omits sessions that aren't found."""
         controller = self.make_mock_controller()
-        controller.app.async_get_session_by_id = AsyncMock(return_value=None)
+        controller.app.get_session_by_id = MagicMock(return_value=None)
 
         reader = BatchOutputReader(controller)
         result = await reader.read_batch(["nonexistent"])
@@ -334,12 +334,12 @@ class TestBatchOutputReader:
         mock_session = MagicMock()
         mock_session.async_get_contents = AsyncMock(return_value="Good output")
 
-        async def get_session(session_id):
+        def get_session(session_id):
             if session_id == "good":
                 return mock_session
             return None
 
-        controller.app.async_get_session_by_id = AsyncMock(side_effect=get_session)
+        controller.app.get_session_by_id = MagicMock(side_effect=get_session)
 
         reader = BatchOutputReader(controller)
         result = await reader.read_batch(["good", "bad"])
@@ -363,7 +363,7 @@ class TestBatchOutputReader:
     async def test_read_one_session_not_found(self):
         """Read one raises when session not found."""
         controller = self.make_mock_controller()
-        controller.app.async_get_session_by_id = AsyncMock(return_value=None)
+        controller.app.get_session_by_id = MagicMock(return_value=None)
 
         reader = BatchOutputReader(controller)
 
@@ -379,7 +379,7 @@ class TestBatchOutputReader:
 
         mock_session = MagicMock()
         mock_session.async_get_contents = AsyncMock(return_value="output")
-        controller.app.async_get_session_by_id = AsyncMock(return_value=mock_session)
+        controller.app.get_session_by_id = MagicMock(return_value=mock_session)
 
         reader = BatchOutputReader(controller, lines_to_read=100)
         await reader._read_one("session-1")
@@ -539,7 +539,7 @@ class TestSessionMonitor:
 
         mock_iterm_session = MagicMock()
         mock_iterm_session.async_get_contents = AsyncMock(return_value="New output")
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -560,7 +560,7 @@ class TestSessionMonitor:
 
         mock_iterm_session = MagicMock()
         mock_iterm_session.async_get_contents = AsyncMock(return_value="New output")
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -580,7 +580,7 @@ class TestSessionMonitor:
 
         mock_iterm_session = MagicMock()
         mock_iterm_session.async_get_contents = AsyncMock(return_value="New output")
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -605,7 +605,7 @@ class TestSessionMonitor:
 
         mock_iterm_session = MagicMock()
         mock_iterm_session.async_get_contents = AsyncMock(return_value="Output")
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -634,7 +634,7 @@ class TestSessionMonitor:
 
         mock_iterm_session = MagicMock()
         mock_iterm_session.async_get_contents = AsyncMock(return_value="Output")
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -654,7 +654,7 @@ class TestSessionMonitor:
 
         mock_iterm_session = MagicMock()
         mock_iterm_session.async_get_contents = AsyncMock(return_value="Same output")
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -1277,7 +1277,7 @@ class TestSessionMonitorAttentionIntegration:
         mock_iterm_session.async_get_contents = AsyncMock(
             return_value="Should I proceed?"
         )
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -1298,7 +1298,7 @@ class TestSessionMonitorAttentionIntegration:
         mock_iterm_session.async_get_contents = AsyncMock(
             return_value="Should I proceed?"
         )
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -1331,7 +1331,7 @@ class TestSessionMonitorAttentionIntegration:
         mock_iterm_session.async_get_contents = AsyncMock(
             return_value="output\n$ "
         )
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -1360,7 +1360,7 @@ class TestSessionMonitorAttentionIntegration:
         mock_iterm_session.async_get_contents = AsyncMock(
             return_value="Should I proceed?"
         )
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -1799,7 +1799,7 @@ class TestSessionMonitorAdaptivePolling:
         # Output that ends with shell prompt (detected as IDLE)
         # This way the state stays IDLE and doesn't trigger on_state_change
         mock_iterm_session.async_get_contents = AsyncMock(return_value="Some output\n$ ")
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -1826,7 +1826,7 @@ class TestSessionMonitorAdaptivePolling:
         mock_iterm_session = MagicMock()
         # Output that ends with shell prompt (detected as IDLE, no state change)
         mock_iterm_session.async_get_contents = AsyncMock(return_value="Output\n$ ")
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -1862,7 +1862,7 @@ class TestSessionMonitorAdaptivePolling:
         mock_iterm_session.async_get_contents = AsyncMock(
             return_value="Should I proceed?"
         )
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -1889,7 +1889,7 @@ class TestSessionMonitorAdaptivePolling:
 
         mock_iterm_session = MagicMock()
         mock_iterm_session.async_get_contents = AsyncMock(return_value="New output")
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -2147,7 +2147,7 @@ class TestSessionMonitorBufferLimit:
 
         mock_iterm_session = MagicMock()
         mock_iterm_session.async_get_contents = AsyncMock(return_value=large_output)
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
@@ -2174,7 +2174,7 @@ class TestSessionMonitorBufferLimit:
 
         mock_iterm_session = MagicMock()
         mock_iterm_session.async_get_contents = AsyncMock(return_value=combined)
-        controller.app.async_get_session_by_id = AsyncMock(
+        controller.app.get_session_by_id = MagicMock(
             return_value=mock_iterm_session
         )
 
