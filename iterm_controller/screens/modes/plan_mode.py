@@ -223,6 +223,9 @@ class PlanModeScreen(ModeScreen):
             if result == "edit":
                 # User wants to edit - trigger edit action
                 self.action_edit_artifact()
+            elif result == "agent":
+                # User wants to collaborate with an agent
+                self._spawn_agent_for_artifact(selected, path)
 
         self.app.push_screen(
             ArtifactPreviewModal(
@@ -357,5 +360,47 @@ class PlanModeScreen(ModeScreen):
                 self._refresh_artifacts()
             else:
                 self.notify(f"Failed to spawn session: {result.error}", severity="error")
+
+        self.call_later(_do_spawn)
+
+    def _spawn_agent_for_artifact(self, artifact_name: str, artifact_path: Path) -> None:
+        """Spawn a Claude agent session to collaborate on an artifact.
+
+        This opens a Claude session with the artifact file as context,
+        allowing the user to work with the agent on improving or editing the document.
+
+        Args:
+            artifact_name: Display name for the artifact (e.g., "PRD.md")
+            artifact_path: Full path to the artifact file
+        """
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        # Check if connected to iTerm2
+        if not app.iterm.is_connected:
+            self.notify("Not connected to iTerm2", severity="error")
+            return
+
+        # Build a Claude command that references the artifact
+        # Using @ notation to add the file as context
+        relative_path = artifact_path.relative_to(Path(self.project.path))
+        command = f"claude @{relative_path}"
+
+        # Create a session template for the agent collaboration
+        session_name = f"Agent: {artifact_name}"
+        template = SessionTemplate(
+            id=f"agent-{artifact_name.lower().replace('.', '-').replace('/', '-')}",
+            name=session_name,
+            command=command,
+            working_dir=self.project.path,
+        )
+
+        async def _do_spawn() -> None:
+            result = await app.api.spawn_session_with_template(self.project, template)
+            if result.success:
+                self.notify(f"Agent session started for {artifact_name}")
+                # Refresh artifacts after spawning (in case it creates/modifies files)
+                self._refresh_artifacts()
+            else:
+                self.notify(f"Failed to spawn agent session: {result.error}", severity="error")
 
         self.call_later(_do_spawn)

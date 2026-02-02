@@ -17,7 +17,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Markdown, Static
 
 # Result type for the modal
-ArtifactPreviewResult = Literal["edit", "close"]
+ArtifactPreviewResult = Literal["edit", "agent", "close"]
 
 
 class ArtifactPreviewModal(ModalScreen[ArtifactPreviewResult]):
@@ -100,6 +100,7 @@ class ArtifactPreviewModal(ModalScreen[ArtifactPreviewResult]):
 
     BINDINGS = [
         Binding("e", "edit", "Edit"),
+        Binding("a", "agent", "Agent"),
         Binding("escape", "close", "Close"),
         Binding("q", "close", "Close", show=False),
     ]
@@ -136,7 +137,7 @@ class ArtifactPreviewModal(ModalScreen[ArtifactPreviewResult]):
             with Container(id="header"):
                 with Horizontal(id="header-row"):
                     yield Static(f"{self.artifact_name} Preview", id="title")
-                    yield Static("[e] Edit", id="edit-hint")
+                    yield Static("[e] Edit  [a] Agent", id="edit-hint")
 
             # Content area with markdown viewer
             with Container(id="content"):
@@ -152,6 +153,7 @@ class ArtifactPreviewModal(ModalScreen[ArtifactPreviewResult]):
             with Container(id="footer"):
                 with Horizontal(id="footer-row"):
                     yield Button("[E] Edit", id="edit", variant="primary")
+                    yield Button("[A] Agent", id="agent", variant="success")
                     yield Button("[Esc] Close", id="close", variant="default")
 
     def _load_content(self) -> None:
@@ -168,12 +170,18 @@ class ArtifactPreviewModal(ModalScreen[ArtifactPreviewResult]):
         """Handle button presses."""
         if event.button.id == "edit":
             self.action_edit()
+        elif event.button.id == "agent":
+            self.action_agent()
         elif event.button.id == "close":
             self.action_close()
 
     def action_edit(self) -> None:
         """Request to edit the artifact in external editor."""
         self.dismiss("edit")
+
+    def action_agent(self) -> None:
+        """Request to collaborate with an agent on the artifact."""
+        self.dismiss("agent")
 
     def action_close(self) -> None:
         """Close the preview modal."""

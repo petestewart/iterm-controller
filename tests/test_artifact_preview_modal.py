@@ -97,6 +97,19 @@ class TestArtifactPreviewModalActions:
 
         assert dismissed_with == ["edit"]
 
+    def test_action_agent_dismisses_with_agent(self, tmp_path: Path) -> None:
+        artifact_path = tmp_path / "test.md"
+        artifact_path.write_text("# Test")
+
+        modal = ArtifactPreviewModal("test.md", artifact_path)
+
+        dismissed_with: list = []
+        modal.dismiss = lambda result: dismissed_with.append(result)
+
+        modal.action_agent()
+
+        assert dismissed_with == ["agent"]
+
     def test_action_close_dismisses_with_close(self, tmp_path: Path) -> None:
         artifact_path = tmp_path / "test.md"
         artifact_path.write_text("# Test")
@@ -123,6 +136,7 @@ class TestArtifactPreviewModalBindings:
         binding_keys = [b.key for b in modal.BINDINGS]
 
         assert "e" in binding_keys
+        assert "a" in binding_keys
         assert "escape" in binding_keys
         assert "q" in binding_keys
 
@@ -135,6 +149,16 @@ class TestArtifactPreviewModalBindings:
         bindings = {b.key: b.action for b in modal.BINDINGS}
 
         assert bindings["e"] == "edit"
+
+    def test_a_binding_action(self, tmp_path: Path) -> None:
+        artifact_path = tmp_path / "test.md"
+        artifact_path.write_text("# Test")
+
+        modal = ArtifactPreviewModal("test.md", artifact_path)
+
+        bindings = {b.key: b.action for b in modal.BINDINGS}
+
+        assert bindings["a"] == "agent"
 
     def test_escape_binding_action(self, tmp_path: Path) -> None:
         artifact_path = tmp_path / "test.md"
@@ -208,7 +232,23 @@ class TestArtifactPreviewModalReturnType:
         result = dismissed_with[0]
         assert result == "edit"
         # Type check: result should be compatible with ArtifactPreviewResult
-        assert result in ("edit", "close")
+        assert result in ("edit", "agent", "close")
+
+    def test_agent_action_returns_agent_string(self, tmp_path: Path) -> None:
+        artifact_path = tmp_path / "test.md"
+        artifact_path.write_text("# Test")
+
+        modal = ArtifactPreviewModal("test.md", artifact_path)
+
+        dismissed_with: list = []
+        modal.dismiss = lambda result: dismissed_with.append(result)
+
+        modal.action_agent()
+
+        result = dismissed_with[0]
+        assert result == "agent"
+        # Type check: result should be compatible with ArtifactPreviewResult
+        assert result in ("edit", "agent", "close")
 
     def test_close_action_returns_close_string(self, tmp_path: Path) -> None:
         artifact_path = tmp_path / "test.md"
@@ -223,7 +263,7 @@ class TestArtifactPreviewModalReturnType:
 
         result = dismissed_with[0]
         assert result == "close"
-        assert result in ("edit", "close")
+        assert result in ("edit", "agent", "close")
 
 
 class TestArtifactPreviewModalButtonPressed:
@@ -247,6 +287,25 @@ class TestArtifactPreviewModalButtonPressed:
         modal.on_button_pressed(event)
 
         assert dismissed_with == ["edit"]
+
+    def test_agent_button_triggers_agent_action(self, tmp_path: Path) -> None:
+        from unittest.mock import MagicMock
+
+        artifact_path = tmp_path / "test.md"
+        artifact_path.write_text("# Test")
+
+        modal = ArtifactPreviewModal("test.md", artifact_path)
+
+        dismissed_with: list = []
+        modal.dismiss = lambda result: dismissed_with.append(result)
+
+        # Mock button press event
+        event = MagicMock()
+        event.button.id = "agent"
+
+        modal.on_button_pressed(event)
+
+        assert dismissed_with == ["agent"]
 
     def test_close_button_triggers_close_action(self, tmp_path: Path) -> None:
         from unittest.mock import MagicMock

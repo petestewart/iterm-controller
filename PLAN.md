@@ -818,7 +818,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Display project name and Jira ticket (if configured) at the top of the Plan screen persistently
   - Acceptance: Project name and Jira ticket visible at all times on Plan screen
 
-- [ ] **Add Agent collaboration option for docs in Plan screen**
+- [x] **Add Agent collaboration option for docs in Plan screen** `[complete]`
   - Scope: When selecting a doc, add option alongside Edit/Close to collaborate with an agent (e.g., "[A] Agent")
   - Acceptance: User can launch agent collaboration on selected document
 
