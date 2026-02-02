@@ -67,6 +67,10 @@ class UnitTestWidget(Static):
         self._results = results or UnitTestResults()
         self._test_command = test_command
 
+    def on_mount(self) -> None:
+        """Initialize the test results content when mounted."""
+        self.update(self._render_results())
+
     @property
     def results(self) -> UnitTestResults:
         """Get the current test results."""

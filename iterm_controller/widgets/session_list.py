@@ -66,6 +66,10 @@ class SessionListWidget(Static):
         self._show_project = show_project
         self._sorted_cache: list[ManagedSession] | None = None
 
+    def on_mount(self) -> None:
+        """Initialize the session list content when mounted."""
+        self.update(self._render_sessions())
+
     @property
     def sessions(self) -> list[ManagedSession]:
         """Get the current list of sessions."""

@@ -72,6 +72,10 @@ class TaskQueueWidget(Static, can_focus=True):
         self._visible_tasks: list[Task] = []
         self._rebuild_visible_tasks()
 
+    def on_mount(self) -> None:
+        """Initialize the queue content when mounted."""
+        self.update(self._render_queue())
+
     @property
     def plan(self) -> Plan:
         """Get the current plan."""

@@ -53,6 +53,10 @@ class ModeIndicatorWidget(Static):
         super().__init__(**kwargs)
         self.current_mode = current_mode
 
+    def on_mount(self) -> None:
+        """Initialize the mode indicator content when mounted."""
+        self.update(self.render())
+
     def render(self) -> str:
         """Render the mode indicator.
 

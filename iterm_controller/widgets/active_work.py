@@ -75,6 +75,10 @@ class ActiveWorkWidget(Static, can_focus=True):
         self._active_tasks: list[Task] = []
         self._rebuild_active_tasks()
 
+    def on_mount(self) -> None:
+        """Initialize the active work content when mounted."""
+        self.update(self._render_active())
+
     @property
     def plan(self) -> Plan:
         """Get the current plan."""

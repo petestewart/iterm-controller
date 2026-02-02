@@ -71,6 +71,10 @@ class HealthStatusWidget(Static):
         self._poller = poller
         self._statuses: dict[str, HealthStatus] = statuses or {}
 
+    def on_mount(self) -> None:
+        """Initialize the health status content when mounted."""
+        self.update(self._render_status())
+
     @property
     def poller(self) -> HealthCheckPoller | None:
         """Get the associated poller."""

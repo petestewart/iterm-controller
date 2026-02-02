@@ -76,6 +76,10 @@ class TestPlanWidget(Static, can_focus=True):
         self._expanded_sections: set[str] = set()
         self._rebuild_visible_steps()
 
+    def on_mount(self) -> None:
+        """Initialize the test plan content when mounted."""
+        self.update(self._render_plan())
+
     @property
     def test_plan(self) -> TestPlan:
         """Get the current test plan."""

@@ -63,6 +63,10 @@ class GitHubPanelWidget(Static):
         self._status = status
         self._error_message = error_message
 
+    def on_mount(self) -> None:
+        """Initialize the GitHub panel content when mounted."""
+        self.update(self._render_panel())
+
     @property
     def status(self) -> GitHubStatus | None:
         """Get the current GitHub status."""

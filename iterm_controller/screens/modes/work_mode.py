@@ -210,13 +210,16 @@ class WorkModeScreen(ModeScreen):
 
         # Load plan from project
         plan_path = self.project.full_plan_path
+        logger.debug("Loading plan from %s", plan_path)
         if plan_path.exists():
             from iterm_controller.plan_parser import PlanParser
             parser = PlanParser()
             self._plan = parser.parse_file(plan_path)
+            logger.debug("Parsed plan with %d tasks", len(self._plan.all_tasks))
             # Also update app state for API access
             app.state.set_plan(self.project.id, self._plan)
         else:
+            logger.debug("Plan path does not exist")
             self._plan = Plan()
 
         # Build session lookup
@@ -239,10 +242,13 @@ class WorkModeScreen(ModeScreen):
         Args:
             sessions: Optional list of sessions to display.
         """
+        logger.debug("_refresh_widgets called, plan=%s", self._plan)
         if self._plan:
+            logger.debug("Refreshing task queue with %d tasks", len(self._plan.all_tasks))
             # Update task queue
             queue = self.query_one("#task-queue", TaskQueueWidget)
             queue.refresh_plan(self._plan)
+            logger.debug("Task queue now has %d visible tasks", len(queue._visible_tasks))
 
             # Update blocked tasks summary
             blocked = self.query_one("#blocked-summary", BlockedTasksWidget)

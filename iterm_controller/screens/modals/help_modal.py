@@ -186,8 +186,10 @@ class HelpModal(ModalScreen[None]):
         for section_name, shortcuts in self.SHORTCUTS.items():
             widgets.append(Static(f"{section_name}", classes="section-title"))
             for key, description in shortcuts:
+                # Escape square brackets for Rich markup (double them to display literally)
+                escaped_key = key.replace("[", "[[").replace("]", "]]")
                 widgets.append(
-                    Static(f"  [{key}]  {description}", classes="shortcut-row")
+                    Static(f"  \\[{escaped_key}]  {description}", classes="shortcut-row")
                 )
         return widgets
 

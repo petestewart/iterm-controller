@@ -80,6 +80,10 @@ class TaskListWidget(Static):
         if self._project_path:
             self._validate_all_specs()
 
+    def on_mount(self) -> None:
+        """Initialize the task list content when mounted."""
+        self.update(self._render_plan())
+
     @property
     def plan(self) -> Plan:
         """Get the current plan."""

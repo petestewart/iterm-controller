@@ -62,6 +62,10 @@ class WorkflowBarWidget(Static):
         super().__init__(**kwargs)
         self._workflow_state = workflow_state or WorkflowState()
 
+    def on_mount(self) -> None:
+        """Initialize the bar content when mounted."""
+        self.update(self._render_bar())
+
     @property
     def workflow_state(self) -> WorkflowState:
         """Get the current workflow state."""

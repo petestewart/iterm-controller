@@ -52,6 +52,10 @@ class TaskProgressWidget(Static):
         self._plan = plan or Plan()
         self._show_breakdown = show_breakdown
 
+    def on_mount(self) -> None:
+        """Initialize the progress content when mounted."""
+        self.update(self._render_progress())
+
     @property
     def plan(self) -> Plan:
         """Get the current plan."""
