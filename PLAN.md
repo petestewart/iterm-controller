@@ -792,9 +792,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 #### UI Issues
 
-- [ ] **Show mode labels in workflow bar**
+- [x] **Show mode labels in workflow bar** `[complete]`
   - Scope: Display "1 Plan   2 Docs   3 Work   4 Test" instead of just "1 2 3 4" in the row at the top of Project screen
   - Acceptance: Mode labels are visible alongside their numbers in the workflow bar
+  - Result: Updated ModeIndicatorWidget to show "1 Plan  2 Docs  3 Work  4 Test" with current mode highlighted
 
 #### App Issues
 

@@ -70,12 +70,24 @@ class TestModeIndicatorWidget:
         widget.set_mode(WorkflowMode.DOCS)
         assert widget.current_mode == WorkflowMode.DOCS
 
-    def test_mode_indicator_mode_keys_mapping(self) -> None:
-        """Test that MODE_KEYS has correct mappings."""
-        assert ModeIndicatorWidget.MODE_KEYS[WorkflowMode.PLAN] == "1"
-        assert ModeIndicatorWidget.MODE_KEYS[WorkflowMode.DOCS] == "2"
-        assert ModeIndicatorWidget.MODE_KEYS[WorkflowMode.WORK] == "3"
-        assert ModeIndicatorWidget.MODE_KEYS[WorkflowMode.TEST] == "4"
+    def test_mode_indicator_mode_info_mapping(self) -> None:
+        """Test that MODE_INFO has correct mappings."""
+        mode_info = ModeIndicatorWidget.MODE_INFO
+        assert mode_info[0] == (WorkflowMode.PLAN, "1", "Plan")
+        assert mode_info[1] == (WorkflowMode.DOCS, "2", "Docs")
+        assert mode_info[2] == (WorkflowMode.WORK, "3", "Work")
+        assert mode_info[3] == (WorkflowMode.TEST, "4", "Test")
+
+    def test_mode_indicator_renders_all_labels(self) -> None:
+        """Test that mode indicator shows labels for all modes."""
+        widget = ModeIndicatorWidget(current_mode=WorkflowMode.PLAN)
+        rendered = str(widget.render())
+
+        # Should contain all mode labels
+        assert "Plan" in rendered
+        assert "Docs" in rendered
+        assert "Work" in rendered
+        assert "Test" in rendered
 
 
 @pytest.mark.asyncio

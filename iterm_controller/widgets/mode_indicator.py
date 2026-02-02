@@ -19,8 +19,8 @@ from iterm_controller.models import WorkflowMode
 class ModeIndicatorWidget(Static):
     """Displays current mode and navigation shortcuts.
 
-    Shows the pattern: [Plan] 1 2 3 4
-    with the current mode number highlighted.
+    Shows the pattern: 1 Plan  2 Docs  3 Work  4 Test
+    with the current mode highlighted.
     """
 
     DEFAULT_CSS = """
@@ -31,13 +31,13 @@ class ModeIndicatorWidget(Static):
     }
     """
 
-    # Map modes to their key numbers
-    MODE_KEYS = {
-        WorkflowMode.PLAN: "1",
-        WorkflowMode.DOCS: "2",
-        WorkflowMode.WORK: "3",
-        WorkflowMode.TEST: "4",
-    }
+    # Map modes to their key numbers and labels
+    MODE_INFO = [
+        (WorkflowMode.PLAN, "1", "Plan"),
+        (WorkflowMode.DOCS, "2", "Docs"),
+        (WorkflowMode.WORK, "3", "Work"),
+        (WorkflowMode.TEST, "4", "Test"),
+    ]
 
     def __init__(
         self,
@@ -60,32 +60,24 @@ class ModeIndicatorWidget(Static):
     def render(self) -> str:
         """Render the mode indicator.
 
-        Format: [Plan] 1 2 3 4
-        The current mode is highlighted in the bracketed section,
-        and the corresponding number is highlighted.
+        Format: 1 Plan  2 Docs  3 Work  4 Test
+        The current mode is highlighted.
         """
         if self.current_mode is None:
             return ""
 
-        mode_name = self.current_mode.value.title()
-        current_key = self.MODE_KEYS.get(self.current_mode, "")
-
         parts = []
 
-        # Add the mode name in brackets (highlighted)
-        parts.append(f"[bold cyan][{mode_name}][/bold cyan]")
-
-        # Add the shortcuts with current one highlighted
-        key_parts = []
-        for mode, key in self.MODE_KEYS.items():
+        # Add each mode with key and label
+        for mode, key, label in self.MODE_INFO:
             if mode == self.current_mode:
-                key_parts.append(f"[bold white on blue] {key} [/bold white on blue]")
+                # Highlight current mode
+                parts.append(f"[bold white on blue] {key} {label} [/bold white on blue]")
             else:
-                key_parts.append(f"[dim]{key}[/dim]")
+                # Dim non-current modes
+                parts.append(f"[dim]{key} {label}[/dim]")
 
-        parts.append(" ".join(key_parts))
-
-        return " ".join(parts)
+        return "  ".join(parts)
 
     def set_mode(self, mode: WorkflowMode) -> None:
         """Update the current mode and refresh display.
