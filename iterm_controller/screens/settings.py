@@ -69,6 +69,11 @@ class SettingsScreen(Screen):
                 Label("Polling Interval (ms)", classes="setting-label"),
                 Input(id="polling-input", value="500"),
                 Checkbox("Enable Notifications", id="notify-checkbox", value=True),
+                Checkbox(
+                    "Skip Claude Permissions (--dangerously-skip-permissions)",
+                    id="skip-permissions-checkbox",
+                    value=False,
+                ),
                 # Auto Mode section
                 Static("Auto Mode", classes="section-header"),
                 Horizontal(
@@ -113,6 +118,10 @@ class SettingsScreen(Screen):
             # Set notifications checkbox
             notify_checkbox = self.query_one("#notify-checkbox", Checkbox)
             notify_checkbox.value = settings.notification_enabled
+
+            # Set skip permissions checkbox
+            skip_perms_checkbox = self.query_one("#skip-permissions-checkbox", Checkbox)
+            skip_perms_checkbox.value = settings.dangerously_skip_permissions
 
             # Update auto mode status display
             self._update_auto_mode_status()
@@ -219,6 +228,7 @@ class SettingsScreen(Screen):
         shell = self.query_one("#shell-select", Select).value
         polling_str = self.query_one("#polling-input", Input).value
         notify = self.query_one("#notify-checkbox", Checkbox).value
+        skip_perms = self.query_one("#skip-permissions-checkbox", Checkbox).value
 
         # Validate polling interval
         polling = self._validate_polling_interval(polling_str)
@@ -240,6 +250,10 @@ class SettingsScreen(Screen):
         app.state.config.settings.default_shell = str(shell)
         app.state.config.settings.polling_interval_ms = polling
         app.state.config.settings.notification_enabled = notify
+        app.state.config.settings.dangerously_skip_permissions = skip_perms
+
+        # Update the spawner with the new setting
+        app.services.spawner.set_skip_permissions(skip_perms)
 
         # Note: auto_mode config is saved separately via the Configure button
 

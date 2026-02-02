@@ -457,6 +457,7 @@ class AppSettings:
     notification_enabled: bool = True
     github_refresh_seconds: int = 60
     health_check_interval_seconds: float = 10.0
+    dangerously_skip_permissions: bool = False  # Add --dangerously-skip-permissions to Claude sessions
 
 
 # =============================================================================

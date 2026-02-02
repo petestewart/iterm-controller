@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 # followed by letters, digits, or underscores
 _ENV_KEY_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
+# Pattern to detect Claude commands (including claude followed by arguments)
+_CLAUDE_COMMAND_PATTERN = re.compile(r"^claude(\s|$)")
+
 
 @dataclass
 class SpawnResult:
@@ -44,6 +47,42 @@ class SessionSpawner:
     def __init__(self, controller: ItermController) -> None:
         self.controller = controller
         self.managed_sessions: dict[str, ManagedSession] = {}
+        self._skip_permissions: bool = False
+
+    def set_skip_permissions(self, skip: bool) -> None:
+        """Configure whether to add --dangerously-skip-permissions to Claude commands.
+
+        Args:
+            skip: If True, Claude commands will include --dangerously-skip-permissions.
+        """
+        self._skip_permissions = skip
+
+    def _modify_claude_command(self, command: str) -> str:
+        """Add --dangerously-skip-permissions flag to Claude commands if configured.
+
+        Only modifies commands that start with 'claude' (the Claude CLI).
+        Inserts the flag after 'claude' and before any subcommand/arguments.
+
+        Args:
+            command: The command string to potentially modify.
+
+        Returns:
+            The command with the flag added if it's a Claude command and
+            skip_permissions is enabled, otherwise the original command.
+        """
+        if not self._skip_permissions:
+            return command
+
+        if not _CLAUDE_COMMAND_PATTERN.match(command):
+            return command
+
+        # Insert the flag after 'claude'
+        # Handle both 'claude' alone and 'claude <args>'
+        if command == "claude":
+            return "claude --dangerously-skip-permissions"
+
+        # Replace 'claude ' with 'claude --dangerously-skip-permissions '
+        return "claude --dangerously-skip-permissions" + command[6:]
 
     def _validate_env_key(self, key: str) -> bool:
         """Validate that an environment variable key is safe.
@@ -91,7 +130,9 @@ class SessionSpawner:
 
         # Add the main command if specified
         if template.command:
-            parts.append(template.command)
+            # Modify Claude commands to add skip permissions flag if configured
+            command = self._modify_claude_command(template.command)
+            parts.append(command)
 
         return " && ".join(parts)
 

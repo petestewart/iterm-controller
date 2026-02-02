@@ -86,6 +86,13 @@ class ItermControllerApp(App):
         # Load configuration
         await self.state.load_config()
 
+        # Apply settings to services
+        if self.state.config:
+            # Configure skip permissions for Claude sessions
+            self.services.spawner.set_skip_permissions(
+                self.state.config.settings.dangerously_skip_permissions
+            )
+
         # Load window layouts from config into service container
         if self.state.config and self.state.config.window_layouts:
             self.services.load_layouts(self.state.config.window_layouts)

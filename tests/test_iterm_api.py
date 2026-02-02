@@ -1184,6 +1184,121 @@ class TestSessionSpawner:
         # Should not raise
         spawner.untrack_session("nonexistent")
 
+    # -------------------------------------------------------------------------
+    # Skip Permissions Flag Tests
+    # -------------------------------------------------------------------------
+
+    def test_set_skip_permissions_default(self):
+        """Skip permissions is disabled by default."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        assert spawner._skip_permissions is False
+
+    def test_set_skip_permissions_enable(self):
+        """set_skip_permissions enables the flag."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+
+        spawner.set_skip_permissions(True)
+
+        assert spawner._skip_permissions is True
+
+    def test_set_skip_permissions_disable(self):
+        """set_skip_permissions disables the flag."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+
+        spawner.set_skip_permissions(True)
+        spawner.set_skip_permissions(False)
+
+        assert spawner._skip_permissions is False
+
+    def test_modify_claude_command_disabled(self):
+        """_modify_claude_command returns original when disabled."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        spawner._skip_permissions = False
+
+        result = spawner._modify_claude_command("claude /prd")
+
+        assert result == "claude /prd"
+
+    def test_modify_claude_command_enabled_with_args(self):
+        """_modify_claude_command adds flag to claude with arguments."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        spawner._skip_permissions = True
+
+        result = spawner._modify_claude_command("claude /prd")
+
+        assert result == "claude --dangerously-skip-permissions /prd"
+
+    def test_modify_claude_command_enabled_plain_claude(self):
+        """_modify_claude_command adds flag to plain claude command."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        spawner._skip_permissions = True
+
+        result = spawner._modify_claude_command("claude")
+
+        assert result == "claude --dangerously-skip-permissions"
+
+    def test_modify_claude_command_enabled_with_multiple_args(self):
+        """_modify_claude_command adds flag with multiple arguments."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        spawner._skip_permissions = True
+
+        result = spawner._modify_claude_command("claude /plan --verbose")
+
+        assert result == "claude --dangerously-skip-permissions /plan --verbose"
+
+    def test_modify_claude_command_non_claude_command(self):
+        """_modify_claude_command doesn't modify non-claude commands."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        spawner._skip_permissions = True
+
+        result = spawner._modify_claude_command("npm start")
+
+        assert result == "npm start"
+
+    def test_modify_claude_command_claude_in_middle(self):
+        """_modify_claude_command doesn't modify claude appearing mid-command."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        spawner._skip_permissions = True
+
+        result = spawner._modify_claude_command("echo claude")
+
+        assert result == "echo claude"
+
+    def test_build_command_with_skip_permissions(self):
+        """build_command adds skip permissions to claude commands."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        spawner.set_skip_permissions(True)
+
+        template = self.make_template(command="claude /prd")
+        project = self.make_project(path="/my/project")
+
+        cmd = spawner._build_command(template, project)
+
+        assert cmd == "cd /my/project && claude --dangerously-skip-permissions /prd"
+
+    def test_build_command_without_skip_permissions(self):
+        """build_command does not modify claude commands when disabled."""
+        controller = ItermController()
+        spawner = SessionSpawner(controller)
+        spawner.set_skip_permissions(False)
+
+        template = self.make_template(command="claude /prd")
+        project = self.make_project(path="/my/project")
+
+        cmd = spawner._build_command(template, project)
+
+        assert cmd == "cd /my/project && claude /prd"
+
     @pytest.mark.asyncio
     async def test_spawn_session_tracks_window_id(self):
         """spawn_session stores window_id in ManagedSession and SpawnResult."""

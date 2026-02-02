@@ -1006,6 +1006,21 @@ class TestConfigModels:
         assert settings.notification_enabled is True
         assert settings.github_refresh_seconds == 60
         assert settings.health_check_interval_seconds == 10.0
+        assert settings.dangerously_skip_permissions is False
+
+    def test_app_settings_dangerously_skip_permissions(self):
+        """Test dangerously_skip_permissions setting."""
+        settings = AppSettings(dangerously_skip_permissions=True)
+        assert settings.dangerously_skip_permissions is True
+
+    def test_app_settings_dangerously_skip_permissions_serialization(self):
+        """Test that dangerously_skip_permissions persists to/from JSON correctly."""
+        settings = AppSettings(dangerously_skip_permissions=True)
+        data = model_to_dict(settings)
+        assert data["dangerously_skip_permissions"] is True
+
+        restored = model_from_dict(AppSettings, data)
+        assert restored.dangerously_skip_permissions is True
 
 
 class TestWindowLayoutModels:
