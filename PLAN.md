@@ -828,7 +828,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 #### Docs Screen
 
-- [ ] **Support adding URLs in Docs screen**
+- [x] **Support adding URLs in Docs screen** `[complete]`
   - Scope: "Add" action should allow user to add a URL or a file
   - Acceptance: User can add external URLs as documentation references
 

@@ -8,6 +8,7 @@ See specs/docs-mode.md for full specification.
 from __future__ import annotations
 
 import logging
+import webbrowser
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,7 +18,7 @@ from textual.containers import Container, Vertical
 from textual.widgets import Footer, Header, Static
 
 from iterm_controller.editors import EDITOR_COMMANDS
-from iterm_controller.models import WorkflowMode
+from iterm_controller.models import DocReference, WorkflowMode
 from iterm_controller.screens.mode_screen import ModeScreen
 from iterm_controller.security import (
     EditorValidationError,
@@ -44,8 +45,9 @@ class DocsModeScreen(ModeScreen):
     - specs/ directory
     - documentation/ directory
     - README.md and CHANGELOG.md
+    - External URL references
 
-    Users can navigate, add, edit, and delete documentation files.
+    Users can navigate, add, edit, and delete documentation files and URLs.
 
     Layout:
         ┌────────────────────────────────────────────────────────────────┐
@@ -61,6 +63,9 @@ class DocsModeScreen(ModeScreen):
         │ │   ├─ README.md                                             │ │
         │ │ README.md                                                  │ │
         │ │ CHANGELOG.md                                               │ │
+        │ │ ▼ External References                                      │ │
+        │ │   🌐 Textual Docs                                          │ │
+        │ │   🌐 iTerm2 API                                            │ │
         │ └────────────────────────────────────────────────────────────┘ │
         ├────────────────────────────────────────────────────────────────┤
         │ ↑↓ Navigate  Enter Open  a Add  d Delete  r Rename  p Preview │
@@ -162,12 +167,21 @@ class DocsModeScreen(ModeScreen):
     def _build_tree(self) -> None:
         """Build the documentation tree."""
         tree = self.query_one("#doc-tree", DocTreeWidget)
-        tree.set_project(self.project.path)
+        tree.set_project(self.project.path, self.project.doc_references)
 
     def _update_status_bar(self) -> None:
         """Update the status bar with current selection info."""
         tree = self.query_one("#doc-tree", DocTreeWidget)
         status_bar = self.query_one("#status-bar", Static)
+
+        # Check for URL selection first
+        if tree.selected_is_url:
+            url = tree.selected_url
+            if url:
+                # Truncate long URLs
+                display_url = url if len(url) <= 60 else url[:57] + "..."
+                status_bar.update(f"🔗 {display_url}")
+            return
 
         selected_path = tree.selected_path
         if selected_path:
@@ -248,10 +262,12 @@ class DocsModeScreen(ModeScreen):
             self.action_edit_selected()
 
     def action_open_selected(self) -> None:
-        """Open the selected item (file: edit, directory: expand/collapse)."""
+        """Open the selected item (file: edit, directory: expand/collapse, URL: open in browser)."""
         tree = self.query_one("#doc-tree", DocTreeWidget)
 
-        if tree.selected_is_file:
+        if tree.selected_is_url:
+            self._open_url(tree.selected_url)
+        elif tree.selected_is_file:
             self.action_edit_selected()
         elif tree.selected_is_directory:
             # Toggle expansion - handled by tree widget's node selection
@@ -327,7 +343,23 @@ class DocsModeScreen(ModeScreen):
         )
 
     def action_add_document(self) -> None:
-        """Add a new document."""
+        """Add a new document or URL reference."""
+        from iterm_controller.screens.modals.add_content_type import (
+            AddContentTypeModal,
+            ContentType,
+        )
+
+        def handle_type_selection(content_type: ContentType | None) -> None:
+            """Handle the content type selection."""
+            if content_type == ContentType.FILE:
+                self._show_add_file_modal()
+            elif content_type == ContentType.URL:
+                self._show_add_url_modal()
+
+        self.app.push_screen(AddContentTypeModal(), handle_type_selection)
+
+    def _show_add_file_modal(self) -> None:
+        """Show the add file modal."""
         tree = self.query_one("#doc-tree", DocTreeWidget)
 
         # Determine default location based on selection
@@ -338,7 +370,6 @@ class DocsModeScreen(ModeScreen):
             else:
                 default_dir = str(tree.selected_path.parent)
 
-        # Show add document modal
         from iterm_controller.screens.modals.add_document import AddDocumentModal
 
         def handle_add_result(result: dict | None) -> None:
@@ -354,9 +385,35 @@ class DocsModeScreen(ModeScreen):
             handle_add_result,
         )
 
+    def _show_add_url_modal(self, existing_reference: DocReference | None = None) -> None:
+        """Show the add/edit URL reference modal.
+
+        Args:
+            existing_reference: Optional existing reference to edit.
+        """
+        from iterm_controller.screens.modals.add_reference import AddReferenceModal
+
+        def handle_add_result(result: DocReference | None) -> None:
+            """Handle the result from the add reference modal."""
+            if result:
+                self._save_url_reference(result, existing_reference)
+
+        self.app.push_screen(
+            AddReferenceModal(existing_reference=existing_reference),
+            handle_add_result,
+        )
+
     def action_delete_document(self) -> None:
-        """Delete the selected document."""
+        """Delete the selected document or URL reference."""
         tree = self.query_one("#doc-tree", DocTreeWidget)
+
+        # Handle URL reference deletion
+        if tree.selected_is_url:
+            ref_id = tree.selected_reference_id
+            if ref_id:
+                self._delete_url_reference(ref_id)
+            return
+
         selected_path = tree.selected_path
 
         if not selected_path:
@@ -394,8 +451,18 @@ class DocsModeScreen(ModeScreen):
         )
 
     def action_rename_document(self) -> None:
-        """Rename the selected document."""
+        """Rename the selected document or edit URL reference."""
         tree = self.query_one("#doc-tree", DocTreeWidget)
+
+        # Handle URL reference editing
+        if tree.selected_is_url:
+            ref_id = tree.selected_reference_id
+            if ref_id:
+                existing = self._get_reference_by_id(ref_id)
+                if existing:
+                    self._show_add_url_modal(existing_reference=existing)
+            return
+
         selected_path = tree.selected_path
 
         if not selected_path:
@@ -427,7 +494,8 @@ class DocsModeScreen(ModeScreen):
     def action_refresh(self) -> None:
         """Refresh the documentation tree."""
         tree = self.query_one("#doc-tree", DocTreeWidget)
-        tree.refresh_tree()
+        # Update doc references from project before refreshing
+        tree.update_references(self.project.doc_references)
         self._update_status_bar()
         self.notify("Tree refreshed")
 
@@ -546,6 +614,126 @@ class DocsModeScreen(ModeScreen):
             self.notify(f"Failed to rename document: {e}", severity="error")
 
     # =========================================================================
+    # URL Reference Operations
+    # =========================================================================
+
+    def _open_url(self, url: str | None) -> None:
+        """Open a URL in the default web browser.
+
+        Args:
+            url: URL to open.
+        """
+        if not url:
+            self.notify("No URL selected", severity="warning")
+            return
+
+        try:
+            webbrowser.open(url)
+            self.notify(f"Opened {url}")
+        except Exception as e:
+            logger.exception("Failed to open URL")
+            self.notify(f"Failed to open URL: {e}", severity="error")
+
+    def _get_reference_by_id(self, ref_id: str) -> DocReference | None:
+        """Get a DocReference by its ID.
+
+        Args:
+            ref_id: Reference ID to find.
+
+        Returns:
+            The DocReference if found, None otherwise.
+        """
+        for ref in self.project.doc_references:
+            if ref.id == ref_id:
+                return ref
+        return None
+
+    def _save_url_reference(
+        self,
+        reference: DocReference,
+        existing: DocReference | None = None,
+    ) -> None:
+        """Save a URL reference to the project.
+
+        Args:
+            reference: The DocReference to save.
+            existing: Optional existing reference to replace.
+        """
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        # Update or add the reference
+        if existing:
+            # Replace existing reference
+            for idx, ref in enumerate(self.project.doc_references):
+                if ref.id == existing.id:
+                    self.project.doc_references[idx] = reference
+                    break
+            action = "Updated"
+        else:
+            # Add new reference
+            self.project.doc_references.append(reference)
+            action = "Added"
+
+        # Save the project with updated doc_references
+        app.state.update_project(self.project, persist=True)
+
+        # Refresh tree
+        tree = self.query_one("#doc-tree", DocTreeWidget)
+        tree.update_references(self.project.doc_references)
+        self._update_status_bar()
+        self.notify(f"{action} reference: {reference.title}")
+
+    def _delete_url_reference(self, ref_id: str) -> None:
+        """Delete a URL reference from the project.
+
+        Args:
+            ref_id: ID of the reference to delete.
+        """
+        reference = self._get_reference_by_id(ref_id)
+        if not reference:
+            self.notify("Reference not found", severity="error")
+            return
+
+        # Show delete confirmation modal
+        from iterm_controller.screens.modals.delete_confirm import DeleteConfirmModal
+
+        def handle_delete_result(confirmed: bool) -> None:
+            """Handle the result from the delete confirmation modal."""
+            if confirmed:
+                self._do_delete_url_reference(ref_id, reference.title)
+
+        self.app.push_screen(
+            DeleteConfirmModal(
+                item_name=reference.title,
+                item_type="reference",
+            ),
+            handle_delete_result,
+        )
+
+    def _do_delete_url_reference(self, ref_id: str, title: str) -> None:
+        """Actually delete the URL reference after confirmation.
+
+        Args:
+            ref_id: ID of the reference to delete.
+            title: Title for the notification.
+        """
+        app: ItermControllerApp = self.app  # type: ignore[assignment]
+
+        # Remove the reference
+        self.project.doc_references = [
+            ref for ref in self.project.doc_references if ref.id != ref_id
+        ]
+
+        # Save the project with updated doc_references
+        app.state.update_project(self.project, persist=True)
+
+        # Refresh tree
+        tree = self.query_one("#doc-tree", DocTreeWidget)
+        tree.update_references(self.project.doc_references)
+        self._update_status_bar()
+        self.notify(f"Deleted reference: {title}")
+
+    # =========================================================================
     # Event Handlers
     # =========================================================================
 
@@ -570,3 +758,15 @@ class DocsModeScreen(ModeScreen):
             event: The directory selected event.
         """
         self._update_status_bar()
+
+    def on_doc_tree_widget_url_selected(
+        self, event: DocTreeWidget.UrlSelected
+    ) -> None:
+        """Handle URL reference selection from tree widget.
+
+        Args:
+            event: The URL selected event.
+        """
+        self._update_status_bar()
+        # Open URL in browser when selected (via Enter)
+        self._open_url(event.url)

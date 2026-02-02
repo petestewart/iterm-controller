@@ -1,6 +1,8 @@
 """Modal dialogs."""
 
+from .add_content_type import AddContentTypeModal, ContentType
 from .add_document import AddDocumentModal
+from .add_reference import AddReferenceModal
 from .artifact_preview import ArtifactPreviewModal, ArtifactPreviewResult
 from .auto_mode_config import AutoModeConfigModal
 from .create_artifact import CreateArtifactModal, CreateArtifactResult
@@ -18,7 +20,10 @@ from .stage_advance import StageAdvanceModal
 from .test_plan_conflict import TestPlanConflictModal
 
 __all__ = [
+    "AddContentTypeModal",
     "AddDocumentModal",
+    "AddReferenceModal",
+    "ContentType",
     "ArtifactPreviewModal",
     "ArtifactPreviewResult",
     "AutoModeConfigModal",

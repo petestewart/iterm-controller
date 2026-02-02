@@ -376,6 +376,26 @@ class WorkflowState:
 
 
 # =============================================================================
+# Documentation Reference Models
+# =============================================================================
+
+
+@dataclass
+class DocReference:
+    """External documentation reference (URL).
+
+    Used by Docs Mode to track external documentation links alongside local files.
+    Stored in project configuration and displayed in the documentation tree.
+    """
+
+    id: str  # Unique identifier
+    title: str  # Display title
+    url: str  # External URL
+    category: str = ""  # Optional category for grouping (e.g., "API Docs", "Design")
+    notes: str = ""  # Optional notes or description
+
+
+# =============================================================================
 # Planning Artifact Models
 # =============================================================================
 
@@ -563,6 +583,7 @@ class Project:
     template_id: str | None = None  # Template used to create project
     jira_ticket: str | None = None  # Optional Jira ticket number (e.g., "PROJ-123")
     last_mode: WorkflowMode | None = None  # Last active workflow mode (persisted)
+    doc_references: list[DocReference] = field(default_factory=list)  # External URL references
 
     # Runtime state (not persisted)
     is_open: bool = field(default=False, repr=False)

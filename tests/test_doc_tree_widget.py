@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 
+from iterm_controller.models import DocReference
 from iterm_controller.widgets.doc_tree import (
     DOC_DIRECTORIES,
     DOC_EXTENSIONS,
@@ -457,3 +458,262 @@ class TestDocTreeWidgetAsync:
 
                 # Tree should now have the file
                 assert len(list(tree_widget.root.children)) == 1
+
+
+class TestDocNodeUrlSupport:
+    """Tests for URL support in DocNode dataclass."""
+
+    def test_doc_node_with_url_defaults(self) -> None:
+        """Test creating a DocNode with URL default values."""
+        node = DocNode(
+            path=Path("/test/file.md"),
+            is_directory=False,
+            name="file.md",
+        )
+
+        assert node.is_url is False
+        assert node.url == ""
+        assert node.reference_id == ""
+        assert node.category == ""
+
+    def test_doc_node_url_reference(self) -> None:
+        """Test creating a DocNode for a URL reference."""
+        node = DocNode(
+            path=None,
+            is_directory=False,
+            name="Textual Docs",
+            is_url=True,
+            url="https://textual.textualize.io/",
+            reference_id="ref-123",
+            category="API Docs",
+        )
+
+        assert node.path is None
+        assert node.is_directory is False
+        assert node.is_url is True
+        assert node.url == "https://textual.textualize.io/"
+        assert node.reference_id == "ref-123"
+        assert node.category == "API Docs"
+
+
+class TestDocTreeWidgetUrlReferences:
+    """Tests for URL reference support in DocTreeWidget."""
+
+    def test_selected_is_url_initially_false(self) -> None:
+        """Test that selected_is_url is False initially."""
+        widget = DocTreeWidget()
+        assert widget.selected_is_url is False
+
+    def test_selected_url_initially_none(self) -> None:
+        """Test that selected_url is None initially."""
+        widget = DocTreeWidget()
+        assert widget.selected_url is None
+
+    def test_selected_reference_id_initially_none(self) -> None:
+        """Test that selected_reference_id is None initially."""
+        widget = DocTreeWidget()
+        assert widget.selected_reference_id is None
+
+    def test_set_project_with_references(self) -> None:
+        """Test setting project with doc references."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            references = [
+                DocReference(
+                    id="ref1",
+                    title="Textual Docs",
+                    url="https://textual.textualize.io/",
+                    category="API Docs",
+                ),
+                DocReference(
+                    id="ref2",
+                    title="iTerm2 API",
+                    url="https://iterm2.com/python-api/",
+                    category="API Docs",
+                ),
+                DocReference(
+                    id="ref3",
+                    title="Design Spec",
+                    url="https://figma.com/example",
+                ),
+            ]
+
+            widget = DocTreeWidget()
+            widget.set_project(tmpdir, references)
+
+            # Should have doc references stored
+            assert widget._doc_references == references
+
+    def test_build_tree_includes_references_section(self) -> None:
+        """Test that build_tree adds External References section."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            references = [
+                DocReference(
+                    id="ref1",
+                    title="Textual Docs",
+                    url="https://textual.textualize.io/",
+                ),
+            ]
+
+            widget = DocTreeWidget(project_path=tmpdir)
+            widget._doc_references = references
+            widget.build_tree()
+
+            # Should have External References section
+            children = list(widget.root.children)
+            assert len(children) == 1
+            assert "External References" in children[0].label
+
+    def test_build_tree_categorizes_references(self) -> None:
+        """Test that references are grouped by category."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            references = [
+                DocReference(
+                    id="ref1",
+                    title="Textual Docs",
+                    url="https://textual.textualize.io/",
+                    category="API Docs",
+                ),
+                DocReference(
+                    id="ref2",
+                    title="iTerm2 API",
+                    url="https://iterm2.com/python-api/",
+                    category="API Docs",
+                ),
+                DocReference(
+                    id="ref3",
+                    title="Design Spec",
+                    url="https://figma.com/example",
+                ),
+            ]
+
+            widget = DocTreeWidget(project_path=tmpdir)
+            widget._doc_references = references
+            widget.build_tree()
+
+            # Find External References section
+            refs_section = list(widget.root.children)[0]
+
+            # Should have "API Docs" category and one uncategorized reference
+            refs_children = list(refs_section.children)
+            assert len(refs_children) == 2  # API Docs category + Design Spec
+
+            # First should be the category
+            api_category = refs_children[0]
+            assert "API Docs" in str(api_category.label)
+            assert len(list(api_category.children)) == 2
+
+            # Second should be the uncategorized reference
+            design_ref = refs_children[1]
+            assert design_ref.data.is_url is True
+            assert design_ref.data.name == "Design Spec"
+
+    def test_update_references(self) -> None:
+        """Test update_references method."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            widget = DocTreeWidget(project_path=tmpdir)
+            widget.build_tree()
+
+            # Initially no references
+            assert widget._doc_references == []
+
+            # Add references
+            new_refs = [
+                DocReference(
+                    id="ref1",
+                    title="New Doc",
+                    url="https://example.com/",
+                ),
+            ]
+            widget.update_references(new_refs)
+
+            # Should have the new references
+            assert widget._doc_references == new_refs
+
+            # Tree should be rebuilt with references
+            children = list(widget.root.children)
+            assert len(children) == 1
+            assert "External References" in children[0].label
+
+    def test_no_references_section_when_empty(self) -> None:
+        """Test that External References section is not added when empty."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            widget = DocTreeWidget(project_path=tmpdir)
+            widget.build_tree()
+
+            # Should have no children (no docs, no references)
+            assert len(list(widget.root.children)) == 0
+
+
+class TestDocReferenceModel:
+    """Tests for DocReference model."""
+
+    def test_doc_reference_creation(self) -> None:
+        """Test creating a DocReference."""
+        ref = DocReference(
+            id="ref-123",
+            title="Textual Documentation",
+            url="https://textual.textualize.io/",
+            category="API Docs",
+            notes="Primary framework documentation",
+        )
+
+        assert ref.id == "ref-123"
+        assert ref.title == "Textual Documentation"
+        assert ref.url == "https://textual.textualize.io/"
+        assert ref.category == "API Docs"
+        assert ref.notes == "Primary framework documentation"
+
+    def test_doc_reference_defaults(self) -> None:
+        """Test DocReference default values."""
+        ref = DocReference(
+            id="ref-123",
+            title="Test",
+            url="https://example.com/",
+        )
+
+        assert ref.category == ""
+        assert ref.notes == ""
+
+    def test_doc_reference_serialization(self) -> None:
+        """Test DocReference serializes to JSON-compatible dict."""
+        from dataclasses import asdict
+
+        ref = DocReference(
+            id="ref-123",
+            title="Test",
+            url="https://example.com/",
+            category="Test Cat",
+        )
+
+        data = asdict(ref)
+        assert data == {
+            "id": "ref-123",
+            "title": "Test",
+            "url": "https://example.com/",
+            "category": "Test Cat",
+            "notes": "",
+        }
+
+    def test_doc_reference_in_project(self) -> None:
+        """Test that Project model includes doc_references field."""
+        from iterm_controller.models import Project
+
+        project = Project(
+            id="test",
+            name="Test Project",
+            path="/tmp/test",
+        )
+
+        # Should have empty list by default
+        assert project.doc_references == []
+
+        # Can add references
+        ref = DocReference(
+            id="ref1",
+            title="Test Doc",
+            url="https://example.com/",
+        )
+        project.doc_references.append(ref)
+
+        assert len(project.doc_references) == 1
+        assert project.doc_references[0].title == "Test Doc"
