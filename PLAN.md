@@ -822,7 +822,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: When selecting a doc, add option alongside Edit/Close to collaborate with an agent (e.g., "[A] Agent")
   - Acceptance: User can launch agent collaboration on selected document
 
-- [ ] **Add create options for missing artifacts in Plan screen**
+- [x] **Add create options for missing artifacts in Plan screen** `[complete]`
   - Scope: When pressing Enter on an uncreated item, show dialogue with options: create with agent (spawn Claude session with appropriate slash command) or manually (create file and launch in editor)
   - Acceptance: Both creation paths work correctly for missing artifacts
 

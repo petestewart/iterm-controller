@@ -19,6 +19,7 @@ from iterm_controller.editors import EDITOR_COMMANDS
 from iterm_controller.models import SessionTemplate, WorkflowMode
 from iterm_controller.screens.mode_screen import ModeScreen
 from iterm_controller.screens.modals.artifact_preview import ArtifactPreviewModal
+from iterm_controller.screens.modals.create_artifact import CreateArtifactModal
 from iterm_controller.security import get_safe_editor_command
 from iterm_controller.widgets.artifact_list import ArtifactListWidget
 from iterm_controller.widgets.mode_indicator import ModeIndicatorWidget
@@ -190,6 +191,7 @@ class PlanModeScreen(ModeScreen):
 
         Opens a preview modal showing the artifact content.
         For directories (specs/), toggles expansion instead.
+        For missing artifacts, shows creation options modal.
         """
         artifact_widget = self.query_one("#artifacts", ArtifactListWidget)
         selected = artifact_widget.selected_artifact
@@ -208,7 +210,8 @@ class PlanModeScreen(ModeScreen):
             return
 
         if not path.exists():
-            self.notify(f"{selected} does not exist", severity="warning")
+            # Show create options modal for missing artifacts
+            self._show_create_options(selected, path)
             return
 
         # For directories (like individual spec files shown under specs/),
@@ -404,3 +407,173 @@ class PlanModeScreen(ModeScreen):
                 self.notify(f"Failed to spawn agent session: {result.error}", severity="error")
 
         self.call_later(_do_spawn)
+
+    def _show_create_options(self, artifact_name: str, artifact_path: Path) -> None:
+        """Show modal with creation options for a missing artifact.
+
+        Args:
+            artifact_name: Display name for the artifact (e.g., "PRD.md")
+            artifact_path: Full path where the artifact should be created
+        """
+        # Get the artifact key for looking up the command
+        artifact_key = artifact_name
+        if artifact_name.startswith("specs/") and artifact_name != "specs/":
+            artifact_key = "specs/"
+
+        # Get the Claude command for this artifact (may be None)
+        agent_command = ARTIFACT_COMMANDS.get(artifact_key)
+
+        def handle_create_result(result: str | None) -> None:
+            """Handle the result from the create modal."""
+            if result == "agent":
+                # Create with agent - spawn Claude session with appropriate command
+                if agent_command:
+                    self._spawn_claude_session(agent_command, f"Create {artifact_key}")
+            elif result == "manual":
+                # Create manually - create file and open in editor
+                self._create_artifact_manually(artifact_name, artifact_path)
+
+        self.app.push_screen(
+            CreateArtifactModal(
+                artifact_name=artifact_name,
+                agent_command=agent_command,
+            ),
+            handle_create_result,
+        )
+
+    def _create_artifact_manually(self, artifact_name: str, artifact_path: Path) -> None:
+        """Create an artifact file manually and open in editor.
+
+        Creates an empty file (or directory for specs/) and opens it in the
+        configured editor.
+
+        Args:
+            artifact_name: Display name for the artifact (e.g., "PRD.md")
+            artifact_path: Full path where the artifact should be created
+        """
+        try:
+            # Handle directory creation for specs/
+            if artifact_name == "specs/":
+                artifact_path.mkdir(parents=True, exist_ok=True)
+                self.notify(f"Created directory: {artifact_name}")
+            else:
+                # Ensure parent directory exists
+                artifact_path.parent.mkdir(parents=True, exist_ok=True)
+
+                # Create file with appropriate initial content
+                initial_content = self._get_initial_content(artifact_name)
+                artifact_path.write_text(initial_content, encoding="utf-8")
+                self.notify(f"Created: {artifact_name}")
+
+            # Refresh the artifact list
+            self._refresh_artifacts()
+
+            # Open in editor
+            app: ItermControllerApp = self.app  # type: ignore[assignment]
+            ide = "code"  # default to VS Code
+            if app.state.config and app.state.config.settings:
+                ide = app.state.config.settings.default_ide
+
+            # Get editor command - validated against allowlist
+            editor_cmd = EDITOR_COMMANDS.get(ide.lower())
+            if editor_cmd:
+                editor_cmd = get_safe_editor_command(editor_cmd, fallback="open")
+            else:
+                editor_cmd = get_safe_editor_command(ide, fallback="open")
+
+            self._open_in_editor(artifact_path, editor_cmd, artifact_name)
+
+        except OSError as e:
+            self.notify(f"Failed to create {artifact_name}: {e}", severity="error")
+
+    def _get_initial_content(self, artifact_name: str) -> str:
+        """Get initial content for a new artifact file.
+
+        Returns appropriate starter content based on the artifact type.
+
+        Args:
+            artifact_name: Name of the artifact (e.g., "PRD.md", "PROBLEM.md")
+
+        Returns:
+            Initial content for the file.
+        """
+        # Provide helpful starter templates for each artifact type
+        if artifact_name == "PROBLEM.md":
+            return """# Problem Statement
+
+## Context
+
+<!-- Describe the current situation and background -->
+
+## Problem
+
+<!-- What specific problem needs to be solved? -->
+
+## Impact
+
+<!-- What is the impact of this problem? Who is affected? -->
+
+## Desired Outcome
+
+<!-- What does success look like? -->
+"""
+        elif artifact_name == "PRD.md":
+            return """# Product Requirements Document
+
+## Overview
+
+<!-- Brief summary of what we're building -->
+
+## Problem Statement
+
+<!-- Reference PROBLEM.md or summarize the problem -->
+
+## Proposed Solution
+
+<!-- High-level description of the solution -->
+
+## Requirements
+
+### Functional Requirements
+
+<!-- List the functional requirements -->
+
+### Non-Functional Requirements
+
+<!-- List any non-functional requirements (performance, security, etc.) -->
+
+## Success Criteria
+
+<!-- How will we measure success? -->
+"""
+        elif artifact_name == "PLAN.md":
+            return """# Implementation Plan
+
+## Overview
+
+<!-- Brief summary of the implementation approach -->
+
+## Tasks
+
+### Phase 1: Foundation
+
+- [ ] **Task 1** `[pending]`
+  - Scope: Description of what needs to be done
+  - Acceptance: How we know this is complete
+"""
+        elif artifact_name.endswith(".md"):
+            # Generic markdown file in specs/
+            title = artifact_name.replace("specs/", "").replace(".md", "").replace("-", " ").title()
+            return f"""# {title}
+
+## Overview
+
+<!-- Describe the purpose of this specification -->
+
+## Details
+
+<!-- Add specification details here -->
+"""
+        else:
+            # Default empty file
+            return ""

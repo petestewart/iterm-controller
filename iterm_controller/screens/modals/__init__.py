@@ -3,6 +3,7 @@
 from .add_document import AddDocumentModal
 from .artifact_preview import ArtifactPreviewModal, ArtifactPreviewResult
 from .auto_mode_config import AutoModeConfigModal
+from .create_artifact import CreateArtifactModal, CreateArtifactResult
 from .delete_confirm import DeleteConfirmModal
 from .dependency_chain import DependencyChainModal
 from .docs_picker import DocsPickerModal
@@ -21,6 +22,8 @@ __all__ = [
     "ArtifactPreviewModal",
     "ArtifactPreviewResult",
     "AutoModeConfigModal",
+    "CreateArtifactModal",
+    "CreateArtifactResult",
     "DeleteConfirmModal",
     "DependencyChainModal",
     "DocsPickerModal",
