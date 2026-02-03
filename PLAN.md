@@ -887,7 +887,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Create GitFileStatus, GitStatus, GitCommit, GitConfig dataclasses
   - Spec: specs/models.md
 
-- [ ] **27.1.7 Add ProjectScript model**
+- [x] **27.1.7 Add ProjectScript model** `[complete]`
   - Scope: Create ProjectScript and RunningScript dataclasses
   - Spec: specs/models.md
   - Dependencies: 27.1.2

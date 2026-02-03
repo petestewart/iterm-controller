@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
+from typing import Callable
 import dacite
 
 
@@ -704,6 +705,60 @@ class GitConfig:
     auto_stage: bool = False  # Auto-stage changes before commit
     default_branch: str = "main"  # Default branch name
     remote: str = "origin"  # Remote name
+
+
+# =============================================================================
+# Script Models
+# =============================================================================
+
+
+@dataclass
+class ProjectScript:
+    """A named script that can be run from the project screen.
+
+    Scripts are defined in project configuration and can be launched from
+    the Project Screen toolbar or via keybindings. Each script spawns a
+    session to run the command.
+
+    Attributes:
+        id: Unique identifier for the script.
+        name: Display name shown in toolbar/picker.
+        command: Command to execute in the session.
+        keybinding: Optional keyboard shortcut (e.g., "ctrl+t").
+        working_dir: Working directory relative to project root (default: project root).
+        env: Additional environment variables for the script.
+        session_type: Type of session to create (default: SCRIPT).
+        show_in_toolbar: Whether to show in Project Screen toolbar.
+    """
+
+    id: str
+    name: str
+    command: str
+    keybinding: str | None = None
+    working_dir: str | None = None
+    env: dict[str, str] | None = None
+    session_type: SessionType = SessionType.SCRIPT
+    show_in_toolbar: bool = True
+
+
+@dataclass
+class RunningScript:
+    """A script currently executing in a session.
+
+    Tracks the association between a ProjectScript and the session it's
+    running in, for status display and completion callbacks.
+
+    Attributes:
+        script: The ProjectScript being executed.
+        session_id: iTerm2 session ID running the script.
+        started_at: When the script was started.
+        on_complete: Optional callback when script completes (receives exit code).
+    """
+
+    script: ProjectScript
+    session_id: str
+    started_at: datetime
+    on_complete: Callable[[int], None] | None = None
 
 
 # =============================================================================

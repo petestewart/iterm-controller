@@ -23,11 +23,13 @@ from iterm_controller.models import (
     Phase,
     Plan,
     Project,
+    ProjectScript,
     ProjectTemplate,
     PullRequest,
     ReviewConfig,
     ReviewContextConfig,
     ReviewResult,
+    RunningScript,
     SessionLayout,
     SessionProgress,
     SessionTemplate,
@@ -1778,6 +1780,241 @@ class TestGitModels:
         assert restored.auto_stage is True
         assert restored.default_branch == "master"
         assert restored.remote == "origin"
+
+
+class TestScriptModels:
+    """Test ProjectScript and RunningScript dataclasses."""
+
+    def test_project_script_minimal(self):
+        """Test creating a ProjectScript with required fields only."""
+        script = ProjectScript(
+            id="run-tests",
+            name="Run Tests",
+            command="npm test",
+        )
+        assert script.id == "run-tests"
+        assert script.name == "Run Tests"
+        assert script.command == "npm test"
+        assert script.keybinding is None
+        assert script.working_dir is None
+        assert script.env is None
+        assert script.session_type == SessionType.SCRIPT
+        assert script.show_in_toolbar is True
+
+    def test_project_script_full(self):
+        """Test creating a ProjectScript with all fields."""
+        script = ProjectScript(
+            id="start-server",
+            name="Start Server",
+            command="npm run dev",
+            keybinding="ctrl+d",
+            working_dir="./frontend",
+            env={"PORT": "3000", "NODE_ENV": "development"},
+            session_type=SessionType.SERVER,
+            show_in_toolbar=False,
+        )
+        assert script.id == "start-server"
+        assert script.name == "Start Server"
+        assert script.command == "npm run dev"
+        assert script.keybinding == "ctrl+d"
+        assert script.working_dir == "./frontend"
+        assert script.env == {"PORT": "3000", "NODE_ENV": "development"}
+        assert script.session_type == SessionType.SERVER
+        assert script.show_in_toolbar is False
+
+    def test_project_script_with_test_runner_type(self):
+        """Test ProjectScript with test runner session type."""
+        script = ProjectScript(
+            id="pytest",
+            name="Run pytest",
+            command="pytest -v",
+            keybinding="ctrl+t",
+            session_type=SessionType.TEST_RUNNER,
+        )
+        assert script.session_type == SessionType.TEST_RUNNER
+
+    def test_project_script_with_shell_type(self):
+        """Test ProjectScript with shell session type."""
+        script = ProjectScript(
+            id="shell",
+            name="Open Shell",
+            command="bash",
+            session_type=SessionType.SHELL,
+        )
+        assert script.session_type == SessionType.SHELL
+
+    def test_project_script_serialization(self):
+        """Test ProjectScript serializes to/from dict correctly."""
+        script = ProjectScript(
+            id="build",
+            name="Build Project",
+            command="npm run build",
+            keybinding="ctrl+b",
+            working_dir=".",
+            env={"BUILD_ENV": "production"},
+            session_type=SessionType.SCRIPT,
+            show_in_toolbar=True,
+        )
+        data = model_to_dict(script)
+        assert data["id"] == "build"
+        assert data["name"] == "Build Project"
+        assert data["command"] == "npm run build"
+        assert data["keybinding"] == "ctrl+b"
+        assert data["working_dir"] == "."
+        assert data["env"] == {"BUILD_ENV": "production"}
+        assert data["session_type"] == "script"
+        assert data["show_in_toolbar"] is True
+
+        restored = model_from_dict(ProjectScript, data)
+        assert restored.id == "build"
+        assert restored.name == "Build Project"
+        assert restored.command == "npm run build"
+        assert restored.keybinding == "ctrl+b"
+        assert restored.working_dir == "."
+        assert restored.env == {"BUILD_ENV": "production"}
+        assert restored.session_type == SessionType.SCRIPT
+        assert restored.show_in_toolbar is True
+
+    def test_project_script_serialization_with_none_values(self):
+        """Test ProjectScript with None optional fields serializes correctly."""
+        script = ProjectScript(
+            id="minimal",
+            name="Minimal Script",
+            command="echo hello",
+            keybinding=None,
+            working_dir=None,
+            env=None,
+        )
+        data = model_to_dict(script)
+        assert data["keybinding"] is None
+        assert data["working_dir"] is None
+        assert data["env"] is None
+
+        restored = model_from_dict(ProjectScript, data)
+        assert restored.keybinding is None
+        assert restored.working_dir is None
+        assert restored.env is None
+
+    def test_running_script_creation(self):
+        """Test creating a RunningScript with all fields."""
+        script = ProjectScript(
+            id="run-tests",
+            name="Run Tests",
+            command="npm test",
+        )
+        started_at = datetime.now()
+        running = RunningScript(
+            script=script,
+            session_id="session-123",
+            started_at=started_at,
+            on_complete=None,
+        )
+        assert running.script == script
+        assert running.session_id == "session-123"
+        assert running.started_at == started_at
+        assert running.on_complete is None
+
+    def test_running_script_with_callback(self):
+        """Test RunningScript with completion callback."""
+        script = ProjectScript(
+            id="build",
+            name="Build",
+            command="npm run build",
+        )
+        callback_called = []
+
+        def on_complete(exit_code: int) -> None:
+            callback_called.append(exit_code)
+
+        running = RunningScript(
+            script=script,
+            session_id="session-456",
+            started_at=datetime.now(),
+            on_complete=on_complete,
+        )
+        assert running.on_complete is not None
+        # Simulate calling the callback
+        running.on_complete(0)
+        assert callback_called == [0]
+
+    def test_running_script_serialization(self):
+        """Test RunningScript serializes to/from dict correctly (without callback)."""
+        script = ProjectScript(
+            id="deploy",
+            name="Deploy",
+            command="./deploy.sh",
+            keybinding="ctrl+shift+d",
+        )
+        started_at = datetime.now()
+        running = RunningScript(
+            script=script,
+            session_id="session-789",
+            started_at=started_at,
+            on_complete=None,
+        )
+        data = model_to_dict(running)
+        assert data["script"]["id"] == "deploy"
+        assert data["script"]["name"] == "Deploy"
+        assert data["session_id"] == "session-789"
+        # Note: on_complete callback cannot be serialized, will be None
+
+        # Restore without callback
+        restored = model_from_dict(RunningScript, data)
+        assert restored.script.id == "deploy"
+        assert restored.script.name == "Deploy"
+        assert restored.session_id == "session-789"
+        assert restored.on_complete is None
+
+    def test_project_script_keybinding_patterns(self):
+        """Test various keybinding patterns."""
+        # Single modifier
+        script1 = ProjectScript(id="s1", name="S1", command="c1", keybinding="ctrl+t")
+        assert script1.keybinding == "ctrl+t"
+
+        # Multiple modifiers
+        script2 = ProjectScript(id="s2", name="S2", command="c2", keybinding="ctrl+shift+t")
+        assert script2.keybinding == "ctrl+shift+t"
+
+        # Function key
+        script3 = ProjectScript(id="s3", name="S3", command="c3", keybinding="f5")
+        assert script3.keybinding == "f5"
+
+        # Alt modifier
+        script4 = ProjectScript(id="s4", name="S4", command="c4", keybinding="alt+r")
+        assert script4.keybinding == "alt+r"
+
+    def test_project_script_env_empty_dict(self):
+        """Test ProjectScript with empty env dict."""
+        script = ProjectScript(
+            id="test",
+            name="Test",
+            command="test",
+            env={},
+        )
+        assert script.env == {}
+        data = model_to_dict(script)
+        assert data["env"] == {}
+
+    def test_multiple_running_scripts_same_project_script(self):
+        """Test that the same ProjectScript can be run in multiple sessions."""
+        script = ProjectScript(
+            id="lint",
+            name="Lint",
+            command="npm run lint",
+        )
+        running1 = RunningScript(
+            script=script,
+            session_id="session-a",
+            started_at=datetime.now(),
+        )
+        running2 = RunningScript(
+            script=script,
+            session_id="session-b",
+            started_at=datetime.now(),
+        )
+        # Both should share the same script reference
+        assert running1.script.id == running2.script.id
+        assert running1.session_id != running2.session_id
 
 
 class TestAppConfig:
