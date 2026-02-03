@@ -1172,9 +1172,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Dependencies: 27.6.5, 27.7.8
   - Result: Added 27 new tests covering helper methods, event handlers, script actions, widget messages, and template selection; also fixed a bug in mission_control.py where set_active_project was called instead of setting active_project_id property; total 104 tests now covering both screens
 
-- [ ] **27.10.6 Update README and documentation**
+- [x] **27.10.6 Update README and documentation** `[complete]`
   - Scope: Update README with new features, configuration examples
   - Dependencies: 27.9.4
+  - Result: Updated README with Mission Control, Project Screen, Git/Review/Script services, new architecture diagram, updated keyboard shortcuts, enhanced configuration examples with scripts/review/git blocks, and exported new models (SessionType, ReviewResult, GitStatus, etc.) from __init__.py
 
 ---
 

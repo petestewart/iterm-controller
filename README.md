@@ -1,19 +1,22 @@
 # iTerm2 Project Orchestrator
 
-A Python-based TUI application that serves as a "control room" for development projects. Manages terminal sessions through iTerm2's Python API, monitors session output for attention-needed states, and provides unified visibility across multiple projects.
+A Python-based TUI application that serves as "mission control" for development projects. Manages terminal sessions through iTerm2's Python API, streams live output from all active sessions, and provides unified visibility across multiple projects with integrated git operations, auto-review pipelines, and project scripts.
 
-**Core value:** One command to open a project with all dev environment tabs spawned, configured, and monitored.
+**Core value:** One command to open a project and have all dev environment tabs spawn, configured, monitored, and reviewable from a single unified interface.
 
 ## Features
 
-- **Session Management** - Spawn, monitor, and kill terminal sessions programmatically
+- **Mission Control** - Live terminal output streaming from all active sessions across projects
+- **Session Management** - Spawn, monitor, and kill terminal sessions with real-time output display
 - **Attention Detection** - Real-time monitoring for sessions needing user input (questions, prompts, errors)
-- **Task Tracking** - Parse and update PLAN.md task lists, track progress
+- **Project Scripts** - Named scripts with keybindings for servers, tests, lint, build, orchestrator
+- **Git Integration** - Full git operations (status, stage, commit, push, pull) from the TUI
+- **Auto-Review Pipeline** - Automatic code review when tasks complete with configurable slash commands
+- **Task Tracking** - Parse and update PLAN.md task lists with review status tracking
 - **Health Checks** - Poll HTTP endpoints and display service health status
 - **GitHub Integration** - Branch sync, PR status via `gh` CLI
-- **Workflow Modes** - Plan, Docs, Work, and Test modes for different development phases
 - **Auto Mode** - Automatic stage progression with configurable commands
-- **Notifications** - macOS notifications when sessions need attention
+- **Notifications** - macOS notifications with sound support when sessions need attention
 
 ## Setup
 
@@ -260,6 +263,8 @@ await api.toggle_test_step(
 projects = await api.list_projects()
 for p in projects:
     print(f"{p.id}: {p.name} at {p.path}")
+    if p.jira_ticket:
+        print(f"  Jira: {p.jira_ticket}")
 
 # Get specific project
 project = await api.get_project("my-project")
@@ -268,7 +273,7 @@ project = await api.get_project("my-project")
 await api.open_project("my-project")
 await api.close_project("my-project")
 
-# Create a new project
+# Create a new project with scripts and review config
 result = await api.create_project(
     project_id="new-project",
     name="New Project",
@@ -279,10 +284,24 @@ result = await api.create_project(
 
 # Delete a project (from config, not disk)
 await api.delete_project("old-project")
+```
 
-# Update workflow mode
-from iterm_controller import WorkflowMode
-await api.update_project_mode("my-project", WorkflowMode.WORK)
+### Git Operations
+
+Note: Git operations are available through the TUI's Git section or via shell commands. The API exposes session management which can be used to run git commands in terminal sessions.
+
+```python
+# Spawn a session to run git commands
+result = await api.spawn_session(
+    project_id="my-project",
+    template_id="shell",
+    task_id=None
+)
+
+if result.success:
+    # Send git commands to the session
+    await api.send_to_session(result.session.id, "git status\n")
+    await api.send_to_session(result.session.id, "git add -A && git commit -m 'Update'\n")
 ```
 
 ### State Observation
@@ -345,19 +364,29 @@ Import data models for type hints:
 from iterm_controller import (
     # Projects
     Project,
-    WorkflowMode,
-    WorkflowStage,
+    ProjectScript,
 
     # Sessions
     ManagedSession,
     SessionTemplate,
+    SessionType,          # CLAUDE_TASK, ORCHESTRATOR, REVIEW, TEST_RUNNER, etc.
     AttentionState,
 
     # Tasks
     Task,
-    TaskStatus,
+    TaskStatus,           # PENDING, IN_PROGRESS, COMPLETE, AWAITING_REVIEW, etc.
     Phase,
     Plan,
+
+    # Reviews
+    ReviewResult,         # APPROVED, NEEDS_REVISION, REJECTED
+    TaskReview,
+    ReviewConfig,
+
+    # Git
+    GitStatus,
+    GitFileStatus,
+    GitConfig,
 
     # Tests
     TestStep,
@@ -368,6 +397,7 @@ from iterm_controller import (
     AppConfig,
     WindowLayout,
     HealthCheck,
+    NotificationSettings,
 )
 ```
 
@@ -377,7 +407,7 @@ A complete example of an agent monitoring sessions and handling attention states
 
 ```python
 import asyncio
-from iterm_controller import ItermControllerAPI, AttentionState
+from iterm_controller import ItermControllerAPI, AttentionState, TaskStatus
 
 async def agent_loop():
     api = ItermControllerAPI()
@@ -392,11 +422,11 @@ async def agent_loop():
 
         # Claim first pending task
         tasks = await api.list_tasks("my-project")
-        pending = [t for t in tasks if t.status.value == "pending" and not t.is_blocked]
+        pending = [t for t in tasks if t.status == TaskStatus.PENDING and not t.is_blocked]
         if pending:
             await api.claim_task("my-project", pending[0].id)
 
-        # Monitor loop
+        # Monitor loop (similar to Mission Control's live updates)
         while True:
             sessions = await api.list_sessions("my-project")
 
@@ -405,6 +435,12 @@ async def agent_loop():
                     print(f"Session {session.name} needs attention!")
                     # Agent could read output, make decision, send response
                     # await api.send_to_session(session.id, "y\n")
+
+            # Check for tasks awaiting review
+            tasks = await api.list_tasks("my-project")
+            awaiting_review = [t for t in tasks if t.status == TaskStatus.AWAITING_REVIEW]
+            if awaiting_review:
+                print(f"{len(awaiting_review)} tasks awaiting review")
 
             # Check task progress
             progress = await api.get_task_progress("my-project")
@@ -435,14 +471,69 @@ Configuration is stored in JSON files:
     "default_ide": "cursor",
     "default_shell": "zsh",
     "polling_interval_ms": 500,
-    "notification_enabled": true
+    "notifications": {
+      "enabled": true,
+      "sound_enabled": true,
+      "sound_name": "Ping",
+      "on_waiting": true,
+      "on_error": true,
+      "on_review_complete": true
+    },
+    "dangerously_skip_permissions": false
   },
   "projects": [
     {
       "id": "my-project",
       "name": "My Project",
       "path": "/path/to/project",
-      "template_id": "rails-app"
+      "template_id": "rails-app",
+      "jira_ticket": "PROJ-123",
+      "scripts": [
+        {
+          "id": "server",
+          "name": "Server",
+          "command": "bin/dev",
+          "keybinding": "s",
+          "session_type": "server"
+        },
+        {
+          "id": "tests",
+          "name": "Tests",
+          "command": "bin/rails test",
+          "keybinding": "t",
+          "session_type": "test_runner"
+        },
+        {
+          "id": "lint",
+          "name": "Lint",
+          "command": "bin/rubocop -A",
+          "keybinding": "l",
+          "session_type": "script"
+        },
+        {
+          "id": "orchestrator",
+          "name": "Run Tasks",
+          "command": "bin/run-tasks --phase=current",
+          "keybinding": "o",
+          "session_type": "orchestrator"
+        }
+      ],
+      "review": {
+        "enabled": true,
+        "command": "/review-task",
+        "max_revisions": 3,
+        "trigger": "script_completion",
+        "context": {
+          "include_task_definition": true,
+          "include_git_diff": true,
+          "include_test_results": true
+        }
+      },
+      "git": {
+        "auto_stage": false,
+        "default_branch": "main",
+        "remote": "origin"
+      }
     }
   ],
   "session_templates": [
@@ -471,60 +562,117 @@ Configuration is stored in JSON files:
 }
 ```
 
+### Project Scripts
+
+Scripts are project-specific commands that can be launched with keybindings:
+
+| Session Type | Description | Behavior on Re-press |
+|--------------|-------------|----------------------|
+| `server` | Long-running server | Restart |
+| `test_runner` | Test execution | Focus existing |
+| `script` | One-off command | Focus existing |
+| `orchestrator` | Task automation with progress | Focus existing |
+
+### Review Configuration
+
+The auto-review pipeline runs when tasks are completed:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `enabled` | Enable automatic reviews | `true` |
+| `command` | Slash command to run | `/review-task` |
+| `max_revisions` | Pause after N failed reviews | `3` |
+| `trigger` | When to trigger: `script_completion`, `session_idle`, `explicit` | `script_completion` |
+
+### Git Configuration
+
+Per-project git settings:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `auto_stage` | Auto-stage all changes before commit | `false` |
+| `default_branch` | Branch name for diff comparisons | `main` |
+| `remote` | Remote name for push/pull | `origin` |
+
 ## Keyboard Shortcuts
+
+### Mission Control (Main Screen)
 
 | Key | Action |
 |-----|--------|
-| `1-4` | Switch workflow modes (Plan/Docs/Work/Test) |
-| `s` | Open Sessions/Control Room |
-| `,` | Open Settings |
-| `p` | Open Project List |
-| `n` | New session (spawn) |
+| `1-9` | Focus session N in iTerm2 |
+| `Enter` | Open project for selected session |
+| `x` | Expand/collapse selected session output |
+| `n` | Spawn new session |
 | `k` | Kill selected session |
 | `f` | Focus selected session in iTerm2 |
+| `p` | Go to project list |
+| `j/k` or Up/Down | Navigate session list |
 | `?` | Show help |
 | `q` | Quit |
+
+### Project Screen
+
+| Key | Action |
+|-----|--------|
+| `e` | Edit selected artifact |
+| `c` | Open commit modal |
+| `p` | Push to remote |
+| `Tab` | Navigate between sections |
+| `Escape` | Return to Mission Control |
+
+Script keybindings are configurable per-project (see Configuration section).
+
+### Global
+
+| Key | Action |
+|-----|--------|
+| `,` | Open Settings |
+| `?` | Show help |
+| `q` | Quit (with confirmation if sessions active) |
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Textual TUI App                          │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
-│  │ Control Room│  │  Project    │  │  Settings   │              │
-│  │   Screen    │  │  Dashboard  │  │   Screen    │              │
-│  └──────┬──────┘  └──────┬──────┘  └─────────────┘              │
-│         │                │                                       │
-│         │         ┌──────┴──────────────────────────┐           │
-│         │         │      Workflow Modes             │           │
-│         │         │  ┌────┐┌────┐┌────┐┌────┐      │           │
-│         │         │  │Plan││Docs││Work││Test│      │           │
-│         │         │  └────┘└────┘└────┘└────┘      │           │
-│         │         └─────────────────────────────────┘           │
-│         │                │                                       │
-│         └────────┬───────┘                                       │
-│                  ▼                                               │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐     │
+│  │ Mission Control │  │  Project Screen │  │  Settings   │     │
+│  │   (main)        │  │  (unified view) │  │   Screen    │     │
+│  └────────┬────────┘  └────────┬────────┘  └─────────────┘     │
+│           │                    │                                │
+│           └────────┬───────────┘                                │
+│                    ▼                                            │
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │                     App State Manager                        ││
-│  │  - Projects, Sessions, Settings                              ││
-│  │  - Event dispatch                                            ││
+│  │  - Projects, Sessions, Plans, Git, Reviews                   ││
+│  │  - Event dispatch, Output streaming                          ││
 │  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
          │              │              │              │
          ▼              ▼              ▼              ▼
 ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│  iTerm2     │  │  Plan       │  │  GitHub     │  │  Notifier   │
-│  Controller │  │  Parser     │  │  (gh CLI)   │  │  (macOS)    │
+│  iTerm2     │  │    Git      │  │   Review    │  │   Script    │
+│  Controller │  │   Service   │  │   Service   │  │   Service   │
 └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘
-         │
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     iTerm2 Python API                           │
-│  - Session creation (tabs/panes)                                │
-│  - Output polling                                               │
-│  - Notifications (terminate, prompt, layout)                    │
-└─────────────────────────────────────────────────────────────────┘
+         │              │              │              │
+         ▼              ▼              ▼              ▼
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│  Plan       │  │  GitHub     │  │  Notifier   │  │  Session    │
+│  Parser     │  │  (gh CLI)   │  │  (macOS)    │  │  Monitor    │
+└─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘
 ```
+
+### Key Components
+
+| Component | Description |
+|-----------|-------------|
+| **Mission Control** | Main dashboard showing live output from all active sessions across projects |
+| **Project Screen** | Unified view with planning artifacts, tasks, docs, git, and scripts |
+| **GitService** | Git operations (status, stage, commit, push) with caching |
+| **ReviewService** | Auto-review pipeline for completed tasks |
+| **ScriptService** | Project scripts with keybindings |
+| **SessionMonitor** | Output polling with subscriber pattern for live streaming |
 
 ## Dependencies
 

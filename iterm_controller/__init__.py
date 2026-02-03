@@ -67,6 +67,7 @@ from iterm_controller.api import (
 from iterm_controller.models import (
     # Session models
     AttentionState,
+    SessionType,
     SessionTemplate,
     ManagedSession,
     # Task models
@@ -74,6 +75,11 @@ from iterm_controller.models import (
     Task,
     Phase,
     Plan,
+    # Review models
+    ReviewResult,
+    TaskReview,
+    ReviewConfig,
+    ReviewContextConfig,
     # Test models
     TestStatus,
     TestStep,
@@ -82,6 +88,7 @@ from iterm_controller.models import (
     # Project models
     Project,
     ProjectTemplate,
+    ProjectScript,
     WorkflowMode,
     WorkflowStage,
     WorkflowState,
@@ -94,6 +101,11 @@ from iterm_controller.models import (
     TabLayout,
     SessionLayout,
     AutoModeConfig,
+    NotificationSettings,
+    # Git models
+    GitFileStatus,
+    GitStatus,
+    GitConfig,
     # GitHub models
     GitHubStatus,
     PullRequest,
@@ -196,6 +208,7 @@ __all__ = [
     "get_test_plan",
     # Session models
     "AttentionState",
+    "SessionType",
     "SessionTemplate",
     "ManagedSession",
     # Task models
@@ -203,6 +216,11 @@ __all__ = [
     "Task",
     "Phase",
     "Plan",
+    # Review models
+    "ReviewResult",
+    "TaskReview",
+    "ReviewConfig",
+    "ReviewContextConfig",
     # Test models
     "TestStatus",
     "TestStep",
@@ -211,6 +229,7 @@ __all__ = [
     # Project models
     "Project",
     "ProjectTemplate",
+    "ProjectScript",
     "WorkflowMode",
     "WorkflowStage",
     "WorkflowState",
@@ -223,6 +242,11 @@ __all__ = [
     "TabLayout",
     "SessionLayout",
     "AutoModeConfig",
+    "NotificationSettings",
+    # Git models
+    "GitFileStatus",
+    "GitStatus",
+    "GitConfig",
     # GitHub models
     "GitHubStatus",
     "PullRequest",
