@@ -554,6 +554,9 @@ class PlanUpdater:
     def _format_task(self, task: Task) -> str:
         """Format a task as markdown.
 
+        Formats a task including optional session assignment and review section.
+        The output format matches the updated PLAN.md spec with **bold** field labels.
+
         Args:
             task: The task to format
 
@@ -567,12 +570,32 @@ class PlanUpdater:
             lines.append(f"  - Spec: {task.spec_ref}")
         if task.depends:
             lines.append(f"  - Depends: {', '.join(task.depends)}")
-        if task.session_id:
-            lines.append(f"  - Session: {task.session_id}")
+
+        # Use the assigned_session_id if present, fall back to session_id
+        session_id = task.assigned_session_id or task.session_id
+        if session_id:
+            lines.append(f"  - **Session:** {session_id}")
+
         if task.scope:
             lines.append(f"  - Scope: {task.scope}")
         if task.acceptance:
             lines.append(f"  - Acceptance: {task.acceptance}")
+
+        # Add review section if task has a review and is in a reviewable state
+        if task.current_review and task.status in (
+            TaskStatus.AWAITING_REVIEW,
+            TaskStatus.BLOCKED,
+        ):
+            lines.append("  - **Review:**")
+            lines.append(f"    - **Attempt:** {task.current_review.attempt}")
+            lines.append(f"    - **Last Result:** {task.current_review.result.value}")
+            if task.current_review.issues:
+                lines.append("    - **Issues:**")
+                for issue in task.current_review.issues:
+                    lines.append(f"      - {issue}")
+            lines.append(
+                f"    - **Reviewed At:** {task.current_review.reviewed_at.isoformat()}"
+            )
 
         return "\n".join(lines)
 

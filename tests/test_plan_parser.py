@@ -942,7 +942,32 @@ class TestPlanUpdaterAddTask:
         result = updater.add_task(plan_md, "1", task)
 
         assert "- [ ] **Session Task** `[in_progress]`" in result
-        assert "  - Session: claude" in result
+        # Uses new bold format: **Session:**
+        assert "  - **Session:** claude" in result
+
+    def test_add_task_with_assigned_session_id(self):
+        """Test that assigned_session_id takes precedence over session_id."""
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Existing Task** `[pending]`
+"""
+        task = Task(
+            id="1.2",
+            title="Active Session Task",
+            status=TaskStatus.IN_PROGRESS,
+            session_id="original-session",
+            assigned_session_id="active-session-123",
+        )
+
+        updater = PlanUpdater()
+        result = updater.add_task(plan_md, "1", task)
+
+        assert "- [ ] **Active Session Task** `[in_progress]`" in result
+        # Should use assigned_session_id, not session_id
+        assert "  - **Session:** active-session-123" in result
+        assert "original-session" not in result
 
     def test_add_complete_task(self):
         plan_md = """# Plan
@@ -1177,3 +1202,268 @@ Test plan for roundtrip testing.
         assert plan.phases[0].tasks[1].spec_ref == "specs/b.md"
         assert plan.phases[0].tasks[1].scope == "Do B"
         assert plan.phases[0].tasks[1].acceptance == "B works"
+
+
+class TestFormatTaskWithReview:
+    """Test _format_task method with review sections."""
+
+    def test_format_task_without_review(self):
+        """Test that tasks without review don't include review section."""
+        task = Task(
+            id="1.1",
+            title="Simple Task",
+            status=TaskStatus.PENDING,
+            scope="Do something",
+        )
+
+        updater = PlanUpdater()
+        result = updater._format_task(task)
+
+        assert "- [ ] **Simple Task** `[pending]`" in result
+        assert "**Review:**" not in result
+
+    def test_format_task_with_review_awaiting_review_status(self):
+        """Test that review section is included for awaiting_review tasks."""
+        from datetime import datetime
+
+        from iterm_controller.models import TaskReview
+
+        review = TaskReview(
+            id="review-1.1-2",
+            task_id="1.1",
+            attempt=2,
+            result=ReviewResult.NEEDS_REVISION,
+            issues=["Missing validation", "No tests"],
+            summary="Needs work",
+            blocking=False,
+            reviewed_at=datetime(2024, 1, 15, 10, 30, 0),
+            reviewer_command="/review-task",
+        )
+
+        task = Task(
+            id="1.1",
+            title="Reviewed Task",
+            status=TaskStatus.AWAITING_REVIEW,
+            scope="Do something",
+            current_review=review,
+        )
+
+        updater = PlanUpdater()
+        result = updater._format_task(task)
+
+        assert "- [ ] **Reviewed Task** `[awaiting_review]`" in result
+        assert "  - **Review:**" in result
+        assert "    - **Attempt:** 2" in result
+        assert "    - **Last Result:** needs_revision" in result
+        assert "    - **Issues:**" in result
+        assert "      - Missing validation" in result
+        assert "      - No tests" in result
+        assert "    - **Reviewed At:** 2024-01-15T10:30:00" in result
+
+    def test_format_task_with_review_blocked_status(self):
+        """Test that review section is included for blocked tasks with review."""
+        from datetime import datetime
+
+        from iterm_controller.models import TaskReview
+
+        review = TaskReview(
+            id="review-2.1-3",
+            task_id="2.1",
+            attempt=3,
+            result=ReviewResult.REJECTED,
+            issues=["Critical security flaw"],
+            summary="Rejected",
+            blocking=True,
+            reviewed_at=datetime(2024, 1, 16, 14, 0, 0),
+            reviewer_command="/review-task",
+        )
+
+        task = Task(
+            id="2.1",
+            title="Blocked Task",
+            status=TaskStatus.BLOCKED,
+            current_review=review,
+        )
+
+        updater = PlanUpdater()
+        result = updater._format_task(task)
+
+        assert "- [ ] **Blocked Task** `[blocked]`" in result
+        assert "  - **Review:**" in result
+        assert "    - **Attempt:** 3" in result
+        assert "    - **Last Result:** rejected" in result
+        assert "    - **Issues:**" in result
+        assert "      - Critical security flaw" in result
+
+    def test_format_task_with_review_not_included_for_complete(self):
+        """Test that review section is NOT included for complete tasks."""
+        from datetime import datetime
+
+        from iterm_controller.models import TaskReview
+
+        review = TaskReview(
+            id="review-1.1-1",
+            task_id="1.1",
+            attempt=1,
+            result=ReviewResult.APPROVED,
+            issues=[],
+            summary="Good",
+            blocking=False,
+            reviewed_at=datetime(2024, 1, 15, 10, 30, 0),
+            reviewer_command="/review-task",
+        )
+
+        task = Task(
+            id="1.1",
+            title="Complete Task",
+            status=TaskStatus.COMPLETE,
+            current_review=review,
+        )
+
+        updater = PlanUpdater()
+        result = updater._format_task(task)
+
+        # Complete tasks should not show review section
+        assert "- [x] **Complete Task** `[complete]`" in result
+        assert "**Review:**" not in result
+
+    def test_format_task_with_review_no_issues(self):
+        """Test review section when there are no issues."""
+        from datetime import datetime
+
+        from iterm_controller.models import TaskReview
+
+        review = TaskReview(
+            id="review-1.1-1",
+            task_id="1.1",
+            attempt=1,
+            result=ReviewResult.APPROVED,
+            issues=[],
+            summary="Looks good",
+            blocking=False,
+            reviewed_at=datetime(2024, 1, 17, 12, 0, 0),
+            reviewer_command="/review-task",
+        )
+
+        task = Task(
+            id="1.1",
+            title="Approved Task",
+            status=TaskStatus.AWAITING_REVIEW,
+            current_review=review,
+        )
+
+        updater = PlanUpdater()
+        result = updater._format_task(task)
+
+        assert "  - **Review:**" in result
+        assert "    - **Attempt:** 1" in result
+        assert "    - **Last Result:** approved" in result
+        # No issues section when issues list is empty
+        assert "**Issues:**" not in result
+
+    def test_format_task_with_session_and_review(self):
+        """Test formatting task with both session and review."""
+        from datetime import datetime
+
+        from iterm_controller.models import TaskReview
+
+        review = TaskReview(
+            id="review-1.1-2",
+            task_id="1.1",
+            attempt=2,
+            result=ReviewResult.NEEDS_REVISION,
+            issues=["Missing tests"],
+            summary="Needs work",
+            blocking=False,
+            reviewed_at=datetime(2024, 1, 15, 10, 30, 0),
+            reviewer_command="/review-task",
+        )
+
+        task = Task(
+            id="1.1",
+            title="Full Task",
+            status=TaskStatus.AWAITING_REVIEW,
+            scope="Do the thing",
+            acceptance="Thing is done",
+            assigned_session_id="session-abc-123",
+            current_review=review,
+        )
+
+        updater = PlanUpdater()
+        result = updater._format_task(task)
+
+        # Check order: session comes before scope
+        session_pos = result.find("**Session:**")
+        scope_pos = result.find("Scope:")
+        review_pos = result.find("**Review:**")
+
+        assert session_pos < scope_pos < review_pos
+        assert "  - **Session:** session-abc-123" in result
+        assert "  - **Review:**" in result
+
+
+class TestFormatTaskRoundTrip:
+    """Test that formatted tasks can be parsed back correctly."""
+
+    def test_format_and_parse_with_review(self):
+        """Test roundtrip: format task with review, then parse it back."""
+        from datetime import datetime
+
+        from iterm_controller.models import TaskReview
+
+        review = TaskReview(
+            id="review-1.1-2",
+            task_id="1.1",
+            attempt=2,
+            result=ReviewResult.NEEDS_REVISION,
+            issues=["Missing validation", "No tests for edge cases"],
+            summary="Needs work",
+            blocking=False,
+            reviewed_at=datetime(2024, 1, 15, 10, 30, 0),
+            reviewer_command="/review-task",
+        )
+
+        original_task = Task(
+            id="1.1",
+            title="Roundtrip Task",
+            status=TaskStatus.AWAITING_REVIEW,
+            spec_ref="specs/test.md",
+            scope="Test roundtrip",
+            acceptance="Parses correctly",
+            assigned_session_id="session-xyz",
+            current_review=review,
+            revision_count=2,
+        )
+
+        updater = PlanUpdater()
+        parser = PlanParser()
+
+        # Format the task
+        formatted = updater._format_task(original_task)
+
+        # Wrap in minimal plan structure for parsing
+        plan_md = f"""# Plan
+
+### Phase 1: Test
+
+{formatted}
+"""
+
+        # Parse it back
+        plan = parser.parse(plan_md)
+        parsed_task = plan.phases[0].tasks[0]
+
+        # Verify the fields match
+        assert parsed_task.title == original_task.title
+        assert parsed_task.status == original_task.status
+        assert parsed_task.spec_ref == original_task.spec_ref
+        assert parsed_task.scope == original_task.scope
+        assert parsed_task.acceptance == original_task.acceptance
+        assert parsed_task.session_id == original_task.assigned_session_id
+
+        # Verify review was parsed
+        assert parsed_task.current_review is not None
+        assert parsed_task.current_review.attempt == 2
+        assert parsed_task.current_review.result == ReviewResult.NEEDS_REVISION
+        assert len(parsed_task.current_review.issues) == 2
+        assert "Missing validation" in parsed_task.current_review.issues[0]

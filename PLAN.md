@@ -981,7 +981,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/plan-parser.md
   - Dependencies: 27.1.4
 
-- [ ] **27.4.3 Update task formatter with review section**
+- [x] **27.4.3 Update task formatter with review section** `[complete]`
   - Scope: Update format_task to output session and review fields
   - Spec: specs/plan-parser.md
   - Dependencies: 27.4.1, 27.4.2
