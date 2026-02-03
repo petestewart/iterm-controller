@@ -844,9 +844,9 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 #### Tab Focus Refresh
 
-- [ ] **Refresh view when iTerm2 tab is re-selected**
+- [x] **Refresh view when iTerm2 tab is re-selected** `[complete]`
   - Scope: Use iTerm2 Python API to subscribe to tab selection notifications; when the tab containing the TUI becomes active, trigger a refresh of the current screen
-  - Implementation: Subscribe to `iterm2.Notification.SELECTED_TAB_CHANGED` in connection manager, post Textual message to trigger screen refresh
+  - Implementation: Created FocusWatcher class using iterm2.FocusMonitor to detect tab selection changes; identifies TUI's tab by matching process IDs; posts TabFocused Textual message to trigger screen refresh
   - Acceptance: Switching away from and back to the iTerm2 tab refreshes the current view (Plan, Docs, Work, Test, etc.) with latest data
 
 ---

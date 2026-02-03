@@ -11,6 +11,7 @@ actual iTerm2 connection is deferred until connect() is called.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -19,6 +20,7 @@ from textual.screen import ModalScreen, Screen
 from iterm_controller.git_service import GitService
 from iterm_controller.github import GitHubIntegration
 from iterm_controller.iterm import (
+    FocusWatcher,
     ItermController,
     SessionSpawner,
     SessionTerminator,
@@ -28,13 +30,13 @@ from iterm_controller.iterm import (
 from iterm_controller.models import WorkflowMode, WorkflowStage
 from iterm_controller.notifications import Notifier
 from iterm_controller.review_service import ReviewService
-from iterm_controller.script_service import ScriptService
 
 # Import all screens and modals in services.py - this is the single place where
 # they are imported to avoid circular dependencies elsewhere
 from iterm_controller.screens.modals.mode_command import ModeCommandModal
 from iterm_controller.screens.modals.stage_advance import StageAdvanceModal
 from iterm_controller.screens.modes.test_mode import TestModeScreen
+from iterm_controller.script_service import ScriptService
 
 if TYPE_CHECKING:
     from iterm_controller.models import Project, WindowLayout
@@ -72,6 +74,7 @@ class ServiceContainer:
     terminator: SessionTerminator
     layout_manager: WindowLayoutManager
     layout_spawner: WindowLayoutSpawner
+    focus_watcher: FocusWatcher
     github: GitHubIntegration
     notifier: Notifier
     scripts: ScriptService
@@ -79,7 +82,7 @@ class ServiceContainer:
     reviews: ReviewService
 
     @classmethod
-    def create(cls, plan_manager: "PlanStateManager | None" = None) -> "ServiceContainer":
+    def create(cls, plan_manager: PlanStateManager | None = None) -> ServiceContainer:
         """Create a new service container with all services initialized.
 
         The services are created but not yet connected. Call the async
@@ -102,6 +105,7 @@ class ServiceContainer:
         terminator = SessionTerminator(iterm)
         layout_manager = WindowLayoutManager(iterm)
         layout_spawner = WindowLayoutSpawner(iterm, spawner)
+        focus_watcher = FocusWatcher(iterm)
 
         # Create integration services
         github = GitHubIntegration()
@@ -126,6 +130,7 @@ class ServiceContainer:
             terminator=terminator,
             layout_manager=layout_manager,
             layout_spawner=layout_spawner,
+            focus_watcher=focus_watcher,
             github=github,
             notifier=notifier,
             scripts=scripts,
@@ -143,13 +148,31 @@ class ServiceContainer:
 
     async def disconnect_iterm(self) -> None:
         """Disconnect from iTerm2."""
+        # Stop focus watcher before disconnecting
+        await self.focus_watcher.stop()
         await self.iterm.disconnect()
+
+    async def start_focus_watcher(
+        self, on_tab_focused: Callable[[], None] | None = None
+    ) -> None:
+        """Start the focus watcher to monitor tab selection changes.
+
+        Args:
+            on_tab_focused: Callback to invoke when the TUI's tab becomes active.
+        """
+        if on_tab_focused:
+            self.focus_watcher.on_tab_focused = on_tab_focused
+        await self.focus_watcher.start()
+
+    async def stop_focus_watcher(self) -> None:
+        """Stop the focus watcher."""
+        await self.focus_watcher.stop()
 
     async def initialize_github(self) -> None:
         """Initialize the GitHub integration."""
         await self.github.initialize()
 
-    def load_layouts(self, layouts: list["WindowLayout"]) -> None:
+    def load_layouts(self, layouts: list[WindowLayout]) -> None:
         """Load window layouts into the layout manager.
 
         Args:
@@ -221,7 +244,7 @@ class ScreenFactory:
         return StageAdvanceModal(workflow_stage, command)
 
     def create_mode_screen(
-        self, mode: str, project: "Project"
+        self, mode: str, project: Project
     ) -> Screen | None:
         """Create a screen for a workflow mode.
 

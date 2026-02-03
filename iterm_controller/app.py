@@ -17,8 +17,9 @@ from iterm_controller.screens.new_project import NewProjectScreen
 from iterm_controller.screens.project_list import ProjectListScreen
 from iterm_controller.screens.project_screen import ProjectScreen
 from iterm_controller.screens.settings import SettingsScreen
-from iterm_controller.services import ScreenFactory, ServiceContainer, screen_factory
+from iterm_controller.services import ServiceContainer, screen_factory
 from iterm_controller.state import AppState
+from iterm_controller.state.events import TabFocused
 
 if TYPE_CHECKING:
     from iterm_controller.screens.modals.quit_confirm import QuitAction
@@ -107,6 +108,15 @@ class ItermControllerApp(App):
         # Initialize GitHub (non-blocking)
         await self.services.initialize_github()
 
+        # Start the focus watcher to detect when our tab becomes active
+        try:
+            await self.services.start_focus_watcher(
+                on_tab_focused=self._on_tab_focused
+            )
+        except Exception as e:
+            # Focus watcher is optional - don't fail startup if it fails
+            self.log.warning(f"Focus watcher failed to start: {e}")
+
         # Push the initial screen (Mission Control is the main dashboard)
         self.push_screen(MissionControlScreen())
 
@@ -171,3 +181,21 @@ class ItermControllerApp(App):
         # Push Mission Control if not already there
         if not isinstance(self.screen, MissionControlScreen):
             self.push_screen(MissionControlScreen())
+
+    def _on_tab_focused(self) -> None:
+        """Callback invoked when the TUI's iTerm2 tab becomes active.
+
+        This is called from the focus watcher running in a background task,
+        so we post a Textual message to trigger the refresh on the main thread.
+        """
+        self.post_message(TabFocused())
+
+    def on_tab_focused(self, event: TabFocused) -> None:
+        """Handle the TabFocused event by refreshing the current screen.
+
+        When the user switches back to the iTerm2 tab containing this TUI,
+        refresh the current screen to show the latest data.
+        """
+        # Refresh the current screen to show latest data
+        self.screen.refresh()
+        self.log.debug("Screen refreshed due to tab focus")

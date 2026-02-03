@@ -56,6 +56,8 @@ class StateEvent(Enum):
     SCRIPT_COMPLETED = "script_completed"
     # Orchestrator events
     ORCHESTRATOR_PROGRESS = "orchestrator_progress"
+    # Tab focus events
+    TAB_FOCUSED = "tab_focused"
 
 
 # =============================================================================
@@ -285,3 +287,14 @@ class OrchestratorProgress(StateMessage):
         self.project_id = project_id
         self.session_id = session_id
         self.progress = progress
+
+
+class TabFocused(StateMessage):
+    """Posted when the TUI's iTerm2 tab becomes active.
+
+    This event is triggered when the user switches to the terminal tab
+    containing the TUI application, enabling automatic refresh of the
+    current screen content.
+    """
+
+    pass

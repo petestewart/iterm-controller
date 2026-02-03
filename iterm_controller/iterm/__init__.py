@@ -10,6 +10,7 @@ focused modules:
 - layout_spawner: Window layout spawning (WindowLayoutSpawner, LayoutSpawnResult)
 - layout_manager: Window layout persistence (WindowLayoutManager)
 - adapter: Protocol adapters for terminal abstraction (ItermTerminalProvider)
+- focus_watcher: Tab focus monitoring for screen refresh (FocusWatcher)
 """
 
 from iterm_controller.iterm.adapter import (
@@ -23,6 +24,9 @@ from iterm_controller.iterm.adapter import (
 from iterm_controller.iterm.connection import (
     ItermController,
     with_reconnect,
+)
+from iterm_controller.iterm.focus_watcher import (
+    FocusWatcher,
 )
 from iterm_controller.iterm.layout_manager import WindowLayoutManager
 from iterm_controller.iterm.layout_spawner import (
@@ -61,6 +65,8 @@ __all__ = [
     "WindowLayoutSpawner",
     "WindowLayoutManager",
     "LayoutSpawnResult",
+    # Focus
+    "FocusWatcher",
     # Protocol Adapters
     "ItermTerminalProvider",
     "ItermConnectionAdapter",
