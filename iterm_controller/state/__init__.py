@@ -18,6 +18,9 @@ from iterm_controller.state.events import (
     PlanReloaded,
     ProjectClosed,
     ProjectOpened,
+    ReviewCompleted,
+    ReviewFailed,
+    ReviewStarted,
     SessionClosed,
     SessionSpawned,
     SessionStatusChanged,
@@ -31,6 +34,7 @@ from iterm_controller.state.events import (
     WorkflowStageChanged,
 )
 from iterm_controller.state.git_manager import GitStateManager
+from iterm_controller.state.review_manager import ReviewStateManager
 from iterm_controller.state.snapshot import StateSnapshot
 
 __all__ = [
@@ -38,6 +42,7 @@ __all__ = [
     "AppState",
     # State managers
     "GitStateManager",
+    "ReviewStateManager",
     # Snapshot for external observation
     "StateSnapshot",
     # Events
@@ -48,6 +53,9 @@ __all__ = [
     "PlanReloaded",
     "ProjectClosed",
     "ProjectOpened",
+    "ReviewCompleted",
+    "ReviewFailed",
+    "ReviewStarted",
     "SessionClosed",
     "SessionSpawned",
     "SessionStatusChanged",

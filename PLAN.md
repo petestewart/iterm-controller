@@ -947,7 +947,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/app.md
   - Dependencies: 27.2.1
 
-- [ ] **27.3.2 Create ReviewStateManager**
+- [x] **27.3.2 Create ReviewStateManager** `[complete]`
   - Scope: Implement ReviewStateManager with start_review, get_active_review methods; posts ReviewStarted, ReviewCompleted, ReviewFailed events
   - Spec: specs/app.md
   - Dependencies: 27.2.3

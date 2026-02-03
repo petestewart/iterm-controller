@@ -18,6 +18,8 @@ if TYPE_CHECKING:
         ManagedSession,
         Plan,
         Project,
+        ReviewResult,
+        TaskReview,
         TestPlan,
     )
 
@@ -43,6 +45,10 @@ class StateEvent(Enum):
     TEST_STEP_UPDATED = "test_step_updated"
     # Git events
     GIT_STATUS_CHANGED = "git_status_changed"
+    # Review events
+    REVIEW_STARTED = "review_started"
+    REVIEW_COMPLETED = "review_completed"
+    REVIEW_FAILED = "review_failed"
 
 
 # =============================================================================
@@ -192,3 +198,33 @@ class GitStatusChanged(StateMessage):
         super().__init__()
         self.project_id = project_id
         self.status = status
+
+
+class ReviewStarted(StateMessage):
+    """Posted when a review begins for a task."""
+
+    def __init__(self, task_id: str, project_id: str) -> None:
+        super().__init__()
+        self.task_id = task_id
+        self.project_id = project_id
+
+
+class ReviewCompleted(StateMessage):
+    """Posted when a review finishes successfully."""
+
+    def __init__(
+        self, task_id: str, result: ReviewResult, review: TaskReview
+    ) -> None:
+        super().__init__()
+        self.task_id = task_id
+        self.result = result
+        self.review = review
+
+
+class ReviewFailed(StateMessage):
+    """Posted when a review fails or needs human intervention."""
+
+    def __init__(self, task_id: str, review: TaskReview) -> None:
+        super().__init__()
+        self.task_id = task_id
+        self.review = review

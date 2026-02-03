@@ -19,6 +19,10 @@ from iterm_controller.state import (
     PlanReloaded,
     ProjectClosed,
     ProjectOpened,
+    ReviewCompleted,
+    ReviewFailed,
+    ReviewStarted,
+    ReviewStateManager,
     SessionClosed,
     SessionSpawned,
     SessionStatusChanged,
@@ -740,3 +744,315 @@ class TestStateManagers:
         assert snapshot.sessions["s1"] == session
         assert snapshot.plans["p1"] is plan
         assert snapshot.health_statuses["p1"]["api"] == HealthStatus.HEALTHY
+
+
+class TestReviewStateManager:
+    """Tests for the ReviewStateManager."""
+
+    def test_review_manager_initialization(self) -> None:
+        """Test that ReviewStateManager initializes correctly."""
+        manager = ReviewStateManager()
+
+        assert manager.active_reviews == {}
+        assert manager.review_service is None
+        assert manager._app is None
+
+    def test_review_manager_connect_app(self) -> None:
+        """Test connecting a Textual app to the manager."""
+        manager = ReviewStateManager()
+        mock_app = MagicMock()
+
+        manager.connect_app(mock_app)
+
+        assert manager._app is mock_app
+
+    def test_is_reviewing_false_when_empty(self) -> None:
+        """Test is_reviewing returns False when no reviews."""
+        manager = ReviewStateManager()
+
+        assert not manager.is_reviewing("task-1")
+
+    def test_is_reviewing_true_when_active(self) -> None:
+        """Test is_reviewing returns True when review in progress."""
+        from datetime import datetime
+
+        from iterm_controller.models import ReviewResult, TaskReview
+
+        manager = ReviewStateManager()
+        review = TaskReview(
+            id="review-1",
+            task_id="task-1",
+            attempt=1,
+            result=ReviewResult.PENDING,
+            issues=[],
+            summary="",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="",
+        )
+        manager.active_reviews["task-1"] = review
+
+        assert manager.is_reviewing("task-1")
+
+    def test_get_active_review_returns_none_when_not_reviewing(self) -> None:
+        """Test get_active_review returns None when no active review."""
+        manager = ReviewStateManager()
+
+        assert manager.get_active_review("task-1") is None
+
+    def test_get_active_review_returns_review_when_active(self) -> None:
+        """Test get_active_review returns the review when active."""
+        from datetime import datetime
+
+        from iterm_controller.models import ReviewResult, TaskReview
+
+        manager = ReviewStateManager()
+        review = TaskReview(
+            id="review-1",
+            task_id="task-1",
+            attempt=1,
+            result=ReviewResult.PENDING,
+            issues=[],
+            summary="",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="",
+        )
+        manager.active_reviews["task-1"] = review
+
+        result = manager.get_active_review("task-1")
+
+        assert result is review
+
+    def test_get_all_active_reviews(self) -> None:
+        """Test get_all_active_reviews returns all active reviews."""
+        from datetime import datetime
+
+        from iterm_controller.models import ReviewResult, TaskReview
+
+        manager = ReviewStateManager()
+
+        review1 = TaskReview(
+            id="review-1",
+            task_id="task-1",
+            attempt=1,
+            result=ReviewResult.PENDING,
+            issues=[],
+            summary="",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="",
+        )
+        review2 = TaskReview(
+            id="review-2",
+            task_id="task-2",
+            attempt=1,
+            result=ReviewResult.PENDING,
+            issues=[],
+            summary="",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="",
+        )
+
+        manager.active_reviews["task-1"] = review1
+        manager.active_reviews["task-2"] = review2
+
+        reviews = manager.get_all_active_reviews()
+
+        assert len(reviews) == 2
+        assert review1 in reviews
+        assert review2 in reviews
+
+    def test_get_review_count(self) -> None:
+        """Test get_review_count returns correct count."""
+        from datetime import datetime
+
+        from iterm_controller.models import ReviewResult, TaskReview
+
+        manager = ReviewStateManager()
+
+        assert manager.get_review_count() == 0
+
+        review = TaskReview(
+            id="review-1",
+            task_id="task-1",
+            attempt=1,
+            result=ReviewResult.PENDING,
+            issues=[],
+            summary="",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="",
+        )
+        manager.active_reviews["task-1"] = review
+
+        assert manager.get_review_count() == 1
+
+    def test_clear_removes_all_reviews(self) -> None:
+        """Test clear removes all active reviews."""
+        from datetime import datetime
+
+        from iterm_controller.models import ReviewResult, TaskReview
+
+        manager = ReviewStateManager()
+        review = TaskReview(
+            id="review-1",
+            task_id="task-1",
+            attempt=1,
+            result=ReviewResult.PENDING,
+            issues=[],
+            summary="",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="",
+        )
+        manager.active_reviews["task-1"] = review
+
+        manager.clear()
+
+        assert manager.active_reviews == {}
+        assert not manager.is_reviewing("task-1")
+
+
+@pytest.mark.asyncio
+class TestReviewStateManagerAsync:
+    """Async tests for ReviewStateManager."""
+
+    async def test_start_review_without_service_returns_none(self) -> None:
+        """Test start_review returns None when no ReviewService configured."""
+        manager = ReviewStateManager()
+        mock_app = MagicMock()
+        manager.connect_app(mock_app)
+
+        result = await manager.start_review("project-1", "task-1")
+
+        assert result is None
+
+    async def test_start_review_without_app_returns_none(self) -> None:
+        """Test start_review returns None when project not found."""
+        from unittest.mock import AsyncMock
+
+        mock_service = MagicMock()
+        manager = ReviewStateManager(review_service=mock_service)
+        # No app connected, so project lookup will fail
+
+        result = await manager.start_review("project-1", "task-1")
+
+        assert result is None
+
+
+class TestReviewStateManagerEvents:
+    """Tests for ReviewStateManager event posting."""
+
+    def test_post_message_calls_app(self) -> None:
+        """Test that _post_message calls app.post_message."""
+        manager = ReviewStateManager()
+        mock_app = MagicMock()
+        manager.connect_app(mock_app)
+
+        message = MagicMock()
+        manager._post_message(message)
+
+        mock_app.post_message.assert_called_once_with(message)
+
+    def test_post_message_no_error_without_app(self) -> None:
+        """Test that _post_message doesn't error without app."""
+        manager = ReviewStateManager()
+
+        # Should not raise
+        manager._post_message(MagicMock())
+
+
+class TestAppStateReviewOperations:
+    """Tests for review operations on AppState."""
+
+    def test_reviews_property_returns_manager(self) -> None:
+        """Test that reviews property returns the ReviewStateManager."""
+        state = AppState()
+
+        assert isinstance(state.reviews, ReviewStateManager)
+
+    def test_is_reviewing_delegates_to_manager(self) -> None:
+        """Test that is_reviewing delegates to ReviewStateManager."""
+        from datetime import datetime
+
+        from iterm_controller.models import ReviewResult, TaskReview
+
+        state = AppState()
+
+        # Add a review directly to the manager
+        review = TaskReview(
+            id="review-1",
+            task_id="task-1",
+            attempt=1,
+            result=ReviewResult.PENDING,
+            issues=[],
+            summary="",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="",
+        )
+        state._review_manager.active_reviews["task-1"] = review
+
+        assert state.is_reviewing("task-1")
+        assert not state.is_reviewing("task-2")
+
+    def test_get_active_review_delegates_to_manager(self) -> None:
+        """Test that get_active_review delegates to ReviewStateManager."""
+        from datetime import datetime
+
+        from iterm_controller.models import ReviewResult, TaskReview
+
+        state = AppState()
+
+        review = TaskReview(
+            id="review-1",
+            task_id="task-1",
+            attempt=1,
+            result=ReviewResult.PENDING,
+            issues=[],
+            summary="",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="",
+        )
+        state._review_manager.active_reviews["task-1"] = review
+
+        result = state.get_active_review("task-1")
+
+        assert result is review
+
+    def test_clear_reviews_delegates_to_manager(self) -> None:
+        """Test that clear_reviews delegates to ReviewStateManager."""
+        from datetime import datetime
+
+        from iterm_controller.models import ReviewResult, TaskReview
+
+        state = AppState()
+
+        review = TaskReview(
+            id="review-1",
+            task_id="task-1",
+            attempt=1,
+            result=ReviewResult.PENDING,
+            issues=[],
+            summary="",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="",
+        )
+        state._review_manager.active_reviews["task-1"] = review
+
+        state.clear_reviews()
+
+        assert not state.is_reviewing("task-1")
+
+    def test_connect_app_connects_review_manager(self) -> None:
+        """Test that connect_app connects the review manager."""
+        state = AppState()
+        mock_app = MagicMock()
+
+        state.connect_app(mock_app)
+
+        assert state._review_manager._app is mock_app

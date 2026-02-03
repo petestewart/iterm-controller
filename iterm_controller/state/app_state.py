@@ -23,6 +23,7 @@ from iterm_controller.state.git_manager import GitStateManager
 from iterm_controller.state.health_manager import HealthStateManager
 from iterm_controller.state.plan_manager import PlanStateManager
 from iterm_controller.state.project_manager import ProjectStateManager
+from iterm_controller.state.review_manager import ReviewStateManager
 from iterm_controller.state.session_manager import SessionStateManager
 from iterm_controller.state.snapshot import StateSnapshot
 
@@ -64,6 +65,9 @@ class AppState:
     )
     _git_manager: GitStateManager = field(
         default_factory=GitStateManager, repr=False
+    )
+    _review_manager: ReviewStateManager = field(
+        default_factory=ReviewStateManager, repr=False
     )
 
     # Textual app reference for posting messages
@@ -150,6 +154,7 @@ class AppState:
         self._plan_manager.connect_app(app)
         self._health_manager.connect_app(app)
         self._git_manager.connect_app(app)
+        self._review_manager.connect_app(app)
 
     def _post_message(self, message: Any) -> None:
         """Post a message to the connected Textual app.
@@ -536,6 +541,79 @@ class AppState:
             project_id: The project ID.
         """
         self._git_manager.clear(project_id)
+
+    # =========================================================================
+    # Review Operations (delegated to ReviewStateManager)
+    # =========================================================================
+
+    @property
+    def reviews(self) -> ReviewStateManager:
+        """Get the review state manager.
+
+        Returns:
+            The ReviewStateManager instance.
+        """
+        return self._review_manager
+
+    async def start_review(
+        self, project_id: str, task_id: str
+    ) -> "TaskReview | None":
+        """Start a review for a task.
+
+        Args:
+            project_id: The project ID.
+            task_id: The task ID to review.
+
+        Returns:
+            The TaskReview result, or None if the review couldn't be started.
+        """
+        from iterm_controller.models import TaskReview
+
+        return await self._review_manager.start_review(project_id, task_id)
+
+    def get_active_review(self, task_id: str) -> "TaskReview | None":
+        """Get the active review for a task.
+
+        Args:
+            task_id: The task ID.
+
+        Returns:
+            The active TaskReview if one exists, None otherwise.
+        """
+        return self._review_manager.get_active_review(task_id)
+
+    def is_reviewing(self, task_id: str) -> bool:
+        """Check if a task is currently being reviewed.
+
+        Args:
+            task_id: The task ID.
+
+        Returns:
+            True if a review is in progress.
+        """
+        return self._review_manager.is_reviewing(task_id)
+
+    def get_all_active_reviews(self) -> "list[TaskReview]":
+        """Get all currently active reviews.
+
+        Returns:
+            List of all active TaskReview objects.
+        """
+        from iterm_controller.models import TaskReview
+
+        return self._review_manager.get_all_active_reviews()
+
+    def clear_reviews(self) -> None:
+        """Clear all active reviews."""
+        self._review_manager.clear()
+
+    def clear_reviews_for_project(self, project_id: str) -> None:
+        """Clear active reviews for a specific project.
+
+        Args:
+            project_id: The project ID.
+        """
+        self._review_manager.clear_for_project(project_id)
 
     # =========================================================================
     # State Query (External Observation)
