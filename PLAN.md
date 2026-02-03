@@ -972,7 +972,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### 27.4 PLAN.md Parser Updates
 
-- [ ] **27.4.1 Add session field parsing**
+- [x] **27.4.1 Add session field parsing** `[complete]`
   - Scope: Add _extract_session method to parse Session field from task blocks
   - Spec: specs/plan-parser.md
 

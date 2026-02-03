@@ -190,6 +190,9 @@ class PlanParser:
             # Parse metadata
             metadata = self._parse_metadata(task_content)
 
+            # Extract session using dedicated method (supports both formats)
+            session_id = self._extract_session(task_content)
+
             task = Task(
                 id=f"{phase_id}.{i + 1}",
                 title=title,
@@ -198,11 +201,8 @@ class PlanParser:
                 scope=metadata.get("Scope", ""),
                 acceptance=metadata.get("Acceptance", ""),
                 depends=self._parse_depends(metadata.get("Depends", "")),
+                session_id=session_id,
             )
-
-            # Parse Session if present
-            if "Session" in metadata:
-                task.session_id = metadata["Session"]
 
             tasks.append(task)
 
@@ -216,6 +216,31 @@ class PlanParser:
             value = match.group(2).strip()
             metadata[key] = value
         return metadata
+
+    def _extract_session(self, content: str) -> str | None:
+        """Extract session assignment from task block.
+
+        Supports two formats:
+        - New format: `**Session:** session_id`
+        - Legacy format: `- Session: session_id`
+
+        Args:
+            content: The task content block to search.
+
+        Returns:
+            The session ID if found, None otherwise.
+        """
+        # Try new format first: **Session:** session_id
+        match = re.search(r"\*\*Session:\*\*\s*(\S+)", content)
+        if match:
+            return match.group(1)
+
+        # Fall back to legacy format: - Session: session_id
+        match = re.search(r"^\s*-\s+Session:\s*(\S+)", content, re.MULTILINE)
+        if match:
+            return match.group(1)
+
+        return None
 
     def _parse_status(self, status_str: str, checkbox: str) -> TaskStatus:
         """Convert status string to enum."""

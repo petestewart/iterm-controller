@@ -388,6 +388,88 @@ class TestMetadataParsing:
         assert task.depends == []
 
 
+class TestSessionExtraction:
+    """Test _extract_session method and session parsing."""
+
+    def test_extract_session_legacy_format(self):
+        """Test parsing legacy format: - Session: session_id"""
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task with legacy session** `[pending]`
+  - Session: my-legacy-session
+  - Scope: Do something
+"""
+        parser = PlanParser()
+        plan = parser.parse(plan_md)
+        task = plan.phases[0].tasks[0]
+        assert task.session_id == "my-legacy-session"
+
+    def test_extract_session_new_format(self):
+        """Test parsing new format: **Session:** session_id"""
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task with new session format** `[pending]`
+  - **Session:** iterm2-session-abc123
+  - Scope: Do something
+"""
+        parser = PlanParser()
+        plan = parser.parse(plan_md)
+        task = plan.phases[0].tasks[0]
+        assert task.session_id == "iterm2-session-abc123"
+
+    def test_extract_session_new_format_no_hyphen(self):
+        """Test parsing new format without leading hyphen"""
+        content = "- **Session:** session-xyz\n  - Scope: Test"
+        parser = PlanParser()
+        result = parser._extract_session(content)
+        assert result == "session-xyz"
+
+    def test_extract_session_none_when_missing(self):
+        """Test that None is returned when no session present"""
+        content = "- Scope: Do something\n- Acceptance: It works"
+        parser = PlanParser()
+        result = parser._extract_session(content)
+        assert result is None
+
+    def test_extract_session_with_task_id_format(self):
+        """Test parsing session with iTerm2-style ID"""
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task with iTerm session** `[in_progress]`
+  - **Session:** pty-12345-67890
+"""
+        parser = PlanParser()
+        plan = parser.parse(plan_md)
+        task = plan.phases[0].tasks[0]
+        assert task.session_id == "pty-12345-67890"
+
+    def test_extract_session_direct_method_legacy(self):
+        """Test _extract_session method directly with legacy format"""
+        parser = PlanParser()
+        content = """  - Spec: specs/test.md
+  - Session: claude
+  - Scope: Do the thing
+"""
+        result = parser._extract_session(content)
+        assert result == "claude"
+
+    def test_extract_session_direct_method_new_format(self):
+        """Test _extract_session method directly with new format"""
+        parser = PlanParser()
+        content = """  - Spec: specs/test.md
+  - **Session:** iterm2-abc-123
+  - Scope: Do the thing
+"""
+        result = parser._extract_session(content)
+        assert result == "iterm2-abc-123"
+
+
 class TestPlanProperties:
     """Test Plan computed properties work correctly after parsing."""
 
