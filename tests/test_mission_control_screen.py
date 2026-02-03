@@ -578,3 +578,195 @@ class TestMissionControlNumberShortcuts:
             # This verifies the indexing logic works - session-1 would be at index 2
             # (since sessions are sorted by attention state and last_activity)
             assert expected is not None
+
+
+@pytest.mark.asyncio
+class TestMissionControlHelpers:
+    """Tests for helper methods and additional actions."""
+
+    async def test_selected_session_property(self) -> None:
+        """Test that selected_session property returns correct session."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            await app.push_screen(MissionControlScreen())
+
+            # Add sessions
+            session = make_session()
+            app.state.sessions[session.id] = session
+            await app.screen.refresh_sessions()
+
+            screen = app.screen
+            assert isinstance(screen, MissionControlScreen)
+
+            # First session should be selected
+            selected = screen.selected_session
+            assert selected is not None
+            assert selected.id == session.id
+
+    async def test_action_focus_iterm_with_session(self) -> None:
+        """Test that focus_iterm action attempts to focus session."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            await app.push_screen(MissionControlScreen())
+
+            # Add a session
+            session = make_session()
+            app.state.sessions[session.id] = session
+            await app.screen.refresh_sessions()
+
+            screen = app.screen
+            assert isinstance(screen, MissionControlScreen)
+
+            # Call the action - should not error even without real iTerm
+            await screen.action_focus_iterm()
+
+    async def test_action_focus_iterm_no_session(self) -> None:
+        """Test that focus_iterm shows warning when no session."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            await app.push_screen(MissionControlScreen())
+
+            # No sessions
+            screen = app.screen
+            assert isinstance(screen, MissionControlScreen)
+
+            # Call the action - should show warning
+            await screen.action_focus_iterm()
+
+    async def test_action_show_help(self) -> None:
+        """Test that show_help action opens HelpModal."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            await app.push_screen(MissionControlScreen())
+
+            # Press ? to show help
+            await pilot.press("question_mark")
+
+            # Should have pushed HelpModal
+            from iterm_controller.screens.modals import HelpModal
+
+            assert isinstance(app.screen, HelpModal)
+
+    async def test_action_quit_calls_app_quit(self) -> None:
+        """Test that quit action requests app quit."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            await app.push_screen(MissionControlScreen())
+            screen = app.screen
+            assert isinstance(screen, MissionControlScreen)
+
+            # Call the action - should trigger app quit handling
+            screen.action_quit()
+
+    async def test_action_open_project_with_session(self) -> None:
+        """Test that open_project action sets active project.
+
+        Note: We test that the action correctly sets the active project ID
+        and attempts to push ProjectScreen. The actual screen push is tested
+        separately via existing ProjectScreen tests.
+        """
+        app = ItermControllerApp()
+        async with app.run_test():
+            await app.push_screen(MissionControlScreen())
+
+            # Add a project and session
+            project = make_project()
+            app.state.projects[project.id] = project
+
+            session = make_session(project_id=project.id)
+            app.state.sessions[session.id] = session
+            await app.screen.refresh_sessions()
+
+            screen = app.screen
+            assert isinstance(screen, MissionControlScreen)
+
+            # Verify selected session is for the project
+            assert screen.selected_session is not None
+            assert screen.selected_session.project_id == project.id
+
+            # Mock push_screen to verify it's called with the right arguments
+            push_screen_called = False
+            original_push_screen = app.push_screen
+
+            def mock_push_screen(screen_instance, *args, **kwargs):
+                nonlocal push_screen_called
+                from iterm_controller.screens.project_screen import ProjectScreen
+                if isinstance(screen_instance, ProjectScreen):
+                    push_screen_called = True
+                    assert screen_instance.project_id == project.id
+                    return  # Don't actually push to avoid composition issues
+                return original_push_screen(screen_instance, *args, **kwargs)
+
+            app.push_screen = mock_push_screen
+
+            # Call the action
+            await screen.action_open_project()
+
+            # Verify active project was set
+            assert app.state.active_project_id == project.id
+
+            # Verify push_screen was called with ProjectScreen
+            assert push_screen_called
+
+    async def test_action_kill_session_with_session(self) -> None:
+        """Test that kill_session action attempts to kill session."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            await app.push_screen(MissionControlScreen())
+
+            # Add a session
+            session = make_session()
+            app.state.sessions[session.id] = session
+            await app.screen.refresh_sessions()
+
+            screen = app.screen
+            assert isinstance(screen, MissionControlScreen)
+
+            # Call the action - will fail without real iTerm but should not error
+            await screen.action_kill_session()
+
+
+@pytest.mark.asyncio
+class TestMissionControlTemplateSelection:
+    """Tests for template selection callback."""
+
+    async def test_on_template_selected_none_cancels(self) -> None:
+        """Test that selecting None cancels the operation."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            await app.push_screen(MissionControlScreen())
+            screen = app.screen
+            assert isinstance(screen, MissionControlScreen)
+
+            # Call with None - should do nothing
+            await screen._on_template_selected(None)
+
+    async def test_on_template_selected_no_project(self) -> None:
+        """Test that selecting template with no project shows error."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            await app.push_screen(MissionControlScreen())
+            screen = app.screen
+            assert isinstance(screen, MissionControlScreen)
+
+            # No active project
+            template = make_session_template()
+            await screen._on_template_selected(template)
+
+    async def test_on_template_selected_with_project(self) -> None:
+        """Test that selecting template with project attempts spawn."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            await app.push_screen(MissionControlScreen())
+
+            # Add a project and set as active
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.active_project_id = project.id
+
+            screen = app.screen
+            assert isinstance(screen, MissionControlScreen)
+
+            # Call with template - will fail without real iTerm but should not error
+            template = make_session_template()
+            await screen._on_template_selected(template)

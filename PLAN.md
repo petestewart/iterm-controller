@@ -1167,9 +1167,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Dependencies: 27.3.3
   - Result: Added 25 integration tests covering buffer management (rolling buffer, ANSI preservation, multiline), batching behavior, multiple subscribers, concurrent sessions, error handling, and SessionMonitor integration
 
-- [ ] **27.10.5 Add UI tests for new screens**
+- [x] **27.10.5 Add UI tests for new screens** `[complete]`
   - Scope: Test MissionControl and ProjectScreen rendering and interactions
   - Dependencies: 27.6.5, 27.7.8
+  - Result: Added 27 new tests covering helper methods, event handlers, script actions, widget messages, and template selection; also fixed a bug in mission_control.py where set_active_project was called instead of setting active_project_id property; total 104 tests now covering both screens
 
 - [ ] **27.10.6 Update README and documentation**
   - Scope: Update README with new features, configuration examples

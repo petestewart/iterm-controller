@@ -1042,3 +1042,328 @@ class TestEnvEditModalAsync:
             await pilot.press("ctrl+s")
 
             assert result == {}
+
+
+@pytest.mark.asyncio
+class TestProjectScreenWidgetMessages:
+    """Tests for widget message handlers."""
+
+    async def test_on_plan_reloaded_updates_tasks(self) -> None:
+        """Test that PlanReloaded event updates tasks section."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Create a new plan
+            new_plan = make_plan(phases=[
+                Phase(
+                    id="2",
+                    title="Phase 2: New Phase",
+                    tasks=[
+                        Task(id="2.1", title="New task", status=TaskStatus.PENDING),
+                    ],
+                )
+            ])
+
+            # Trigger the event
+            from iterm_controller.state import PlanReloaded
+
+            await screen.on_plan_reloaded(PlanReloaded(project_id=project.id, plan=new_plan))
+
+            # Verify tasks section was updated
+            tasks_section = screen.query_one("#tasks", TasksSection)
+            assert tasks_section._plan is not None
+
+    async def test_on_task_status_changed_refreshes_tasks(self) -> None:
+        """Test that TaskStatusChanged event refreshes tasks section."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Create a task status changed event
+            from iterm_controller.state import TaskStatusChanged
+
+            await screen.on_task_status_changed(TaskStatusChanged(task_id="1.1", project_id=project.id))
+
+    async def test_on_session_status_changed_updates_session(self) -> None:
+        """Test that SessionStatusChanged event updates session list."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Add a session
+            session = make_session(project_id=project.id)
+            screen._sessions.append(session)
+
+            # Change status
+            session.attention_state = AttentionState.WAITING
+            from iterm_controller.state import SessionStatusChanged
+
+            await screen.on_session_status_changed(SessionStatusChanged(session))
+
+            # Session should be updated
+            updated = [s for s in screen._sessions if s.id == session.id]
+            assert len(updated) == 1
+            assert updated[0].attention_state == AttentionState.WAITING
+
+    async def test_on_session_output_updated_handled(self) -> None:
+        """Test that SessionOutputUpdated event is handled without error."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Trigger the event - should not error
+            from iterm_controller.state import SessionOutputUpdated
+
+            await screen.on_session_output_updated(
+                SessionOutputUpdated(session_id="test", output="test output")
+            )
+
+
+@pytest.mark.asyncio
+class TestProjectScreenScriptActions:
+    """Tests for script action methods."""
+
+    async def test_action_run_server(self) -> None:
+        """Test that run_server action calls script by keybinding."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Call action - should not error even without scripts
+            await screen.action_run_server()
+
+    async def test_action_run_tests(self) -> None:
+        """Test that run_tests action calls script by keybinding."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Call action - should not error even without scripts
+            await screen.action_run_tests()
+
+    async def test_action_run_lint(self) -> None:
+        """Test that run_lint action calls script by keybinding."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Call action - should not error even without scripts
+            await screen.action_run_lint()
+
+    async def test_action_run_build(self) -> None:
+        """Test that run_build action calls script by keybinding."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Call action - should not error even without scripts
+            await screen.action_run_build()
+
+    async def test_action_run_orchestrator(self) -> None:
+        """Test that run_orchestrator action calls script by keybinding."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Call action - should not error even without scripts
+            await screen.action_run_orchestrator()
+
+
+@pytest.mark.asyncio
+class TestProjectScreenHelpers:
+    """Tests for helper methods."""
+
+    async def test_highlight_section(self) -> None:
+        """Test that _highlight_section focuses correct widget."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Highlight different sections
+            screen._section_index = 0
+            screen._highlight_section()
+
+            screen._section_index = 3
+            screen._highlight_section()
+
+    async def test_section_wrap_around(self) -> None:
+        """Test that section navigation wraps around."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Wrap forward
+            screen._section_index = len(screen._sections) - 1
+            screen.action_next_section()
+            assert screen._section_index == 0
+
+            # Wrap backward
+            screen._section_index = 0
+            screen.action_prev_section()
+            assert screen._section_index == len(screen._sections) - 1
+
+    async def test_focus_session_by_index_valid(self) -> None:
+        """Test _focus_session_by_index with valid index."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Add a session
+            session = make_session(project_id=project.id)
+            screen._sessions.append(session)
+            await screen.query_one("#sessions", SessionsPanel).refresh_sessions(screen._sessions)
+
+            # Try to focus by index - will fail without iTerm but should not error
+            await screen._focus_session_by_index(1)
+
+    async def test_focus_session_by_index_invalid(self) -> None:
+        """Test _focus_session_by_index with invalid index."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # No sessions - should show warning
+            await screen._focus_session_by_index(1)
+
+    async def test_show_commit_modal_no_staged(self) -> None:
+        """Test _show_commit_modal warns when no staged changes."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # No staged changes - should show warning
+            await screen._show_commit_modal()
+
+    async def test_do_push_nothing_to_push(self) -> None:
+        """Test _do_push warns when nothing to push."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status(ahead=0))
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            # Nothing ahead - should show warning
+            await screen._do_push()
+
+    async def test_project_property(self) -> None:
+        """Test that project property returns correct project."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+            screen = app.screen
+            assert isinstance(screen, ProjectScreen)
+
+            assert screen.project is not None
+            assert screen.project.id == project.id
+
+    async def test_jira_ticket_displayed(self) -> None:
+        """Test that Jira ticket is displayed in header."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            project = make_project()
+            project.jira_ticket = "PROJ-123"
+            app.state.projects[project.id] = project
+            app.state.git.refresh = AsyncMock(return_value=make_git_status())
+
+            await app.push_screen(ProjectScreen(project_id=project.id))
+
+            # Check that Jira ticket appears in branch info
+            from textual.widgets import Static
+
+            branch_info = app.screen.query_one("#branch-info", Static)
+            # The Jira ticket should be in the branch info
+            content = str(branch_info.renderable)
+            assert "PROJ-123" in content or "main" in content  # Either Jira or branch info

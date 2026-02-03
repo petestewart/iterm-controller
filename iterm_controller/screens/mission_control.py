@@ -327,7 +327,7 @@ class MissionControlScreen(Screen):
             return
 
         # Set as active project and open project screen
-        app.state.set_active_project(project.id)
+        app.state.active_project_id = project.id
 
         # Use ProjectScreen directly since it requires a project_id argument
         from iterm_controller.screens.project_screen import ProjectScreen
