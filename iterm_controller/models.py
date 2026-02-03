@@ -576,6 +576,8 @@ class NotificationSettings:
         on_task_complete: Notify when a task is completed.
         on_phase_complete: Notify when a phase is completed.
         on_orchestrator_done: Notify when an orchestrator finishes all tasks.
+        quiet_hours_start: Start of quiet hours (e.g., "22:00").
+        quiet_hours_end: End of quiet hours (e.g., "08:00").
     """
 
     enabled: bool = True
@@ -587,6 +589,27 @@ class NotificationSettings:
     on_task_complete: bool = False
     on_phase_complete: bool = True
     on_orchestrator_done: bool = True
+    quiet_hours_start: str | None = None  # e.g., "22:00"
+    quiet_hours_end: str | None = None  # e.g., "08:00"
+
+    def is_quiet_time(self) -> bool:
+        """Check if currently in quiet hours.
+
+        Returns:
+            True if currently in quiet hours.
+        """
+        if not self.quiet_hours_start or not self.quiet_hours_end:
+            return False
+
+        now = datetime.now().time()
+        start = datetime.strptime(self.quiet_hours_start, "%H:%M").time()
+        end = datetime.strptime(self.quiet_hours_end, "%H:%M").time()
+
+        if start <= end:
+            return start <= now <= end
+        else:
+            # Spans midnight
+            return now >= start or now <= end
 
 
 @dataclass

@@ -14,7 +14,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from iterm_controller.models import AttentionState, ManagedSession, Project
+    from iterm_controller.models import AttentionState, ManagedSession, NotificationSettings, Project
     from iterm_controller.state import AppState
 
 logger = logging.getLogger(__name__)
@@ -168,6 +168,67 @@ class Notifier:
         except Exception:
             return False
 
+    async def notify_with_sound(
+        self,
+        title: str,
+        message: str,
+        sound: str = "default",
+        subtitle: str | None = None,
+        group: str = "iterm-controller",
+    ) -> bool:
+        """Send a notification with sound.
+
+        This is a convenience method that explicitly includes sound.
+        Uses terminal-notifier's -sound flag.
+
+        Args:
+            title: The notification title.
+            message: The notification body text.
+            sound: macOS system sound name (e.g., "default", "Basso", "Glass").
+            subtitle: Optional subtitle.
+            group: Notification group for collapsing.
+
+        Returns:
+            True if notification was sent successfully.
+        """
+        return await self.notify(
+            title=title,
+            message=message,
+            subtitle=subtitle,
+            sound=sound,
+            group=group,
+        )
+
+    async def play_sound(self, sound: str = "default") -> bool:
+        """Play a macOS system sound without notification.
+
+        Uses afplay to play the sound file directly.
+
+        Args:
+            sound: macOS system sound name (e.g., "default", "Basso", "Glass", "Ping").
+
+        Returns:
+            True if sound was played successfully.
+        """
+        # Map "default" to the actual default sound
+        sound_name = "Ping" if sound == "default" else sound
+
+        # macOS system sounds are in /System/Library/Sounds/
+        sound_path = f"/System/Library/Sounds/{sound_name}.aiff"
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "afplay",
+                sound_path,
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+            )
+            await proc.wait()
+            return proc.returncode == 0
+        except Exception as e:
+            logger.debug(f"Failed to play sound {sound_name}: {e}")
+            return False
+
 
 # =============================================================================
 # Notification Latency Tracker
@@ -271,42 +332,14 @@ class NotificationLatencyTracker:
 
 
 # =============================================================================
-# Notification Settings
-# =============================================================================
-
-
-@dataclass
-class NotificationSettings:
-    """Notification-related settings."""
-
-    enabled: bool = True
-    sound: str = "default"
-    quiet_hours_start: str | None = None  # e.g., "22:00"
-    quiet_hours_end: str | None = None  # e.g., "08:00"
-
-    def is_quiet_time(self) -> bool:
-        """Check if currently in quiet hours.
-
-        Returns:
-            True if currently in quiet hours.
-        """
-        if not self.quiet_hours_start or not self.quiet_hours_end:
-            return False
-
-        now = datetime.now().time()
-        start = datetime.strptime(self.quiet_hours_start, "%H:%M").time()
-        end = datetime.strptime(self.quiet_hours_end, "%H:%M").time()
-
-        if start <= end:
-            return start <= now <= end
-        else:
-            # Spans midnight
-            return now >= start or now <= end
-
-
-# =============================================================================
 # Notification Manager
 # =============================================================================
+
+
+def _get_notification_settings():
+    """Get NotificationSettings class, imported at runtime to avoid circular imports."""
+    from iterm_controller.models import NotificationSettings
+    return NotificationSettings
 
 
 class NotificationManager:
@@ -331,7 +364,11 @@ class NotificationManager:
         """
         self.notifier = notifier
         self.state = state
-        self.settings = settings or NotificationSettings()
+        if settings is None:
+            NotificationSettings = _get_notification_settings()
+            self.settings = NotificationSettings()
+        else:
+            self.settings = settings
         self.latency_tracker = NotificationLatencyTracker()
         self._pending_notifications: dict[str, asyncio.Task] = {}
 
@@ -477,3 +514,17 @@ class SessionMonitorWithNotifications:
             session_id: The session ID.
         """
         self.notification_manager.cleanup_session(session_id)
+
+
+# =============================================================================
+# Re-exports for backward compatibility
+# =============================================================================
+
+# NotificationSettings is defined in models.py and can be imported from there.
+# This module provides the getter function for internal use.
+__all__ = [
+    "Notifier",
+    "NotificationLatencyTracker",
+    "NotificationManager",
+    "SessionMonitorWithNotifications",
+]

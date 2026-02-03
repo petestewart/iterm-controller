@@ -932,7 +932,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
     - Updates task status based on result
   - Dependencies: 27.1.4, 27.1.5, 27.2.1
 
-- [ ] **27.2.4 Update Notifier with sound support**
+- [x] **27.2.4 Update Notifier with sound support** `[complete]`
   - Scope: Add notify_with_sound and play_sound methods to Notifier
   - Spec: specs/notifications.md
   - Acceptance:

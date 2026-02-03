@@ -7,11 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from iterm_controller.models import AttentionState, ManagedSession, Project
+from iterm_controller.models import AttentionState, ManagedSession, NotificationSettings, Project
 from iterm_controller.notifications import (
     NotificationLatencyTracker,
     NotificationManager,
-    NotificationSettings,
     Notifier,
     SessionMonitorWithNotifications,
 )
@@ -215,6 +214,112 @@ class TestNotifier:
             assert "-remove" in args
             assert f"session-{mock_session.id}" in args
 
+    @pytest.mark.asyncio
+    async def test_notify_with_sound(self):
+        """notify_with_sound sends notification with explicit sound."""
+        notifier = Notifier(available=True)
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.wait = AsyncMock()
+            mock_proc.returncode = 0
+            mock_exec.return_value = mock_proc
+
+            result = await notifier.notify_with_sound(
+                "Title",
+                "Message",
+                sound="Glass",
+                subtitle="Subtitle"
+            )
+
+            assert result is True
+            args = mock_exec.call_args[0]
+            assert "-sound" in args
+            assert "Glass" in args
+            assert "-subtitle" in args
+            assert "Subtitle" in args
+
+    @pytest.mark.asyncio
+    async def test_notify_with_sound_default(self):
+        """notify_with_sound uses default sound when not specified."""
+        notifier = Notifier(available=True)
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.wait = AsyncMock()
+            mock_proc.returncode = 0
+            mock_exec.return_value = mock_proc
+
+            result = await notifier.notify_with_sound("Title", "Message")
+
+            assert result is True
+            args = mock_exec.call_args[0]
+            assert "-sound" in args
+            assert "default" in args
+
+    @pytest.mark.asyncio
+    async def test_play_sound_success(self):
+        """play_sound plays macOS system sound using afplay."""
+        notifier = Notifier()  # available doesn't affect play_sound
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.wait = AsyncMock()
+            mock_proc.returncode = 0
+            mock_exec.return_value = mock_proc
+
+            result = await notifier.play_sound("Glass")
+
+            assert result is True
+            mock_exec.assert_called_once()
+            args = mock_exec.call_args[0]
+            assert "afplay" in args
+            assert "/System/Library/Sounds/Glass.aiff" in args
+
+    @pytest.mark.asyncio
+    async def test_play_sound_default_uses_ping(self):
+        """play_sound maps 'default' to 'Ping' sound."""
+        notifier = Notifier()
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.wait = AsyncMock()
+            mock_proc.returncode = 0
+            mock_exec.return_value = mock_proc
+
+            result = await notifier.play_sound("default")
+
+            assert result is True
+            args = mock_exec.call_args[0]
+            assert "/System/Library/Sounds/Ping.aiff" in args
+
+    @pytest.mark.asyncio
+    async def test_play_sound_failure(self):
+        """play_sound returns False on failure."""
+        notifier = Notifier()
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_proc = AsyncMock()
+            mock_proc.wait = AsyncMock()
+            mock_proc.returncode = 1  # Failure
+            mock_exec.return_value = mock_proc
+
+            result = await notifier.play_sound("NonExistentSound")
+
+            assert result is False
+
+    @pytest.mark.asyncio
+    async def test_play_sound_exception(self):
+        """play_sound handles exceptions gracefully."""
+        notifier = Notifier()
+
+        with patch("asyncio.create_subprocess_exec") as mock_exec:
+            mock_exec.side_effect = FileNotFoundError("afplay not found")
+
+            result = await notifier.play_sound("Glass")
+
+            assert result is False
+
 
 # =============================================================================
 # NotificationLatencyTracker Tests
@@ -354,7 +459,14 @@ class TestNotificationSettings:
         """Settings initializes with correct defaults."""
         settings = NotificationSettings()
         assert settings.enabled is True
-        assert settings.sound == "default"
+        assert settings.sound_enabled is True
+        assert settings.sound_name == "default"
+        assert settings.on_session_waiting is True
+        assert settings.on_session_idle is False
+        assert settings.on_review_failed is True
+        assert settings.on_task_complete is False
+        assert settings.on_phase_complete is True
+        assert settings.on_orchestrator_done is True
         assert settings.quiet_hours_start is None
         assert settings.quiet_hours_end is None
 
@@ -378,7 +490,7 @@ class TestNotificationSettings:
             quiet_hours_end="23:00",
         )
 
-        with patch("iterm_controller.notifications.datetime") as mock_dt:
+        with patch("iterm_controller.models.datetime") as mock_dt:
             # Mock time to be 22:30
             mock_now = MagicMock()
             mock_now.time.return_value = datetime.strptime("22:30", "%H:%M").time()
@@ -398,7 +510,7 @@ class TestNotificationSettings:
             quiet_hours_end="08:00",
         )
 
-        with patch("iterm_controller.notifications.datetime") as mock_dt:
+        with patch("iterm_controller.models.datetime") as mock_dt:
             mock_now = MagicMock()
             mock_dt.now.return_value = mock_now
             mock_dt.strptime = datetime.strptime
