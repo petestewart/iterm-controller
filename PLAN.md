@@ -861,7 +861,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### 27.1 Data Models & Foundation
 
-- [ ] **27.1.1 Update TaskStatus enum**
+- [x] **27.1.1 Update TaskStatus enum** `[complete]`
   - Scope: Add AWAITING_REVIEW status to TaskStatus enum
   - Spec: specs/models.md
 

@@ -222,6 +222,7 @@ class PlanParser:
         status_map = {
             "pending": TaskStatus.PENDING,
             "in_progress": TaskStatus.IN_PROGRESS,
+            "awaiting_review": TaskStatus.AWAITING_REVIEW,
             "complete": TaskStatus.COMPLETE,
             "skipped": TaskStatus.SKIPPED,
             "blocked": TaskStatus.BLOCKED,

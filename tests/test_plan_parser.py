@@ -248,6 +248,7 @@ class TestParseStatus:
 
 - [ ] **Pending** `[pending]`
 - [ ] **In Progress** `[in_progress]`
+- [ ] **Awaiting Review** `[awaiting_review]`
 - [x] **Complete** `[complete]`
 - [ ] **Skipped** `[skipped]`
 - [ ] **Blocked** `[blocked]`
@@ -257,9 +258,10 @@ class TestParseStatus:
         tasks = plan.phases[0].tasks
         assert tasks[0].status == TaskStatus.PENDING
         assert tasks[1].status == TaskStatus.IN_PROGRESS
-        assert tasks[2].status == TaskStatus.COMPLETE
-        assert tasks[3].status == TaskStatus.SKIPPED
-        assert tasks[4].status == TaskStatus.BLOCKED
+        assert tasks[2].status == TaskStatus.AWAITING_REVIEW
+        assert tasks[3].status == TaskStatus.COMPLETE
+        assert tasks[4].status == TaskStatus.SKIPPED
+        assert tasks[5].status == TaskStatus.BLOCKED
 
     def test_parse_unknown_status_defaults_to_pending(self):
         plan_md = """# Plan
@@ -561,6 +563,18 @@ class TestPlanUpdaterTaskStatus:
         result = updater.update_task_status(plan_md, "1.1", TaskStatus.BLOCKED)
 
         assert "- [ ] **Task A** `[blocked]`" in result
+
+    def test_update_to_awaiting_review(self):
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A** `[pending]`
+"""
+        updater = PlanUpdater()
+        result = updater.update_task_status(plan_md, "1.1", TaskStatus.AWAITING_REVIEW)
+
+        assert "- [ ] **Task A** `[awaiting_review]`" in result
 
 
 class TestPlanUpdaterAddTask:

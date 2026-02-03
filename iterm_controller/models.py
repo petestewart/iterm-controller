@@ -72,6 +72,7 @@ class TaskStatus(Enum):
 
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
+    AWAITING_REVIEW = "awaiting_review"
     COMPLETE = "complete"
     SKIPPED = "skipped"
     BLOCKED = "blocked"

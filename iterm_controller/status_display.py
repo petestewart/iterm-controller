@@ -24,6 +24,7 @@ from iterm_controller.models import AttentionState, TaskStatus, TestStatus
 TASK_STATUS_ICONS: dict[TaskStatus, str] = {
     TaskStatus.PENDING: "○",
     TaskStatus.IN_PROGRESS: "●",
+    TaskStatus.AWAITING_REVIEW: "◎",
     TaskStatus.COMPLETE: "✓",
     TaskStatus.SKIPPED: "⊖",
     TaskStatus.BLOCKED: "⊘",
@@ -32,6 +33,7 @@ TASK_STATUS_ICONS: dict[TaskStatus, str] = {
 TASK_STATUS_COLORS: dict[TaskStatus, str] = {
     TaskStatus.PENDING: "white",
     TaskStatus.IN_PROGRESS: "yellow",
+    TaskStatus.AWAITING_REVIEW: "cyan",
     TaskStatus.COMPLETE: "green",
     TaskStatus.SKIPPED: "dim",
     TaskStatus.BLOCKED: "dim",

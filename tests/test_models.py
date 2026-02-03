@@ -53,6 +53,7 @@ class TestEnums:
     def test_task_status_values(self):
         assert TaskStatus.PENDING.value == "pending"
         assert TaskStatus.IN_PROGRESS.value == "in_progress"
+        assert TaskStatus.AWAITING_REVIEW.value == "awaiting_review"
         assert TaskStatus.COMPLETE.value == "complete"
         assert TaskStatus.SKIPPED.value == "skipped"
         assert TaskStatus.BLOCKED.value == "blocked"
@@ -305,6 +306,7 @@ class TestTaskModels:
         summary = plan.completion_summary
         assert summary["complete"] == 1
         assert summary["in_progress"] == 1
+        assert summary["awaiting_review"] == 0
         assert summary["pending"] == 1
         assert summary["skipped"] == 0
         assert summary["blocked"] == 0
