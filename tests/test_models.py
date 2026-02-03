@@ -315,6 +315,9 @@ class TestProjectModel:
         assert project.template_id is None
         assert project.jira_ticket is None
         assert project.last_mode is None
+        assert project.scripts is None
+        assert project.review_config is None
+        assert project.git_config is None
         assert project.is_open is False
         assert project.sessions == []
 
@@ -387,6 +390,168 @@ class TestProjectModel:
         restored = model_from_dict(Project, data)
         assert restored.id == project.id
         assert restored.name == project.name
+
+    def test_project_with_scripts(self):
+        """Test that Project supports scripts field."""
+        scripts = [
+            ProjectScript(
+                id="test-script",
+                name="Run Tests",
+                command="pytest",
+                keybinding="ctrl+t",
+            ),
+            ProjectScript(
+                id="build-script",
+                name="Build",
+                command="make build",
+            ),
+        ]
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+            scripts=scripts,
+        )
+        assert project.scripts is not None
+        assert len(project.scripts) == 2
+        assert project.scripts[0].name == "Run Tests"
+        assert project.scripts[1].command == "make build"
+
+    def test_project_with_scripts_none(self):
+        """Test that Project scripts defaults to None."""
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+        )
+        assert project.scripts is None
+
+    def test_project_with_review_config(self):
+        """Test that Project supports review_config field."""
+        review_config = ReviewConfig(
+            enabled=True,
+            command="/my-review-command",
+            max_revisions=5,
+        )
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+            review_config=review_config,
+        )
+        assert project.review_config is not None
+        assert project.review_config.enabled is True
+        assert project.review_config.command == "/my-review-command"
+        assert project.review_config.max_revisions == 5
+
+    def test_project_with_review_config_none(self):
+        """Test that Project review_config defaults to None."""
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+        )
+        assert project.review_config is None
+
+    def test_project_with_git_config(self):
+        """Test that Project supports git_config field."""
+        git_config = GitConfig(
+            auto_stage=True,
+            default_branch="develop",
+            remote="upstream",
+        )
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+            git_config=git_config,
+        )
+        assert project.git_config is not None
+        assert project.git_config.auto_stage is True
+        assert project.git_config.default_branch == "develop"
+        assert project.git_config.remote == "upstream"
+
+    def test_project_with_git_config_none(self):
+        """Test that Project git_config defaults to None."""
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+        )
+        assert project.git_config is None
+
+    def test_project_full_config_serialization(self):
+        """Test serialization of Project with all new config fields."""
+        scripts = [
+            ProjectScript(
+                id="test-script",
+                name="Run Tests",
+                command="pytest",
+            ),
+        ]
+        review_config = ReviewConfig(
+            enabled=True,
+            command="/review-task",
+            max_revisions=3,
+        )
+        git_config = GitConfig(
+            auto_stage=False,
+            default_branch="main",
+        )
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+            scripts=scripts,
+            review_config=review_config,
+            git_config=git_config,
+        )
+        data = model_to_dict(project)
+
+        # Verify scripts serialization
+        assert "scripts" in data
+        assert len(data["scripts"]) == 1
+        assert data["scripts"][0]["name"] == "Run Tests"
+
+        # Verify review_config serialization
+        assert "review_config" in data
+        assert data["review_config"]["enabled"] is True
+        assert data["review_config"]["command"] == "/review-task"
+
+        # Verify git_config serialization
+        assert "git_config" in data
+        assert data["git_config"]["auto_stage"] is False
+        assert data["git_config"]["default_branch"] == "main"
+
+        # Verify round-trip
+        restored = model_from_dict(Project, data)
+        assert restored.scripts is not None
+        assert len(restored.scripts) == 1
+        assert restored.scripts[0].name == "Run Tests"
+        assert restored.review_config is not None
+        assert restored.review_config.enabled is True
+        assert restored.git_config is not None
+        assert restored.git_config.default_branch == "main"
+
+    def test_project_none_config_serialization(self):
+        """Test serialization of Project with None config fields."""
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/path/to/project",
+            scripts=None,
+            review_config=None,
+            git_config=None,
+        )
+        data = model_to_dict(project)
+        assert data["scripts"] is None
+        assert data["review_config"] is None
+        assert data["git_config"] is None
+
+        restored = model_from_dict(Project, data)
+        assert restored.scripts is None
+        assert restored.review_config is None
+        assert restored.git_config is None
 
 
 class TestSessionModels:

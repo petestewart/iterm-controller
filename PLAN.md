@@ -892,10 +892,11 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/models.md
   - Dependencies: 27.1.2
 
-- [ ] **27.1.8 Update Project model**
+- [x] **27.1.8 Update Project model** `[complete]`
   - Scope: Add scripts, review_config, git_config fields to Project; remove last_mode
   - Spec: specs/models.md
   - Dependencies: 27.1.4, 27.1.6, 27.1.7
+  - Note: last_mode kept for now since mode screens haven't been removed yet (27.9.3)
 
 - [ ] **27.1.9 Add NotificationSettings model**
   - Scope: Create NotificationSettings with sound support and event toggles

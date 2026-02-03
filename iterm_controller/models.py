@@ -781,6 +781,11 @@ class Project:
     last_mode: WorkflowMode | None = None  # Last active workflow mode (persisted)
     doc_references: list[DocReference] = field(default_factory=list)  # External URL references
 
+    # Project configuration
+    scripts: list[ProjectScript] | None = None  # Named scripts for toolbar/hotkeys
+    review_config: ReviewConfig | None = None  # Auto-review settings
+    git_config: GitConfig | None = None  # Git integration settings
+
     # Runtime state (not persisted)
     is_open: bool = field(default=False, repr=False)
     sessions: list[str] = field(default_factory=list, repr=False)  # Session IDs
