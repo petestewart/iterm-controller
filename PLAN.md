@@ -1025,9 +1025,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/mission-control.md
   - Dependencies: 27.3.3
 
-- [ ] **27.6.2 Create OutputLog widget**
+- [x] **27.6.2 Create OutputLog widget** `[complete]`
   - Scope: Create OutputLog widget with collapsed/expanded modes, ANSI support, auto-scroll
   - Spec: specs/mission-control.md
+  - Note: Already implemented as part of 27.6.1 (SessionCard widget) in widgets/session_card.py:257-369 with full test coverage
 
 - [ ] **27.6.3 Create OrchestratorProgress widget**
   - Scope: Create progress bar widget for orchestrator sessions showing completed/total tasks
