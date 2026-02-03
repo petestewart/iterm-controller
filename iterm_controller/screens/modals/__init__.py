@@ -5,6 +5,7 @@ from .add_document import AddDocumentModal
 from .add_reference import AddReferenceModal
 from .artifact_preview import ArtifactPreviewModal, ArtifactPreviewResult
 from .auto_mode_config import AutoModeConfigModal
+from .commit_modal import CommitModal
 from .create_artifact import CreateArtifactModal, CreateArtifactResult
 from .delete_confirm import DeleteConfirmModal
 from .dependency_chain import DependencyChainModal
@@ -25,6 +26,7 @@ __all__ = [
     "AddDocumentModal",
     "AddReferenceModal",
     "BLANK_SHELL_SENTINEL",
+    "CommitModal",
     "ContentType",
     "ArtifactPreviewModal",
     "ArtifactPreviewResult",

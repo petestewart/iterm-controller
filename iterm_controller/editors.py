@@ -52,3 +52,23 @@ def get_editor_command(ide: str) -> str | None:
         None
     """
     return EDITOR_COMMANDS.get(ide.lower())
+
+
+def get_editor() -> str:
+    """Get the configured default editor.
+
+    Reads from the global config settings to determine which editor to use.
+    Falls back to "code" (VS Code) if not configured.
+
+    Returns:
+        The editor name (e.g., "code", "vim").
+    """
+    try:
+        from iterm_controller.config import load_global_config
+
+        config = load_global_config()
+        if config and config.settings:
+            return config.settings.default_ide
+    except Exception:
+        pass
+    return "code"  # Default to VS Code

@@ -15,6 +15,7 @@ from iterm_controller.screens.modes import (
 from iterm_controller.screens.new_project import NewProjectScreen
 from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 from iterm_controller.screens.project_list import ProjectListScreen
+from iterm_controller.screens.project_screen import ProjectScreen
 from iterm_controller.screens.settings import SettingsScreen
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "PlanModeScreen",
     "ProjectDashboardScreen",
     "ProjectListScreen",
+    "ProjectScreen",
     "SettingsScreen",
     "TestModeScreen",
     "WorkModeScreen",

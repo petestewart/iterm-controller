@@ -1091,7 +1091,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Create bottom panel showing project's active sessions with MiniSessionCard
   - Spec: specs/ui.md
 
-- [ ] **27.7.8 Create ProjectScreen**
+- [x] **27.7.8 Create ProjectScreen**
   - Scope: Create unified project screen with all sections, dynamic keybindings for scripts
   - Spec: specs/ui.md
   - Acceptance:
