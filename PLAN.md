@@ -1064,7 +1064,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Create collapsible section showing planning artifacts (PROBLEM, PRD, specs, PLAN)
   - Spec: specs/ui.md
 
-- [ ] **27.7.2 Create TasksSection widget**
+- [x] **27.7.2 Create TasksSection widget** `[complete]`
   - Scope: Create collapsible section with PhaseGroup and TaskRow widgets; show review status
   - Spec: specs/ui.md
   - Dependencies: 27.1.5
