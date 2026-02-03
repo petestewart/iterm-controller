@@ -11,6 +11,7 @@ from textual.app import App
 from textual.binding import Binding
 
 from iterm_controller.api import AppAPI
+from iterm_controller.screens.mission_control import MissionControlScreen
 from iterm_controller.screens.modes import (
     DocsModeScreen,
     PlanModeScreen,
@@ -113,10 +114,8 @@ class ItermControllerApp(App):
         # Initialize GitHub (non-blocking)
         await self.services.initialize_github()
 
-        # Push the initial screen
-        from iterm_controller.screens.control_room import ControlRoomScreen
-
-        self.push_screen(ControlRoomScreen())
+        # Push the initial screen (Mission Control is the main dashboard)
+        self.push_screen(MissionControlScreen())
 
     def action_request_quit(self) -> None:
         """Handle quit with confirmation if sessions active."""
@@ -172,12 +171,10 @@ class ItermControllerApp(App):
         self.push_screen(HelpModal())
 
     def action_go_home(self) -> None:
-        """Navigate to the home screen (Control Room)."""
-        from iterm_controller.screens.control_room import ControlRoomScreen
-
-        # Pop all screens except the base and push Control Room
+        """Navigate to the home screen (Mission Control)."""
+        # Pop all screens except the base and push Mission Control
         while len(self.screen_stack) > 1:
             self.pop_screen()
-        # Push Control Room if not already there
-        if not isinstance(self.screen, ControlRoomScreen):
-            self.push_screen(ControlRoomScreen())
+        # Push Mission Control if not already there
+        if not isinstance(self.screen, MissionControlScreen):
+            self.push_screen(MissionControlScreen())

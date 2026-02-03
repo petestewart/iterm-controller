@@ -402,7 +402,7 @@ class MissionControlScreen(Screen):
 
     def action_quit(self) -> None:
         """Quit the application."""
-        self.app.action_quit()
+        self.app.action_request_quit()
 
     # =========================================================================
     # State Event Handlers

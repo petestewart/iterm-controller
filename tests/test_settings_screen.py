@@ -8,7 +8,7 @@ import pytest
 
 from iterm_controller.app import ItermControllerApp
 from iterm_controller.models import AppConfig, AppSettings, AutoModeConfig
-from iterm_controller.screens.control_room import ControlRoomScreen
+from iterm_controller.screens.mission_control import MissionControlScreen
 from iterm_controller.screens.settings import SettingsScreen
 
 from textual.widgets import Button, Checkbox, Input, Select
@@ -141,8 +141,8 @@ class TestSettingsScreenAsync:
             # Press escape
             await pilot.press("escape")
 
-            # Should be back on Control Room
-            assert isinstance(app.screen, ControlRoomScreen)
+            # Should be back on Mission Control
+            assert isinstance(app.screen, MissionControlScreen)
 
     async def test_save_updates_config(self) -> None:
         """Test that save updates the config in memory."""

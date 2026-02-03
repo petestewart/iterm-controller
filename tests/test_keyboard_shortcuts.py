@@ -5,6 +5,7 @@ import pytest
 from iterm_controller.app import ItermControllerApp
 from iterm_controller.models import AttentionState, ManagedSession
 from iterm_controller.screens.control_room import ControlRoomScreen
+from iterm_controller.screens.mission_control import MissionControlScreen
 from iterm_controller.screens.modals import HelpModal
 from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 from iterm_controller.screens.project_list import ProjectListScreen
@@ -207,7 +208,7 @@ class TestShortcutNavigation:
             assert isinstance(app.screen, ProjectListScreen)
 
             await pilot.press("escape")
-            assert isinstance(app.screen, ControlRoomScreen)
+            assert isinstance(app.screen, MissionControlScreen)
 
     async def test_escape_returns_from_settings(self) -> None:
         """Test that escape returns from settings."""
@@ -217,22 +218,22 @@ class TestShortcutNavigation:
             assert isinstance(app.screen, SettingsScreen)
 
             await pilot.press("escape")
-            assert isinstance(app.screen, ControlRoomScreen)
+            assert isinstance(app.screen, MissionControlScreen)
 
-    async def test_sessions_shortcut_navigates_to_control_room(self) -> None:
-        """Test that s navigates to sessions (Control Room)."""
+    async def test_sessions_shortcut_navigates_to_mission_control(self) -> None:
+        """Test that s navigates to sessions (Mission Control)."""
         app = ItermControllerApp()
         async with app.run_test() as pilot:
-            # Start on Control Room
-            assert isinstance(app.screen, ControlRoomScreen)
+            # Start on Mission Control
+            assert isinstance(app.screen, MissionControlScreen)
 
             # Navigate to project list first
             await pilot.press("p")
             assert isinstance(app.screen, ProjectListScreen)
 
-            # Press s to go back to sessions (Control Room)
+            # Press s to go back to sessions (Mission Control)
             await pilot.press("s")
-            assert isinstance(app.screen, ControlRoomScreen)
+            assert isinstance(app.screen, MissionControlScreen)
 
 
 @pytest.mark.asyncio

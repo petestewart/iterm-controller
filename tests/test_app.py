@@ -54,14 +54,14 @@ class TestItermControllerAppAsync:
             # App should mount without crashing
             assert app.state.config is not None
 
-    async def test_app_shows_control_room_on_start(self) -> None:
-        """Test that control room screen is shown on start."""
+    async def test_app_shows_mission_control_on_start(self) -> None:
+        """Test that Mission Control screen is shown on start."""
         app = ItermControllerApp()
         async with app.run_test():
-            # Check that we're on the control room screen
-            from iterm_controller.screens.control_room import ControlRoomScreen
+            # Check that we're on the Mission Control screen
+            from iterm_controller.screens.mission_control import MissionControlScreen
 
-            assert isinstance(app.screen, ControlRoomScreen)
+            assert isinstance(app.screen, MissionControlScreen)
 
     async def test_app_navigation_to_project_list(self) -> None:
         """Test navigation to project list screen."""
@@ -86,7 +86,7 @@ class TestItermControllerAppAsync:
             assert isinstance(app.screen, SettingsScreen)
 
     async def test_app_navigation_to_sessions(self) -> None:
-        """Test navigation to sessions/control room screen."""
+        """Test navigation to sessions/Mission Control screen."""
         app = ItermControllerApp()
         async with app.run_test() as pilot:
             # First go to another screen
@@ -95,18 +95,18 @@ class TestItermControllerAppAsync:
 
             assert isinstance(app.screen, ProjectListScreen)
 
-            # Press 's' to go back to sessions/control room
+            # Press 's' to go back to sessions/Mission Control
             await pilot.press("s")
 
-            from iterm_controller.screens.control_room import ControlRoomScreen
+            from iterm_controller.screens.mission_control import MissionControlScreen
 
-            assert isinstance(app.screen, ControlRoomScreen)
+            assert isinstance(app.screen, MissionControlScreen)
 
     async def test_app_escape_returns_from_screen(self) -> None:
         """Test that escape returns from pushed screens."""
         app = ItermControllerApp()
         async with app.run_test() as pilot:
-            from iterm_controller.screens.control_room import ControlRoomScreen
+            from iterm_controller.screens.mission_control import MissionControlScreen
             from iterm_controller.screens.project_list import ProjectListScreen
 
             # Go to project list
@@ -115,7 +115,7 @@ class TestItermControllerAppAsync:
 
             # Press escape to return
             await pilot.press("escape")
-            assert isinstance(app.screen, ControlRoomScreen)
+            assert isinstance(app.screen, MissionControlScreen)
 
     async def test_app_quit_without_sessions_exits(self) -> None:
         """Test that quitting without active sessions exits immediately."""

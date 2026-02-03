@@ -324,10 +324,10 @@ class TestProjectListScreenAsync:
                 # Press escape to go back
                 await pilot.press("escape")
 
-                # Should be back on control room
-                from iterm_controller.screens.control_room import ControlRoomScreen
+                # Should be back on Mission Control
+                from iterm_controller.screens.mission_control import MissionControlScreen
 
-                assert isinstance(app.screen, ControlRoomScreen)
+                assert isinstance(app.screen, MissionControlScreen)
 
     async def test_truncate_path_short_path(self) -> None:
         """Test that short paths are not truncated."""

@@ -80,13 +80,20 @@ class TestControlRoomScreen:
 
 @pytest.mark.asyncio
 class TestControlRoomScreenAsync:
-    """Async tests for ControlRoomScreen."""
+    """Async tests for ControlRoomScreen.
+
+    Note: Since the app now starts on MissionControlScreen, these tests
+    explicitly push ControlRoomScreen to test its functionality.
+    """
 
     async def test_screen_composes_widgets(self) -> None:
         """Test that screen composes required widgets."""
         app = ItermControllerApp()
         async with app.run_test():
-            # Should start on Control Room
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             assert isinstance(app.screen, ControlRoomScreen)
 
             # Check for SessionListWidget
@@ -101,7 +108,10 @@ class TestControlRoomScreenAsync:
         """Test that screen shows message when no sessions."""
         app = ItermControllerApp()
         async with app.run_test():
-            # Should be on Control Room with no sessions
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             assert isinstance(app.screen, ControlRoomScreen)
 
             widget = app.screen.query_one("#sessions", SessionListWidget)
@@ -111,6 +121,10 @@ class TestControlRoomScreenAsync:
         """Test that screen displays sessions from state."""
         app = ItermControllerApp()
         async with app.run_test():
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             # Add a session to state
             session = make_session()
             app.state.sessions[session.id] = session
@@ -126,6 +140,10 @@ class TestControlRoomScreenAsync:
         """Test that selected_session prioritizes WAITING sessions."""
         app = ItermControllerApp()
         async with app.run_test():
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             # Add sessions with different states
             idle = make_session(session_id="idle", attention_state=AttentionState.IDLE)
             waiting = make_session(
@@ -147,6 +165,10 @@ class TestControlRoomScreenAsync:
         """Test that selected_session returns None when no sessions."""
         app = ItermControllerApp()
         async with app.run_test():
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             screen = app.screen
             assert isinstance(screen, ControlRoomScreen)
             assert screen.selected_session is None
@@ -155,6 +177,10 @@ class TestControlRoomScreenAsync:
         """Test that refresh action updates session list."""
         app = ItermControllerApp()
         async with app.run_test() as pilot:
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             # Add a session after initial mount
             session = make_session()
             app.state.sessions[session.id] = session
@@ -234,12 +260,20 @@ class TestFocusSessionAction:
 
 @pytest.mark.asyncio
 class TestEventHandlers:
-    """Tests for event handler methods."""
+    """Tests for event handler methods.
+
+    Note: Since the app now starts on MissionControlScreen, these tests
+    explicitly push ControlRoomScreen to test its functionality.
+    """
 
     async def test_session_spawned_event_refreshes_list(self) -> None:
         """Test that SessionSpawned event refreshes the session list."""
         app = ItermControllerApp()
         async with app.run_test():
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             session = make_session()
 
             # Add session through state (which posts the event)
@@ -255,6 +289,10 @@ class TestEventHandlers:
         """Test that SessionClosed event refreshes the session list."""
         app = ItermControllerApp()
         async with app.run_test():
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             session = make_session()
             app.state.add_session(session)
             await app.screen.refresh_sessions()
@@ -272,6 +310,10 @@ class TestEventHandlers:
         """Test that SessionStatusChanged event refreshes the session list."""
         app = ItermControllerApp()
         async with app.run_test():
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             session = make_session(attention_state=AttentionState.IDLE)
             app.state.add_session(session)
             await app.screen.refresh_sessions()
@@ -288,7 +330,11 @@ class TestEventHandlers:
 
 @pytest.mark.asyncio
 class TestDebounceRefresh:
-    """Tests for the debounced refresh functionality."""
+    """Tests for the debounced refresh functionality.
+
+    Note: Since the app now starts on MissionControlScreen, these tests
+    explicitly push ControlRoomScreen to test its functionality.
+    """
 
     def test_debounce_constant_is_100ms(self) -> None:
         """Test that debounce interval is 100ms."""
@@ -298,6 +344,10 @@ class TestDebounceRefresh:
         """Test that schedule_refresh sets the pending flag."""
         app = ItermControllerApp()
         async with app.run_test():
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             screen = app.screen
             assert isinstance(screen, ControlRoomScreen)
 
@@ -314,6 +364,10 @@ class TestDebounceRefresh:
         """Test that schedule_refresh creates a timer."""
         app = ItermControllerApp()
         async with app.run_test():
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             screen = app.screen
             assert isinstance(screen, ControlRoomScreen)
 
@@ -330,6 +384,10 @@ class TestDebounceRefresh:
         """Test that multiple rapid schedule_refresh calls are batched into one refresh."""
         app = ItermControllerApp()
         async with app.run_test():
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             screen = app.screen
             assert isinstance(screen, ControlRoomScreen)
 
@@ -364,6 +422,10 @@ class TestDebounceRefresh:
         """Test that refresh_sessions clears the pending flag."""
         app = ItermControllerApp()
         async with app.run_test():
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             screen = app.screen
             assert isinstance(screen, ControlRoomScreen)
 
@@ -381,6 +443,10 @@ class TestDebounceRefresh:
         app = ItermControllerApp()
         async with app.run_test():
             from iterm_controller.state import SessionSpawned
+
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
 
             screen = app.screen
             assert isinstance(screen, ControlRoomScreen)
@@ -409,6 +475,10 @@ class TestDebounceRefresh:
         async with app.run_test():
             from iterm_controller.state import SessionStatusChanged
 
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
+
             screen = app.screen
             assert isinstance(screen, ControlRoomScreen)
 
@@ -434,6 +504,10 @@ class TestDebounceRefresh:
         app = ItermControllerApp()
         async with app.run_test():
             from iterm_controller.state import SessionClosed
+
+            # Push Control Room screen (app now starts on MissionControl)
+            app.push_screen(ControlRoomScreen())
+            await asyncio.sleep(0.1)  # Let screen mount
 
             screen = app.screen
             assert isinstance(screen, ControlRoomScreen)

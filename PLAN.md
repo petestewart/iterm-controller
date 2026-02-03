@@ -1125,9 +1125,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### 27.9 Screen Navigation & Integration
 
-- [ ] **27.9.1 Replace ControlRoom with MissionControl**
+- [x] **27.9.1 Replace ControlRoom with MissionControl** `[complete]`
   - Scope: Update app.py to use MissionControlScreen as main screen
   - Dependencies: 27.6.5
+  - Note: Updated app.py to import and use MissionControlScreen instead of ControlRoomScreen; updated action_go_home; updated all affected tests
 
 - [ ] **27.9.2 Replace ProjectDashboard with ProjectScreen**
   - Scope: Update navigation to use new ProjectScreen; remove mode screens
