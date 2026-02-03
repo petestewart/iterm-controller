@@ -1073,7 +1073,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Create collapsible section showing documentation files
   - Spec: specs/ui.md
 
-- [ ] **27.7.4 Create GitSection widget**
+- [x] **27.7.4 Create GitSection widget** `[complete]`
   - Scope: Create section with branch info, file list, commit/push buttons
   - Spec: specs/ui.md
   - Dependencies: 27.3.1
