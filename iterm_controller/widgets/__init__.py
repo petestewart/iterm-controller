@@ -25,6 +25,10 @@ from iterm_controller.widgets.session_list_container import (
     SessionList,
     sort_sessions,
 )
+from iterm_controller.widgets.sessions_panel import (
+    MiniSessionCard,
+    SessionsPanel,
+)
 from iterm_controller.widgets.task_list import TaskListWidget
 from iterm_controller.widgets.task_progress import TaskProgressWidget
 from iterm_controller.widgets.task_queue import TaskQueueWidget
@@ -43,17 +47,19 @@ __all__ = [
     "EnvSection",
     "GitHubPanelWidget",
     "GitSection",
-    "PlanningSection",
     "HealthStatusWidget",
+    "MiniSessionCard",
     "ModeIndicatorWidget",
     "OrchestratorProgress",
     "OutputLog",
+    "PlanningSection",
     "ProjectHeaderWidget",
     "ScriptToolbar",
     "SessionCard",
     "SessionCardHeader",
     "SessionList",
     "SessionListWidget",
+    "SessionsPanel",
     "sort_sessions",
     "TaskListWidget",
     "TaskProgressWidget",

@@ -1087,7 +1087,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/ui.md
   - Dependencies: 27.5.1
 
-- [ ] **27.7.7 Create SessionsPanel widget**
+- [x] **27.7.7 Create SessionsPanel widget** `[complete]`
   - Scope: Create bottom panel showing project's active sessions with MiniSessionCard
   - Spec: specs/ui.md
 
