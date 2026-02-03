@@ -23,6 +23,10 @@ from iterm_controller.models import (
 )
 from iterm_controller.screens.project_screen import ProjectScreen
 from iterm_controller.screens.modals.commit_modal import CommitModal
+from iterm_controller.screens.modals.review_detail import ReviewAction, ReviewDetailModal
+from iterm_controller.screens.modals.task_detail import TaskDetailModal
+from iterm_controller.screens.modals.env_edit import EnvEditModal
+from iterm_controller.models import ReviewResult, TaskReview
 from iterm_controller.widgets import (
     DocsSection,
     EnvSection,
@@ -590,3 +594,451 @@ class TestCommitModalAsync:
 
             # Result should be the message
             assert result == "Test commit message"
+
+
+class TestReviewDetailModal:
+    """Tests for ReviewDetailModal."""
+
+    def test_modal_has_bindings(self) -> None:
+        """Test that modal has required bindings."""
+        task = Task(id="1.1", title="Test task")
+        modal = ReviewDetailModal(review_task=task)
+        binding_keys = [b.key for b in modal.BINDINGS]
+
+        assert "escape" in binding_keys
+        assert "a" in binding_keys  # Approve
+        assert "c" in binding_keys  # Request changes
+        assert "r" in binding_keys  # Reject
+
+    def test_modal_has_css(self) -> None:
+        """Test that modal has CSS styling."""
+        assert ReviewDetailModal.DEFAULT_CSS is not None
+        assert ".modal-title" in ReviewDetailModal.DEFAULT_CSS
+        assert "#issues-container" in ReviewDetailModal.DEFAULT_CSS
+        assert "#summary-container" in ReviewDetailModal.DEFAULT_CSS
+
+    def test_modal_with_review(self) -> None:
+        """Test that modal accepts task with review."""
+        review = TaskReview(
+            id="review-1",
+            task_id="1.1",
+            attempt=1,
+            result=ReviewResult.NEEDS_REVISION,
+            issues=["Issue 1", "Issue 2"],
+            summary="Test summary",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review",
+        )
+        task = Task(id="1.1", title="Test task", current_review=review)
+        modal = ReviewDetailModal(review_task=task)
+
+        assert modal.review_task == task
+        assert modal.review_data == review
+
+
+@pytest.mark.asyncio
+class TestReviewDetailModalAsync:
+    """Async tests for ReviewDetailModal."""
+
+    async def test_modal_displays_task_info(self) -> None:
+        """Test that modal displays task information."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            task = Task(id="1.1", title="Implement feature")
+            modal = ReviewDetailModal(review_task=task)
+
+            await app.push_screen(modal)
+
+            # Check task info is displayed
+            content = app.screen.query_one(".modal-title").render()
+            assert "1.1" in str(content)
+
+    async def test_modal_displays_issues(self) -> None:
+        """Test that modal displays review issues."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            review = TaskReview(
+                id="review-1",
+                task_id="1.1",
+                attempt=1,
+                result=ReviewResult.NEEDS_REVISION,
+                issues=["Fix typo in function name", "Add unit tests"],
+                summary="Review summary",
+                blocking=False,
+                reviewed_at=datetime.now(),
+                reviewer_command="/review",
+            )
+            task = Task(id="1.1", title="Test task", current_review=review)
+            modal = ReviewDetailModal(review_task=task, review=review)
+
+            await app.push_screen(modal)
+
+            # Check issues are displayed
+            issues_container = app.screen.query_one("#issues-list")
+            assert issues_container is not None
+
+    async def test_modal_approve_action(self) -> None:
+        """Test that approve button returns correct action."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            task = Task(id="1.1", title="Test task")
+            modal = ReviewDetailModal(review_task=task)
+
+            result = None
+
+            def on_dismiss(action: ReviewAction | None) -> None:
+                nonlocal result
+                result = action
+
+            await app.push_screen(modal, on_dismiss)
+
+            # Press approve button
+            await pilot.press("a")
+
+            assert result == ReviewAction.APPROVE
+
+    async def test_modal_request_changes_action(self) -> None:
+        """Test that request changes button returns correct action."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            task = Task(id="1.1", title="Test task")
+            modal = ReviewDetailModal(review_task=task)
+
+            result = None
+
+            def on_dismiss(action: ReviewAction | None) -> None:
+                nonlocal result
+                result = action
+
+            await app.push_screen(modal, on_dismiss)
+
+            # Press request changes
+            await pilot.press("c")
+
+            assert result == ReviewAction.REQUEST_CHANGES
+
+    async def test_modal_reject_action(self) -> None:
+        """Test that reject button returns correct action."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            task = Task(id="1.1", title="Test task")
+            modal = ReviewDetailModal(review_task=task)
+
+            result = None
+
+            def on_dismiss(action: ReviewAction | None) -> None:
+                nonlocal result
+                result = action
+
+            await app.push_screen(modal, on_dismiss)
+
+            # Press reject
+            await pilot.press("r")
+
+            assert result == ReviewAction.REJECT
+
+    async def test_modal_close_on_escape(self) -> None:
+        """Test that escape closes the modal."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            task = Task(id="1.1", title="Test task")
+            modal = ReviewDetailModal(review_task=task)
+
+            result = None
+
+            def on_dismiss(action: ReviewAction | None) -> None:
+                nonlocal result
+                result = action
+
+            await app.push_screen(modal, on_dismiss)
+
+            # Press escape
+            await pilot.press("escape")
+
+            assert result == ReviewAction.CLOSE
+
+    async def test_modal_displays_summary(self) -> None:
+        """Test that modal displays review summary."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            review = TaskReview(
+                id="review-1",
+                task_id="1.1",
+                attempt=1,
+                result=ReviewResult.APPROVED,
+                issues=[],
+                summary="Task implementation looks good!",
+                blocking=False,
+                reviewed_at=datetime.now(),
+                reviewer_command="/review",
+            )
+            task = Task(id="1.1", title="Test task", current_review=review)
+            modal = ReviewDetailModal(review_task=task, review=review)
+
+            await app.push_screen(modal)
+
+            # Check summary is displayed
+            summary_container = app.screen.query_one("#summary-container")
+            assert summary_container is not None
+
+
+class TestTaskDetailModal:
+    """Tests for TaskDetailModal."""
+
+    def test_modal_has_bindings(self) -> None:
+        """Test that modal has required bindings."""
+        task = Task(id="1.1", title="Test task")
+        modal = TaskDetailModal(detail_task=task)
+        binding_keys = [b.key for b in modal.BINDINGS]
+
+        assert "escape" in binding_keys
+        assert "enter" in binding_keys
+
+    def test_modal_has_css(self) -> None:
+        """Test that modal has CSS styling."""
+        assert TaskDetailModal.DEFAULT_CSS is not None
+        assert ".modal-title" in TaskDetailModal.DEFAULT_CSS
+        assert ".task-title" in TaskDetailModal.DEFAULT_CSS
+        assert ".task-status" in TaskDetailModal.DEFAULT_CSS
+
+    def test_modal_stores_task(self) -> None:
+        """Test that modal stores the task."""
+        task = Task(
+            id="1.1",
+            title="Test task",
+            scope="Test scope",
+            acceptance="Test acceptance",
+        )
+        modal = TaskDetailModal(detail_task=task)
+
+        assert modal.detail_task == task
+
+
+@pytest.mark.asyncio
+class TestTaskDetailModalAsync:
+    """Async tests for TaskDetailModal."""
+
+    async def test_modal_displays_task_info(self) -> None:
+        """Test that modal displays task information."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            task = Task(id="2.1", title="Implement feature")
+            modal = TaskDetailModal(detail_task=task)
+
+            await app.push_screen(modal)
+
+            # Check task info is displayed
+            content = app.screen.query_one(".modal-title").render()
+            assert "2.1" in str(content)
+
+    async def test_modal_displays_status(self) -> None:
+        """Test that modal displays task status."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            task = Task(id="1.1", title="Test task", status=TaskStatus.IN_PROGRESS)
+            modal = TaskDetailModal(detail_task=task)
+
+            await app.push_screen(modal)
+
+            # Check status is displayed
+            status_widget = app.screen.query_one(".task-status")
+            assert status_widget is not None
+
+    async def test_modal_displays_dependencies(self) -> None:
+        """Test that modal displays dependencies."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            task = Task(id="1.1", title="Test task", depends=["1.0", "0.9"])
+            modal = TaskDetailModal(detail_task=task)
+
+            await app.push_screen(modal)
+
+            # Check dependencies displayed
+            deps_widget = app.screen.query_one(".task-deps")
+            content = deps_widget.render()
+            assert "1.0" in str(content) or "0.9" in str(content)
+
+    async def test_modal_close_on_escape(self) -> None:
+        """Test that escape closes the modal."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            task = Task(id="1.1", title="Test task")
+            modal = TaskDetailModal(detail_task=task)
+
+            dismissed = False
+
+            def on_dismiss(value: None) -> None:
+                nonlocal dismissed
+                dismissed = True
+
+            await app.push_screen(modal, on_dismiss)
+
+            # Press escape
+            await pilot.press("escape")
+
+            assert dismissed is True
+
+    async def test_modal_close_on_enter(self) -> None:
+        """Test that enter closes the modal."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            task = Task(id="1.1", title="Test task")
+            modal = TaskDetailModal(detail_task=task)
+
+            dismissed = False
+
+            def on_dismiss(value: None) -> None:
+                nonlocal dismissed
+                dismissed = True
+
+            await app.push_screen(modal, on_dismiss)
+
+            # Press enter
+            await pilot.press("enter")
+
+            assert dismissed is True
+
+    async def test_modal_displays_scope(self) -> None:
+        """Test that modal displays task scope."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            task = Task(
+                id="1.1",
+                title="Test task",
+                scope="Implement user authentication",
+            )
+            modal = TaskDetailModal(detail_task=task)
+
+            await app.push_screen(modal)
+
+            # Check content sections exist
+            content_container = app.screen.query_one("#content-sections")
+            assert content_container is not None
+
+    async def test_modal_displays_review_history(self) -> None:
+        """Test that modal displays review history."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            review = TaskReview(
+                id="review-1",
+                task_id="1.1",
+                attempt=1,
+                result=ReviewResult.APPROVED,
+                issues=[],
+                summary="Looks good!",
+                blocking=False,
+                reviewed_at=datetime.now(),
+                reviewer_command="/review",
+            )
+            task = Task(
+                id="1.1",
+                title="Test task",
+                review_history=[review],
+            )
+            modal = TaskDetailModal(detail_task=task)
+
+            await app.push_screen(modal)
+
+            # Check review history container exists
+            review_container = app.screen.query_one("#review-history")
+            assert review_container is not None
+
+
+class TestEnvEditModal:
+    """Tests for EnvEditModal."""
+
+    def test_modal_has_bindings(self) -> None:
+        """Test that modal has required bindings."""
+        modal = EnvEditModal()
+        binding_keys = [b.key for b in modal.BINDINGS]
+
+        assert "escape" in binding_keys
+        assert "ctrl+s" in binding_keys
+
+    def test_modal_has_css(self) -> None:
+        """Test that modal has CSS styling."""
+        assert EnvEditModal.DEFAULT_CSS is not None
+        assert ".modal-title" in EnvEditModal.DEFAULT_CSS
+        assert "#env-editor" in EnvEditModal.DEFAULT_CSS
+
+    def test_modal_stores_env_vars(self) -> None:
+        """Test that modal stores initial env vars."""
+        env_vars = {"API_KEY": "secret", "DEBUG": "true"}
+        modal = EnvEditModal(env_vars=env_vars)
+
+        assert modal.env_vars == env_vars
+
+    def test_is_valid_env_key(self) -> None:
+        """Test environment key validation."""
+        modal = EnvEditModal()
+
+        # Valid keys
+        assert modal._is_valid_env_key("API_KEY") is True
+        assert modal._is_valid_env_key("DEBUG") is True
+        assert modal._is_valid_env_key("_PRIVATE") is True
+        assert modal._is_valid_env_key("VAR_123") is True
+
+        # Invalid keys
+        assert modal._is_valid_env_key("") is False
+        assert modal._is_valid_env_key("123_VAR") is False
+        assert modal._is_valid_env_key("VAR-NAME") is False
+        assert modal._is_valid_env_key("VAR NAME") is False
+
+
+@pytest.mark.asyncio
+class TestEnvEditModalAsync:
+    """Async tests for EnvEditModal."""
+
+    async def test_modal_displays_env_vars(self) -> None:
+        """Test that modal displays environment variables."""
+        app = ItermControllerApp()
+        async with app.run_test():
+            env_vars = {"API_KEY": "secret", "DEBUG": "true"}
+            modal = EnvEditModal(env_vars=env_vars)
+
+            await app.push_screen(modal)
+
+            # Check editor exists
+            from textual.widgets import TextArea
+
+            editor = app.screen.query_one("#env-editor", TextArea)
+            assert editor is not None
+
+    async def test_modal_cancel_returns_none(self) -> None:
+        """Test that cancel returns None."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            modal = EnvEditModal(env_vars={"TEST": "value"})
+
+            result = "not_set"
+
+            def on_dismiss(value: dict[str, str] | None) -> None:
+                nonlocal result
+                result = value
+
+            await app.push_screen(modal, on_dismiss)
+
+            # Press escape to cancel
+            await pilot.press("escape")
+
+            assert result is None
+
+    async def test_modal_save_with_ctrl_s(self) -> None:
+        """Test that ctrl+s saves and returns the env vars."""
+        app = ItermControllerApp()
+        async with app.run_test() as pilot:
+            modal = EnvEditModal()
+
+            result = None
+
+            def on_dismiss(value: dict[str, str] | None) -> None:
+                nonlocal result
+                result = value
+
+            await app.push_screen(modal, on_dismiss)
+
+            # Press ctrl+s to save
+            await pilot.press("ctrl+s")
+
+            assert result == {}

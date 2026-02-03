@@ -1103,22 +1103,23 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### 27.8 Modals
 
-- [ ] **27.8.1 Create CommitModal**
+- [x] **27.8.1 Create CommitModal** `[complete]`
   - Scope: Modal for entering commit message with staged file preview
   - Spec: specs/ui.md
   - Dependencies: 27.3.1
+  - Note: Already implemented with tests in tests/test_project_screen.py
 
-- [ ] **27.8.2 Create ReviewDetailModal**
+- [x] **27.8.2 Create ReviewDetailModal** `[complete]`
   - Scope: Modal showing full review output with approve/reject/revise actions
   - Spec: specs/ui.md
   - Dependencies: 27.1.4
 
-- [ ] **27.8.3 Create TaskDetailModal**
+- [x] **27.8.3 Create TaskDetailModal** `[complete]`
   - Scope: Modal showing full task details including review history
   - Spec: specs/ui.md
   - Dependencies: 27.1.5
 
-- [ ] **27.8.4 Create EnvEditModal**
+- [x] **27.8.4 Create EnvEditModal** `[complete]`
   - Scope: Modal for editing environment variables
   - Spec: specs/ui.md
 
