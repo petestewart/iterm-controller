@@ -913,7 +913,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
     - Handles errors gracefully (not a repo, conflicts, push rejected)
   - Dependencies: 27.1.6
 
-- [ ] **27.2.2 Create ScriptService**
+- [x] **27.2.2 Create ScriptService** `[complete]`
   - Scope: Implement ScriptService with run_script, get_running_scripts, stop_script methods
   - Spec: specs/scripts.md
   - Acceptance:

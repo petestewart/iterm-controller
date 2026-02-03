@@ -26,6 +26,7 @@ from iterm_controller.iterm import (
 )
 from iterm_controller.models import WorkflowMode, WorkflowStage
 from iterm_controller.notifications import Notifier
+from iterm_controller.script_service import ScriptService
 
 # Import all screens and modals in services.py - this is the single place where
 # they are imported to avoid circular dependencies elsewhere
@@ -70,6 +71,7 @@ class ServiceContainer:
     layout_spawner: WindowLayoutSpawner
     github: GitHubIntegration
     notifier: Notifier
+    scripts: ScriptService
 
     @classmethod
     def create(cls) -> "ServiceContainer":
@@ -94,6 +96,7 @@ class ServiceContainer:
         # Create integration services
         github = GitHubIntegration()
         notifier = Notifier()
+        scripts = ScriptService(spawner)
 
         return cls(
             iterm=iterm,
@@ -103,6 +106,7 @@ class ServiceContainer:
             layout_spawner=layout_spawner,
             github=github,
             notifier=notifier,
+            scripts=scripts,
         )
 
     async def connect_iterm(self) -> None:
