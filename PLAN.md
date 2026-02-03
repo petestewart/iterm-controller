@@ -878,7 +878,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Create ReviewResult enum, TaskReview, ReviewConfig, ReviewContextConfig dataclasses
   - Spec: specs/models.md
 
-- [ ] **27.1.5 Update Task model**
+- [x] **27.1.5 Update Task model** `[complete]`
   - Scope: Add revision_count, current_review, review_history, assigned_session_id fields
   - Spec: specs/models.md
   - Dependencies: 27.1.1, 27.1.4

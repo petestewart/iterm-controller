@@ -518,6 +518,167 @@ class TestTaskModels:
         )
         assert blocked_task.is_blocked is True
 
+    def test_task_revision_count_default(self):
+        """Test Task.revision_count defaults to 0."""
+        task = Task(id="1.1", title="Task 1")
+        assert task.revision_count == 0
+
+    def test_task_revision_count_custom(self):
+        """Test Task.revision_count can be set."""
+        task = Task(id="1.1", title="Task 1", revision_count=3)
+        assert task.revision_count == 3
+
+    def test_task_assigned_session_id_default(self):
+        """Test Task.assigned_session_id defaults to None."""
+        task = Task(id="1.1", title="Task 1")
+        assert task.assigned_session_id is None
+
+    def test_task_assigned_session_id_custom(self):
+        """Test Task.assigned_session_id can be set."""
+        task = Task(id="1.1", title="Task 1", assigned_session_id="session-123")
+        assert task.assigned_session_id == "session-123"
+
+    def test_task_current_review_default(self):
+        """Test Task.current_review defaults to None."""
+        task = Task(id="1.1", title="Task 1")
+        assert task.current_review is None
+
+    def test_task_current_review_with_value(self):
+        """Test Task.current_review can hold a TaskReview."""
+        review = TaskReview(
+            id="review-123",
+            task_id="1.1",
+            attempt=1,
+            result=ReviewResult.APPROVED,
+            issues=[],
+            summary="Looks good",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        task = Task(id="1.1", title="Task 1", current_review=review)
+        assert task.current_review is not None
+        assert task.current_review.result == ReviewResult.APPROVED
+
+    def test_task_review_history_default(self):
+        """Test Task.review_history defaults to empty list."""
+        task = Task(id="1.1", title="Task 1")
+        assert task.review_history == []
+
+    def test_task_review_history_with_values(self):
+        """Test Task.review_history can hold multiple reviews."""
+        review1 = TaskReview(
+            id="review-1",
+            task_id="1.1",
+            attempt=1,
+            result=ReviewResult.NEEDS_REVISION,
+            issues=["Missing tests"],
+            summary="Needs work",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        review2 = TaskReview(
+            id="review-2",
+            task_id="1.1",
+            attempt=2,
+            result=ReviewResult.APPROVED,
+            issues=[],
+            summary="Approved after revision",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        task = Task(id="1.1", title="Task 1", review_history=[review1, review2])
+        assert len(task.review_history) == 2
+        assert task.review_history[0].result == ReviewResult.NEEDS_REVISION
+        assert task.review_history[1].result == ReviewResult.APPROVED
+
+    def test_task_full_review_workflow(self):
+        """Test Task with complete review workflow state."""
+        # A task that has been through 2 review cycles
+        past_review = TaskReview(
+            id="review-1",
+            task_id="2.1",
+            attempt=1,
+            result=ReviewResult.NEEDS_REVISION,
+            issues=["Missing error handling"],
+            summary="Needs revision",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        current_review = TaskReview(
+            id="review-2",
+            task_id="2.1",
+            attempt=2,
+            result=ReviewResult.APPROVED,
+            issues=[],
+            summary="Approved",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        task = Task(
+            id="2.1",
+            title="Implement feature X",
+            status=TaskStatus.COMPLETE,
+            revision_count=2,
+            assigned_session_id="session-456",
+            current_review=current_review,
+            review_history=[past_review, current_review],
+        )
+        assert task.revision_count == 2
+        assert task.assigned_session_id == "session-456"
+        assert task.current_review is not None
+        assert task.current_review.result == ReviewResult.APPROVED
+        assert len(task.review_history) == 2
+
+    def test_task_serialization_with_review_fields(self):
+        """Test Task with review fields serializes correctly."""
+        review = TaskReview(
+            id="review-123",
+            task_id="1.1",
+            attempt=1,
+            result=ReviewResult.NEEDS_REVISION,
+            issues=["Issue 1"],
+            summary="Summary",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        task = Task(
+            id="1.1",
+            title="Task 1",
+            status=TaskStatus.AWAITING_REVIEW,
+            revision_count=1,
+            assigned_session_id="session-789",
+            current_review=review,
+            review_history=[review],
+        )
+        data = model_to_dict(task)
+        assert data["revision_count"] == 1
+        assert data["assigned_session_id"] == "session-789"
+        assert data["current_review"] is not None
+        assert data["current_review"]["result"] == "needs_revision"
+        assert len(data["review_history"]) == 1
+
+        restored = model_from_dict(Task, data)
+        assert restored.revision_count == 1
+        assert restored.assigned_session_id == "session-789"
+        assert restored.current_review is not None
+        assert restored.current_review.result == ReviewResult.NEEDS_REVISION
+        assert len(restored.review_history) == 1
+
+    def test_task_serialization_with_none_review(self):
+        """Test Task with None current_review serializes correctly."""
+        task = Task(id="1.1", title="Task 1", current_review=None)
+        data = model_to_dict(task)
+        assert data["current_review"] is None
+
+        restored = model_from_dict(Task, data)
+        assert restored.current_review is None
+
     def test_phase_completion_count(self):
         phase = Phase(
             id="1",

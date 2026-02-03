@@ -166,17 +166,25 @@ class Task:
 
     id: str  # Task identifier (e.g., "2.1")
     title: str  # Task title
+
+    # Status
     status: TaskStatus = TaskStatus.PENDING
+    revision_count: int = 0  # Number of review revisions
 
     # Metadata
     spec_ref: str | None = None  # Reference to spec file/section
     session_id: str | None = None  # Assigned session
+    assigned_session_id: str | None = None  # Session actively working on this
     depends: list[str] = field(default_factory=list)  # Task IDs this blocks on
 
     # Content
     scope: str = ""  # What's in scope
     acceptance: str = ""  # Acceptance criteria
     notes: list[str] = field(default_factory=list)  # Additional notes
+
+    # Review state
+    current_review: TaskReview | None = None
+    review_history: list[TaskReview] = field(default_factory=list)
 
     @property
     def is_blocked(self) -> bool:
