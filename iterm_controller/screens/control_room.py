@@ -171,12 +171,7 @@ class ControlRoomScreen(Screen):
             app.push_screen("project_list")
             return
 
-        # Get session templates from config
-        if not app.state.config or not app.state.config.session_templates:
-            self.notify("No session templates configured", severity="warning")
-            return
-
-        # Show script picker modal to select a template
+        # Show script picker modal to select a template (or blank shell)
         from iterm_controller.screens.modals import ScriptPickerModal
 
         self.app.push_screen(ScriptPickerModal(), self._on_template_selected)
@@ -186,6 +181,7 @@ class ControlRoomScreen(Screen):
 
         Args:
             template: The selected template, or None if cancelled.
+                     May be BLANK_SHELL_SENTINEL for a blank shell.
         """
         if template is None:
             # User cancelled
@@ -198,9 +194,16 @@ class ControlRoomScreen(Screen):
             self.notify("No active project", severity="error")
             return
 
+        # Import BLANK_SHELL_SENTINEL for comparison
+        from iterm_controller.screens.modals import BLANK_SHELL_SENTINEL
+
+        # Check if blank shell was selected
+        is_blank_shell = template.id == BLANK_SHELL_SENTINEL.id
+
         result = await app.api.spawn_session_with_template(project, template)
         if result.success:
-            self.notify(f"Spawned session: {template.name}")
+            name = "Blank Shell" if is_blank_shell else template.name
+            self.notify(f"Spawned session: {name}")
         else:
             self.notify(f"Failed to spawn session: {result.error}", severity="error")
 

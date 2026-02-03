@@ -838,7 +838,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 #### Session Spawning
 
-- [ ] **Allow blank shell or script selection when spawning sessions**
+- [x] **Allow blank shell or script selection when spawning sessions** `[complete]`
   - Scope: When starting a session, user should not be forced to use a script; they should be able to spawn a blank shell or optionally choose a script
   - Acceptance: Spawn session dialog offers "Blank shell" option alongside script list; blank shell launches session with just the shell (no initial command)
 

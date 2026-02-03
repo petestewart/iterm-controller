@@ -193,18 +193,13 @@ class ProjectDashboardScreen(Screen):
             self.notify("Not connected to iTerm2", severity="error")
             return
 
-        # Get session templates from config
-        if not app.state.config or not app.state.config.session_templates:
-            self.notify("No session templates configured", severity="warning")
-            return
-
         # Get project
         project = app.state.projects.get(self.project_id)
         if not project:
             self.notify("Project not found", severity="error")
             return
 
-        # Show script picker modal to select a template
+        # Show script picker modal to select a template (or blank shell)
         from iterm_controller.screens.modals import ScriptPickerModal
 
         self.app.push_screen(ScriptPickerModal(), self._on_spawn_template_selected)
@@ -226,18 +221,13 @@ class ProjectDashboardScreen(Screen):
             self.notify("Not connected to iTerm2", severity="error")
             return
 
-        # Get session templates from config
-        if not app.state.config or not app.state.config.session_templates:
-            self.notify("No session templates configured", severity="warning")
-            return
-
         # Get project
         project = app.state.projects.get(self.project_id)
         if not project:
             self.notify("Project not found", severity="error")
             return
 
-        # Show script picker modal to select a template
+        # Show script picker modal to select a template (or blank shell)
         from iterm_controller.screens.modals import ScriptPickerModal
 
         self.app.push_screen(ScriptPickerModal(), self._on_run_script_template_selected)
@@ -257,6 +247,7 @@ class ProjectDashboardScreen(Screen):
 
         Args:
             template: The selected template, or None if cancelled.
+                     May be BLANK_SHELL_SENTINEL for a blank shell.
             success_prefix: Prefix for success notification (e.g., "Spawned session", "Running script").
         """
         if template is None:
@@ -270,9 +261,16 @@ class ProjectDashboardScreen(Screen):
             self.notify("Project not found", severity="error")
             return
 
+        # Import BLANK_SHELL_SENTINEL for comparison
+        from iterm_controller.screens.modals import BLANK_SHELL_SENTINEL
+
+        # Check if blank shell was selected
+        is_blank_shell = template.id == BLANK_SHELL_SENTINEL.id
+
         result = await app.api.spawn_session_with_template(project, template)
         if result.success:
-            self.notify(f"{success_prefix}: {template.name}")
+            name = "Blank Shell" if is_blank_shell else template.name
+            self.notify(f"{success_prefix}: {name}")
         else:
             self.notify(f"Failed: {result.error}", severity="error")
 

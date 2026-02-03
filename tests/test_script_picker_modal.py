@@ -3,7 +3,7 @@
 import pytest
 
 from iterm_controller.models import SessionTemplate
-from iterm_controller.screens.modals import ScriptPickerModal
+from iterm_controller.screens.modals import BLANK_SHELL_SENTINEL, ScriptPickerModal
 
 
 class TestScriptPickerModalInit:
@@ -135,7 +135,8 @@ class TestScriptPickerModalBindings:
 
         binding_keys = [b.key for b in modal.BINDINGS]
 
-        # Should have bindings for 1-9 and escape
+        # Should have bindings for 0-9 and escape
+        assert "0" in binding_keys
         assert "1" in binding_keys
         assert "2" in binding_keys
         assert "9" in binding_keys
@@ -153,6 +154,7 @@ class TestScriptPickerModalBindings:
 
         bindings = {b.key: b.action for b in modal.BINDINGS}
 
+        assert bindings["0"] == "select_blank_shell"
         assert bindings["1"] == "select_1"
         assert bindings["2"] == "select_2"
         assert bindings["9"] == "select_9"
@@ -264,3 +266,67 @@ class TestScriptPickerModalAllSelectionActions:
 
             assert len(dismissed_with) == 1
             assert dismissed_with[0].id == f"t{i}"
+
+
+class TestBlankShellSentinel:
+    """Test the BLANK_SHELL_SENTINEL constant."""
+
+    def test_blank_shell_sentinel_is_session_template(self):
+        assert isinstance(BLANK_SHELL_SENTINEL, SessionTemplate)
+
+    def test_blank_shell_sentinel_has_special_id(self):
+        assert BLANK_SHELL_SENTINEL.id == "__blank_shell__"
+
+    def test_blank_shell_sentinel_has_display_name(self):
+        assert BLANK_SHELL_SENTINEL.name == "Blank Shell"
+
+    def test_blank_shell_sentinel_has_empty_command(self):
+        assert BLANK_SHELL_SENTINEL.command == ""
+
+
+class TestBlankShellActions:
+    """Test blank shell action methods."""
+
+    def test_action_select_blank_shell_returns_sentinel(self):
+        modal = ScriptPickerModal()
+
+        dismissed_with = []
+        modal.dismiss = lambda result: dismissed_with.append(result)
+
+        modal.action_select_blank_shell()
+
+        assert len(dismissed_with) == 1
+        result = dismissed_with[0]
+        assert result is BLANK_SHELL_SENTINEL
+        assert result.id == "__blank_shell__"
+
+    def test_blank_shell_action_exists(self):
+        modal = ScriptPickerModal()
+        assert hasattr(modal, "action_select_blank_shell")
+
+    def test_blank_shell_binding_exists(self):
+        modal = ScriptPickerModal()
+        binding_keys = [b.key for b in modal.BINDINGS]
+        assert "0" in binding_keys
+
+        bindings = {b.key: b.action for b in modal.BINDINGS}
+        assert bindings["0"] == "select_blank_shell"
+
+
+class TestBlankShellDetection:
+    """Test blank shell detection helpers."""
+
+    def test_can_detect_blank_shell_by_id(self):
+        """Verify blank shell can be detected by comparing IDs."""
+        template = BLANK_SHELL_SENTINEL
+        assert template.id == "__blank_shell__"
+
+    def test_blank_shell_is_distinct_from_regular_templates(self):
+        """Verify blank shell ID doesn't conflict with regular templates."""
+        regular_template = SessionTemplate(id="test", name="Test", command="echo test")
+        assert regular_template.id != BLANK_SHELL_SENTINEL.id
+
+    def test_blank_shell_command_is_falsy(self):
+        """Verify blank shell command can be checked for truthiness."""
+        # The empty command means no initial command will be run
+        assert not BLANK_SHELL_SENTINEL.command

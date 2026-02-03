@@ -1,7 +1,8 @@
 """Script picker modal.
 
 Modal dialog for selecting and running project scripts (session templates)
-in new sessions.
+in new sessions. Supports spawning a blank shell or selecting from configured
+session templates.
 """
 
 from __future__ import annotations
@@ -23,6 +24,14 @@ if TYPE_CHECKING:
     from iterm_controller.app import ItermControllerApp
 
 
+# Sentinel value to indicate a blank shell should be spawned
+BLANK_SHELL_SENTINEL = SessionTemplate(
+    id="__blank_shell__",
+    name="Blank Shell",
+    command="",  # No command - just opens a shell
+)
+
+
 class ScriptPickerModal(ModalScreen[SessionTemplate | None]):
     """Modal for selecting a session template to spawn.
 
@@ -30,6 +39,7 @@ class ScriptPickerModal(ModalScreen[SessionTemplate | None]):
     """
 
     BINDINGS = [
+        Binding("0", "select_blank_shell", "Blank Shell", show=False),
         Binding("1", "select_1", "Template 1", show=False),
         Binding("2", "select_2", "Template 2", show=False),
         Binding("3", "select_3", "Template 3", show=False),
@@ -93,7 +103,7 @@ class ScriptPickerModal(ModalScreen[SessionTemplate | None]):
     def compose(self) -> ComposeResult:
         """Compose the modal layout."""
         yield Container(
-            Static("Select Script to Run", id="title"),
+            Static("Spawn Session", id="title"),
             Static("[dim]Loading templates...[/dim]", id="loading"),
             Vertical(id="template-list"),
             Button("Cancel [Esc]", id="cancel-button", variant="default"),
@@ -117,12 +127,16 @@ class ScriptPickerModal(ModalScreen[SessionTemplate | None]):
         # Populate template list
         template_list = self.query_one("#template-list", Vertical)
 
-        if not self._templates:
-            template_list.mount(
-                Static("[dim]No session templates configured[/dim]")
-            )
-            return
+        # Always show blank shell option first
+        blank_shell_button = Button(
+            "[0] Blank Shell", id="template-blank-shell", classes="template-button"
+        )
+        template_list.mount(blank_shell_button)
+        template_list.mount(
+            Static("    [dim]Open shell without running a command[/dim]", classes="template-command")
+        )
 
+        # Show configured templates
         for i, template in enumerate(self._templates[:9], start=1):
             # Create button with number prefix and template info
             label = f"[{i}] {template.name}"
@@ -143,6 +157,11 @@ class ScriptPickerModal(ModalScreen[SessionTemplate | None]):
             self.dismiss(None)
             return
 
+        # Check for blank shell button
+        if button_id == "template-blank-shell":
+            self.dismiss(BLANK_SHELL_SENTINEL)
+            return
+
         # Check for template buttons (template-1, template-2, etc.)
         if button_id and button_id.startswith("template-"):
             try:
@@ -156,6 +175,10 @@ class ScriptPickerModal(ModalScreen[SessionTemplate | None]):
         """Select template by 0-based index."""
         if 0 <= index < len(self._templates):
             self.dismiss(self._templates[index])
+
+    def action_select_blank_shell(self) -> None:
+        """Select blank shell option."""
+        self.dismiss(BLANK_SHELL_SENTINEL)
 
     def action_select_1(self) -> None:
         """Select template 1."""

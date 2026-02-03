@@ -16,7 +16,7 @@ from .mode_command import ModeCommandModal
 from .plan_conflict import PlanConflictModal
 from .quit_confirm import QuitAction, QuitConfirmModal
 from .rename_document import RenameDocumentModal
-from .script_picker import ScriptPickerModal
+from .script_picker import BLANK_SHELL_SENTINEL, ScriptPickerModal
 from .stage_advance import StageAdvanceModal
 from .test_plan_conflict import TestPlanConflictModal
 
@@ -24,6 +24,7 @@ __all__ = [
     "AddContentTypeModal",
     "AddDocumentModal",
     "AddReferenceModal",
+    "BLANK_SHELL_SENTINEL",
     "ContentType",
     "ArtifactPreviewModal",
     "ArtifactPreviewResult",
