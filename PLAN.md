@@ -1020,7 +1020,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### 27.6 Mission Control Screen
 
-- [ ] **27.6.1 Create SessionCard widget**
+- [x] **27.6.1 Create SessionCard widget** `[complete]`
   - Scope: Create SessionCard widget with header, optional progress bar, and output log
   - Spec: specs/mission-control.md
   - Dependencies: 27.3.3

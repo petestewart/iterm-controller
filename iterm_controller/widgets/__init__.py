@@ -8,6 +8,12 @@ from iterm_controller.widgets.github_panel import GitHubPanelWidget
 from iterm_controller.widgets.health_status import HealthStatusWidget
 from iterm_controller.widgets.mode_indicator import ModeIndicatorWidget
 from iterm_controller.widgets.project_header import ProjectHeaderWidget
+from iterm_controller.widgets.session_card import (
+    OrchestratorProgress,
+    OutputLog,
+    SessionCard,
+    SessionCardHeader,
+)
 from iterm_controller.widgets.session_list import SessionListWidget
 from iterm_controller.widgets.task_list import TaskListWidget
 from iterm_controller.widgets.task_progress import TaskProgressWidget
@@ -24,7 +30,11 @@ __all__ = [
     "GitHubPanelWidget",
     "HealthStatusWidget",
     "ModeIndicatorWidget",
+    "OrchestratorProgress",
+    "OutputLog",
     "ProjectHeaderWidget",
+    "SessionCard",
+    "SessionCardHeader",
     "SessionListWidget",
     "TaskListWidget",
     "TaskProgressWidget",
