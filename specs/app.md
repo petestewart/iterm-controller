@@ -32,11 +32,17 @@ class ItermControllerApp(App):
     TITLE = "iTerm Controller"
 
     SCREENS = {
-        "control_room": ControlRoomScreen,
         "project_list": ProjectListScreen,
-        "project_dashboard": ProjectDashboardScreen,
+        "project_screen": ProjectScreen,
         "new_project": NewProjectScreen,
         "settings": SettingsScreen,
+    }
+
+    # Mode screens require a Project argument and are accessed via ProjectScreen.
+    # Plan, Docs, and Work modes were removed in task 27.9.3.
+    # TestModeScreen is retained for test plan management.
+    MODE_SCREENS = {
+        "test": TestModeScreen,
     }
 
     BINDINGS = [
@@ -59,7 +65,8 @@ class ItermControllerApp(App):
         await self.iterm.connect()
         await self.github.initialize()
         await self.state.load_config()
-        self.push_screen("control_room")
+        # MissionControlScreen is pushed as an instance, not via SCREENS dict
+        self.push_screen(MissionControlScreen())
 
     async def action_request_quit(self):
         """Handle quit with confirmation if sessions active."""
@@ -185,7 +192,7 @@ class ScreenNavigator:
 3. Check GitHub CLI availability
 4. Initialize notification system
 5. Load project list from config
-6. Display Control Room screen
+6. Display Mission Control screen (main dashboard with live session output)
 
 ### Application Shutdown Sequence
 

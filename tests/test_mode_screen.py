@@ -8,12 +8,10 @@ import pytest
 
 from iterm_controller.app import ItermControllerApp
 from iterm_controller.models import Project, WorkflowMode
-from iterm_controller.screens import (
-    ModeScreen,
-    ProjectDashboardScreen,
-    ProjectScreen,
-    TestModeScreen,
-)
+from iterm_controller.screens import ModeScreen, ProjectScreen, TestModeScreen
+
+# Import deprecated screen directly to avoid deprecation warning in tests
+from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 
 
 def make_project(

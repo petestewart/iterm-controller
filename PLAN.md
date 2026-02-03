@@ -1140,9 +1140,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Dependencies: 27.9.2
   - Result: Deleted plan_mode.py, docs_mode.py, work_mode.py; updated imports in app.py, services.py, screens/__init__.py, screens/modes/__init__.py; updated/removed tests in test_mode_screen.py, test_mode_indicator.py, test_doc_tree_widget.py, test_document_crud.py
 
-- [ ] **27.9.4 Update screen registration**
+- [x] **27.9.4 Update screen registration** `[complete]`
   - Scope: Update SCREENS dict and navigation bindings
   - Dependencies: 27.9.1, 27.9.2, 27.9.3
+  - Result: Updated specs/app.md with new screen registration; updated screens/__init__.py with lazy imports and deprecation warnings for ControlRoomScreen and ProjectDashboardScreen; verified app.py SCREENS dict is correct; updated test imports to avoid deprecation warnings
 
 ### 27.10 Testing & Polish
 
