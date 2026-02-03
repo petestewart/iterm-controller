@@ -976,7 +976,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Add _extract_session method to parse Session field from task blocks
   - Spec: specs/plan-parser.md
 
-- [ ] **27.4.2 Add review section parsing**
+- [x] **27.4.2 Add review section parsing** `[complete]`
   - Scope: Add _extract_review and _extract_review_issues methods to parse Review section
   - Spec: specs/plan-parser.md
   - Dependencies: 27.1.4

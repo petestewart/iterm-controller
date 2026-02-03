@@ -12,10 +12,11 @@ import asyncio
 import logging
 import re
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 
 from .exceptions import PlanParseError, PlanWriteError, record_error
-from .models import Phase, Plan, Task, TaskStatus
+from .models import Phase, Plan, ReviewResult, Task, TaskReview, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -193,8 +194,17 @@ class PlanParser:
             # Extract session using dedicated method (supports both formats)
             session_id = self._extract_session(task_content)
 
+            # Compute task ID for review extraction
+            task_id = f"{phase_id}.{i + 1}"
+
+            # Extract review section if present
+            current_review = self._extract_review(task_content, task_id)
+
+            # Calculate revision count from review attempt
+            revision_count = current_review.attempt if current_review else 0
+
             task = Task(
-                id=f"{phase_id}.{i + 1}",
+                id=task_id,
                 title=title,
                 status=self._parse_status(status_str, checkbox),
                 spec_ref=metadata.get("Spec"),
@@ -202,6 +212,8 @@ class PlanParser:
                 acceptance=metadata.get("Acceptance", ""),
                 depends=self._parse_depends(metadata.get("Depends", "")),
                 session_id=session_id,
+                current_review=current_review,
+                revision_count=revision_count,
             )
 
             tasks.append(task)
@@ -241,6 +253,119 @@ class PlanParser:
             return match.group(1)
 
         return None
+
+    def _extract_review_issues(self, content: str) -> list[str]:
+        """Extract issues list from review section.
+
+        Parses the Issues sub-section from a Review block.
+
+        Expected format:
+            - **Issues:**
+              - Issue 1
+              - Issue 2
+
+        Args:
+            content: The review section content to search.
+
+        Returns:
+            List of issue strings, or empty list if no issues found.
+        """
+        issues_match = re.search(
+            r"\*\*Issues:\*\*\s*\n((?:\s+- .+\n?)+)",
+            content,
+        )
+        if not issues_match:
+            return []
+
+        issues_content = issues_match.group(1)
+        return [
+            line.strip().lstrip("- ")
+            for line in issues_content.split("\n")
+            # Only include lines that start with - but don't contain ** (field markers)
+            if line.strip().startswith("-") and "**" not in line
+        ]
+
+    def _extract_review(self, content: str, task_id: str) -> TaskReview | None:
+        """Extract review section from task block.
+
+        Parses the Review section containing attempt number, result, issues,
+        and review timestamp.
+
+        Expected format:
+            - **Review:**
+              - **Attempt:** 2
+              - **Last Result:** needs_revision
+              - **Issues:**
+                - Missing rate limiting on login endpoint
+                - No test for failed login attempt
+              - **Reviewed At:** 2024-01-15T10:30:00Z
+
+        Args:
+            content: The task content block to search.
+            task_id: The task ID for the review.
+
+        Returns:
+            TaskReview object if found, None otherwise.
+        """
+        # Match the Review section header and capture its content
+        review_match = re.search(
+            r"\*\*Review:\*\*\s*\n((?:\s+- .+\n?)+)",
+            content,
+        )
+        if not review_match:
+            return None
+
+        review_content = review_match.group(1)
+
+        # Extract attempt number
+        attempt_match = re.search(r"\*\*Attempt:\*\*\s*(\d+)", review_content)
+        attempt = int(attempt_match.group(1)) if attempt_match else 1
+
+        # Extract last result
+        result_match = re.search(
+            r"\*\*Last Result:\*\*\s*(\w+)", review_content
+        )
+        result_str = result_match.group(1) if result_match else "pending"
+
+        # Map result string to ReviewResult enum
+        result_map = {
+            "pending": ReviewResult.PENDING,
+            "approved": ReviewResult.APPROVED,
+            "needs_revision": ReviewResult.NEEDS_REVISION,
+            "rejected": ReviewResult.REJECTED,
+        }
+        result = result_map.get(result_str.lower(), ReviewResult.PENDING)
+
+        # Extract issues
+        issues = self._extract_review_issues(review_content)
+
+        # Extract reviewed_at timestamp
+        reviewed_at_match = re.search(
+            r"\*\*Reviewed At:\*\*\s*(\S+)", review_content
+        )
+        reviewed_at = datetime.now()
+        if reviewed_at_match:
+            try:
+                reviewed_at = datetime.fromisoformat(
+                    reviewed_at_match.group(1).replace("Z", "+00:00")
+                )
+            except ValueError:
+                logger.warning(
+                    "Failed to parse reviewed_at timestamp: %s",
+                    reviewed_at_match.group(1),
+                )
+
+        return TaskReview(
+            id=f"review-{task_id}-{attempt}",
+            task_id=task_id,
+            attempt=attempt,
+            result=result,
+            issues=issues,
+            summary="",  # Not stored in PLAN.md format
+            blocking=result == ReviewResult.REJECTED,
+            reviewed_at=reviewed_at,
+            reviewer_command="",  # Not stored in PLAN.md format
+        )
 
     def _parse_status(self, status_str: str, checkbox: str) -> TaskStatus:
         """Convert status string to enum."""

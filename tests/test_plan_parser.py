@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from iterm_controller.models import Phase, Plan, Task, TaskStatus
+from iterm_controller.models import Phase, Plan, ReviewResult, Task, TaskStatus
 from iterm_controller.plan_parser import PlanParser, PlanUpdater
 
 
@@ -468,6 +468,209 @@ class TestSessionExtraction:
 """
         result = parser._extract_session(content)
         assert result == "iterm2-abc-123"
+
+
+class TestReviewExtraction:
+    """Test _extract_review and _extract_review_issues methods."""
+
+    def test_extract_review_issues_basic(self):
+        """Test parsing issues list from review section."""
+        parser = PlanParser()
+        content = """  - **Issues:**
+    - Missing rate limiting on login endpoint
+    - No test for failed login attempt
+"""
+        issues = parser._extract_review_issues(content)
+        assert len(issues) == 2
+        assert issues[0] == "Missing rate limiting on login endpoint"
+        assert issues[1] == "No test for failed login attempt"
+
+    def test_extract_review_issues_empty(self):
+        """Test that no issues returns empty list."""
+        parser = PlanParser()
+        content = "  - **Attempt:** 1\n  - **Last Result:** approved"
+        issues = parser._extract_review_issues(content)
+        assert issues == []
+
+    def test_extract_review_issues_single(self):
+        """Test parsing single issue."""
+        parser = PlanParser()
+        content = """  - **Issues:**
+    - Only one issue here
+"""
+        issues = parser._extract_review_issues(content)
+        assert issues == ["Only one issue here"]
+
+    def test_extract_review_basic(self):
+        """Test parsing basic review section."""
+        parser = PlanParser()
+        content = """  - **Review:**
+    - **Attempt:** 2
+    - **Last Result:** needs_revision
+    - **Issues:**
+      - Missing rate limiting
+      - No tests
+    - **Reviewed At:** 2024-01-15T10:30:00Z
+"""
+        review = parser._extract_review(content, "1.1")
+        assert review is not None
+        assert review.id == "review-1.1-2"
+        assert review.task_id == "1.1"
+        assert review.attempt == 2
+        assert review.result.value == "needs_revision"
+        assert len(review.issues) == 2
+        assert "Missing rate limiting" in review.issues[0]
+        assert review.blocking is False
+
+    def test_extract_review_approved(self):
+        """Test parsing approved review."""
+        parser = PlanParser()
+        content = """  - **Review:**
+    - **Attempt:** 1
+    - **Last Result:** approved
+    - **Reviewed At:** 2024-01-16T12:00:00Z
+"""
+        review = parser._extract_review(content, "2.1")
+        assert review is not None
+        assert review.result.value == "approved"
+        assert review.issues == []
+        assert review.blocking is False
+
+    def test_extract_review_rejected_is_blocking(self):
+        """Test that rejected reviews are marked as blocking."""
+        parser = PlanParser()
+        content = """  - **Review:**
+    - **Attempt:** 3
+    - **Last Result:** rejected
+    - **Issues:**
+      - Critical security flaw
+    - **Reviewed At:** 2024-01-17T14:00:00Z
+"""
+        review = parser._extract_review(content, "3.1")
+        assert review is not None
+        assert review.result.value == "rejected"
+        assert review.blocking is True
+
+    def test_extract_review_no_review_section(self):
+        """Test that None is returned when no review section exists."""
+        parser = PlanParser()
+        content = """  - Spec: specs/test.md
+  - Scope: Do something
+  - Acceptance: It works
+"""
+        review = parser._extract_review(content, "1.1")
+        assert review is None
+
+    def test_extract_review_defaults(self):
+        """Test default values when fields are missing."""
+        parser = PlanParser()
+        content = """  - **Review:**
+    - **Last Result:** pending
+"""
+        review = parser._extract_review(content, "1.1")
+        assert review is not None
+        assert review.attempt == 1  # Default
+        assert review.result.value == "pending"
+        assert review.issues == []
+
+    def test_extract_review_invalid_timestamp(self):
+        """Test that invalid timestamp falls back to now."""
+        from datetime import datetime
+
+        parser = PlanParser()
+        content = """  - **Review:**
+    - **Attempt:** 1
+    - **Last Result:** approved
+    - **Reviewed At:** not-a-valid-timestamp
+"""
+        before = datetime.now()
+        review = parser._extract_review(content, "1.1")
+        after = datetime.now()
+
+        assert review is not None
+        # reviewed_at should be between before and after (i.e., set to now)
+        assert before <= review.reviewed_at <= after
+
+    def test_parse_task_with_review_section(self):
+        """Test full task parsing with review section."""
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task with review** `[awaiting_review]`
+  - Spec: specs/test.md
+  - Scope: Do something
+  - **Session:** session-123
+  - **Review:**
+    - **Attempt:** 2
+    - **Last Result:** needs_revision
+    - **Issues:**
+      - Missing validation
+    - **Reviewed At:** 2024-01-15T10:30:00Z
+"""
+        parser = PlanParser()
+        plan = parser.parse(plan_md)
+
+        task = plan.phases[0].tasks[0]
+        assert task.status.value == "awaiting_review"
+        assert task.current_review is not None
+        assert task.current_review.attempt == 2
+        assert task.current_review.result.value == "needs_revision"
+        assert len(task.current_review.issues) == 1
+        assert "Missing validation" in task.current_review.issues[0]
+        assert task.revision_count == 2
+        assert task.session_id == "session-123"
+
+    def test_parse_task_without_review_section(self):
+        """Test that tasks without review section have None current_review."""
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task without review** `[pending]`
+  - Scope: Do something
+"""
+        parser = PlanParser()
+        plan = parser.parse(plan_md)
+
+        task = plan.phases[0].tasks[0]
+        assert task.current_review is None
+        assert task.revision_count == 0
+
+    def test_parse_multiple_tasks_mixed_reviews(self):
+        """Test parsing multiple tasks where some have reviews and some don't."""
+        plan_md = """# Plan
+
+### Phase 1: Test
+
+- [ ] **Task A - no review** `[pending]`
+  - Scope: Do A
+
+- [ ] **Task B - with review** `[awaiting_review]`
+  - **Review:**
+    - **Attempt:** 1
+    - **Last Result:** approved
+    - **Reviewed At:** 2024-01-15T10:30:00Z
+
+- [ ] **Task C - no review** `[in_progress]`
+  - Scope: Do C
+"""
+        parser = PlanParser()
+        plan = parser.parse(plan_md)
+
+        task_a = plan.phases[0].tasks[0]
+        task_b = plan.phases[0].tasks[1]
+        task_c = plan.phases[0].tasks[2]
+
+        assert task_a.current_review is None
+        assert task_a.revision_count == 0
+
+        assert task_b.current_review is not None
+        assert task_b.current_review.result.value == "approved"
+        assert task_b.revision_count == 1
+
+        assert task_c.current_review is None
+        assert task_c.revision_count == 0
 
 
 class TestPlanProperties:
