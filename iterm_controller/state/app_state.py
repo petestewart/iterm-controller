@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from iterm_controller.models import (
     AppConfig,
+    GitStatus,
     HealthStatus,
     ManagedSession,
     Plan,
@@ -18,6 +19,7 @@ from iterm_controller.models import (
     TestPlan,
 )
 from iterm_controller.state.events import ConfigChanged
+from iterm_controller.state.git_manager import GitStateManager
 from iterm_controller.state.health_manager import HealthStateManager
 from iterm_controller.state.plan_manager import PlanStateManager
 from iterm_controller.state.project_manager import ProjectStateManager
@@ -59,6 +61,9 @@ class AppState:
     )
     _health_manager: HealthStateManager = field(
         default_factory=HealthStateManager, repr=False
+    )
+    _git_manager: GitStateManager = field(
+        default_factory=GitStateManager, repr=False
     )
 
     # Textual app reference for posting messages
@@ -144,6 +149,7 @@ class AppState:
         self._session_manager.connect_app(app)
         self._plan_manager.connect_app(app)
         self._health_manager.connect_app(app)
+        self._git_manager.connect_app(app)
 
     def _post_message(self, message: Any) -> None:
         """Post a message to the connected Textual app.
@@ -400,6 +406,138 @@ class AppState:
         self._health_manager.clear_health_statuses(project_id)
 
     # =========================================================================
+    # Git Operations (delegated to GitStateManager)
+    # =========================================================================
+
+    @property
+    def git(self) -> GitStateManager:
+        """Get the git state manager.
+
+        Returns:
+            The GitStateManager instance.
+        """
+        return self._git_manager
+
+    async def refresh_git_status(
+        self, project_id: str, use_cache: bool = True
+    ) -> GitStatus | None:
+        """Refresh git status for a project.
+
+        Args:
+            project_id: The project ID.
+            use_cache: Whether to use cached status if available.
+
+        Returns:
+            The refreshed GitStatus, or None if project not found.
+        """
+        return await self._git_manager.refresh(project_id, use_cache=use_cache)
+
+    async def stage_git_files(
+        self, project_id: str, files: list[str] | None = None
+    ) -> bool:
+        """Stage files for a project.
+
+        Args:
+            project_id: The project ID.
+            files: List of files to stage, or None to stage all.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        return await self._git_manager.stage_files(project_id, files)
+
+    async def unstage_git_files(
+        self, project_id: str, files: list[str] | None = None
+    ) -> bool:
+        """Unstage files for a project.
+
+        Args:
+            project_id: The project ID.
+            files: List of files to unstage, or None to unstage all.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        return await self._git_manager.unstage_files(project_id, files)
+
+    async def git_commit(self, project_id: str, message: str) -> str | None:
+        """Create a git commit for a project.
+
+        Args:
+            project_id: The project ID.
+            message: The commit message.
+
+        Returns:
+            The SHA of the created commit, or None on failure.
+        """
+        return await self._git_manager.commit(project_id, message)
+
+    async def git_push(
+        self,
+        project_id: str,
+        remote: str = "origin",
+        branch: str | None = None,
+        force: bool = False,
+        set_upstream: bool = False,
+    ) -> bool:
+        """Push to remote for a project.
+
+        Args:
+            project_id: The project ID.
+            remote: The remote name.
+            branch: The branch to push, or None for current branch.
+            force: Whether to force push.
+            set_upstream: Whether to set upstream tracking.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        return await self._git_manager.push(
+            project_id,
+            remote=remote,
+            branch=branch,
+            force=force,
+            set_upstream=set_upstream,
+        )
+
+    async def git_pull(
+        self,
+        project_id: str,
+        remote: str = "origin",
+        branch: str | None = None,
+    ) -> bool:
+        """Pull from remote for a project.
+
+        Args:
+            project_id: The project ID.
+            remote: The remote name.
+            branch: The branch to pull, or None for current branch.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        return await self._git_manager.pull(project_id, remote=remote, branch=branch)
+
+    def get_git_status(self, project_id: str) -> GitStatus | None:
+        """Get cached git status for a project.
+
+        Args:
+            project_id: The project ID.
+
+        Returns:
+            The cached GitStatus, or None if not cached.
+        """
+        return self._git_manager.get(project_id)
+
+    def clear_git_status(self, project_id: str) -> None:
+        """Clear cached git status for a project.
+
+        Args:
+            project_id: The project ID.
+        """
+        self._git_manager.clear(project_id)
+
+    # =========================================================================
     # State Query (External Observation)
     # =========================================================================
 
@@ -426,5 +564,6 @@ class AppState:
             plans=dict(self.plans),
             test_plans=dict(self.test_plans),
             health_statuses=self._health_manager.get_all_statuses(),
+            git_statuses=self._git_manager.get_all_statuses(),
             config=self.config,
         )

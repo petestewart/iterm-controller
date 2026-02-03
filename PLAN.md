@@ -942,7 +942,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### 27.3 State Management
 
-- [ ] **27.3.1 Create GitStateManager**
+- [x] **27.3.1 Create GitStateManager** `[complete]`
   - Scope: Implement GitStateManager with refresh, stage_files, commit, push, pull methods; posts GitStatusChanged events
   - Spec: specs/app.md
   - Dependencies: 27.2.1

@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from iterm_controller.models import (
         AppConfig,
+        GitStatus,
         HealthStatus,
         ManagedSession,
         Plan,
@@ -57,6 +58,9 @@ class StateSnapshot:
     # Health check statuses: project_id -> {check_name -> status}
     health_statuses: dict[str, dict[str, HealthStatus]]
 
+    # Git statuses: project_id -> GitStatus
+    git_statuses: dict[str, GitStatus]
+
     # Configuration (if loaded)
     config: AppConfig | None
 
@@ -92,3 +96,7 @@ class StateSnapshot:
     def get_health_statuses(self, project_id: str) -> dict[str, HealthStatus]:
         """Get health check statuses for a project."""
         return self.health_statuses.get(project_id, {}).copy()
+
+    def get_git_status(self, project_id: str) -> GitStatus | None:
+        """Get git status for a project."""
+        return self.git_statuses.get(project_id)

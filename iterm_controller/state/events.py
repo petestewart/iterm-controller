@@ -12,7 +12,14 @@ from typing import TYPE_CHECKING
 from textual.message import Message
 
 if TYPE_CHECKING:
-    from iterm_controller.models import ManagedSession, Plan, Project, TestPlan, AppConfig
+    from iterm_controller.models import (
+        AppConfig,
+        GitStatus,
+        ManagedSession,
+        Plan,
+        Project,
+        TestPlan,
+    )
 
 
 class StateEvent(Enum):
@@ -34,6 +41,8 @@ class StateEvent(Enum):
     TEST_PLAN_DELETED = "test_plan_deleted"
     TEST_PLAN_CONFLICT = "test_plan_conflict"
     TEST_STEP_UPDATED = "test_step_updated"
+    # Git events
+    GIT_STATUS_CHANGED = "git_status_changed"
 
 
 # =============================================================================
@@ -174,3 +183,12 @@ class TestStepUpdated(StateMessage):
         super().__init__()
         self.project_id = project_id
         self.step_id = step_id
+
+
+class GitStatusChanged(StateMessage):
+    """Posted when git status changes for a project."""
+
+    def __init__(self, project_id: str, status: GitStatus) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.status = status
