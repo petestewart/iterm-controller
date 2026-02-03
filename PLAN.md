@@ -836,6 +836,19 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: When adding a file, provide a file browser/picker instead of requiring typed paths
   - Acceptance: User can browse and select files visually when adding documents
 
+#### Session Spawning
+
+- [ ] **Allow blank shell or script selection when spawning sessions**
+  - Scope: When starting a session, user should not be forced to use a script; they should be able to spawn a blank shell or optionally choose a script
+  - Acceptance: Spawn session dialog offers "Blank shell" option alongside script list; blank shell launches session with just the shell (no initial command)
+
+#### Tab Focus Refresh
+
+- [ ] **Refresh view when iTerm2 tab is re-selected**
+  - Scope: Use iTerm2 Python API to subscribe to tab selection notifications; when the tab containing the TUI becomes active, trigger a refresh of the current screen
+  - Implementation: Subscribe to `iterm2.Notification.SELECTED_TAB_CHANGED` in connection manager, post Textual message to trigger screen refresh
+  - Acceptance: Switching away from and back to the iTerm2 tab refreshes the current view (Plan, Docs, Work, Test, etc.) with latest data
+
 ---
 
 ## Phase 27: Application Overhaul - Mission Control & Unified Project Screen
