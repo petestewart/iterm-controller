@@ -1157,9 +1157,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Dependencies: 27.2.3
   - Result: Expanded test suite from 49 to 86 tests covering run_review pipeline, _run_review_command, _run_tests, _run_lint, _get_project_window, and notification trigger scenarios
 
-- [ ] **27.10.3 Add unit tests for ScriptService**
+- [x] **27.10.3 Add unit tests for ScriptService** `[complete]`
   - Scope: Test script running, completion callbacks
   - Dependencies: 27.2.2
+  - Result: Added 24 new tests covering _get_project_window, run_script edge cases, stop_script edge cases, ScriptBehavior for all session types, and on_session_exit with multiple scripts (total 64 tests)
 
 - [ ] **27.10.4 Add integration tests for output streaming**
   - Scope: Test subscriber pattern, buffer management

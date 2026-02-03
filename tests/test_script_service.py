@@ -604,3 +604,474 @@ class TestScriptValidator:
         assert len(errors) == 2
         assert any(e.message == "Script ID is required" for e in errors)
         assert any("Keybinding 'a' used by both" in e.message for e in errors)
+
+
+class TestScriptServiceGetProjectWindow:
+    """Tests for _get_project_window method."""
+
+    @pytest.fixture
+    def mock_spawner(self) -> MagicMock:
+        """Create a mock SessionSpawner."""
+        spawner = MagicMock()
+        spawner.controller = MagicMock()
+        spawner.controller.app = MagicMock()
+        spawner.get_session = MagicMock(return_value=None)
+        spawner.get_sessions_for_project = MagicMock(return_value=[])
+        return spawner
+
+    @pytest.fixture
+    def service(self, mock_spawner: MagicMock) -> ScriptService:
+        """Create a ScriptService instance."""
+        return ScriptService(mock_spawner)
+
+    @pytest.fixture
+    def project(self) -> Project:
+        """Create a test project."""
+        return Project(
+            id="test-project",
+            name="Test Project",
+            path="/test/path",
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_project_window_no_sessions(
+        self, service: ScriptService, mock_spawner: MagicMock, project: Project
+    ):
+        """Test getting window when project has no sessions."""
+        mock_spawner.get_sessions_for_project.return_value = []
+
+        result = await service._get_project_window(project)
+
+        assert result is None
+        mock_spawner.get_sessions_for_project.assert_called_once_with("test-project")
+
+    @pytest.mark.asyncio
+    async def test_get_project_window_session_without_window_id(
+        self, service: ScriptService, mock_spawner: MagicMock, project: Project
+    ):
+        """Test getting window when session has no window ID."""
+        session = ManagedSession(
+            id="sess1",
+            template_id="t1",
+            project_id="test-project",
+            tab_id="tab1",
+            window_id=None,
+        )
+        mock_spawner.get_sessions_for_project.return_value = [session]
+
+        result = await service._get_project_window(project)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_project_window_window_found(
+        self, service: ScriptService, mock_spawner: MagicMock, project: Project
+    ):
+        """Test getting window when window exists."""
+        session = ManagedSession(
+            id="sess1",
+            template_id="t1",
+            project_id="test-project",
+            tab_id="tab1",
+            window_id="win1",
+        )
+        mock_spawner.get_sessions_for_project.return_value = [session]
+
+        # Mock iTerm2 window
+        mock_window = MagicMock()
+        mock_window.window_id = "win1"
+        mock_spawner.controller.app.windows = [mock_window]
+
+        result = await service._get_project_window(project)
+
+        assert result is mock_window
+
+    @pytest.mark.asyncio
+    async def test_get_project_window_window_not_found(
+        self, service: ScriptService, mock_spawner: MagicMock, project: Project
+    ):
+        """Test getting window when window ID doesn't match any windows."""
+        session = ManagedSession(
+            id="sess1",
+            template_id="t1",
+            project_id="test-project",
+            tab_id="tab1",
+            window_id="win1",
+        )
+        mock_spawner.get_sessions_for_project.return_value = [session]
+
+        # Mock iTerm2 window with different ID
+        mock_window = MagicMock()
+        mock_window.window_id = "other-win"
+        mock_spawner.controller.app.windows = [mock_window]
+
+        result = await service._get_project_window(project)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_project_window_no_app(
+        self, service: ScriptService, mock_spawner: MagicMock, project: Project
+    ):
+        """Test getting window when app is None."""
+        session = ManagedSession(
+            id="sess1",
+            template_id="t1",
+            project_id="test-project",
+            tab_id="tab1",
+            window_id="win1",
+        )
+        mock_spawner.get_sessions_for_project.return_value = [session]
+        mock_spawner.controller.app = None
+
+        result = await service._get_project_window(project)
+
+        assert result is None
+
+
+class TestScriptServiceRunScriptEdgeCases:
+    """Tests for run_script edge cases."""
+
+    @pytest.fixture
+    def mock_spawner(self) -> MagicMock:
+        """Create a mock SessionSpawner."""
+        spawner = MagicMock()
+        spawner.controller = MagicMock()
+        spawner.controller.app = MagicMock()
+        spawner.get_session = MagicMock(return_value=None)
+        spawner.get_sessions_for_project = MagicMock(return_value=[])
+        spawner.spawn_session = AsyncMock()
+        return spawner
+
+    @pytest.fixture
+    def service(self, mock_spawner: MagicMock) -> ScriptService:
+        """Create a ScriptService instance."""
+        return ScriptService(mock_spawner)
+
+    @pytest.fixture
+    def project(self) -> Project:
+        """Create a test project."""
+        return Project(
+            id="test-project",
+            name="Test Project",
+            path="/test/path",
+        )
+
+    @pytest.fixture
+    def script(self) -> ProjectScript:
+        """Create a test script."""
+        return ProjectScript(
+            id="test-script",
+            name="Test Script",
+            command="echo hello",
+            keybinding="t",
+            session_type=SessionType.SCRIPT,
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_script_session_not_found_after_spawn(
+        self,
+        service: ScriptService,
+        mock_spawner: MagicMock,
+        script: ProjectScript,
+        project: Project,
+    ):
+        """Test running a script when session not found after successful spawn."""
+        mock_spawner.spawn_session.return_value = MagicMock(
+            success=True,
+            session_id="session-123",
+            error=None,
+        )
+        # Session not found (returns None)
+        mock_spawner.get_session.return_value = None
+
+        with pytest.raises(RuntimeError) as exc_info:
+            await service.run_script(project, script)
+
+        assert "session-123 not found after spawn" in str(exc_info.value)
+        assert script.id not in service._running_scripts
+
+
+class TestScriptServiceStopScriptEdgeCases:
+    """Tests for stop_script edge cases."""
+
+    @pytest.fixture
+    def mock_spawner(self) -> MagicMock:
+        """Create a mock SessionSpawner."""
+        spawner = MagicMock()
+        spawner.controller = MagicMock()
+        spawner.controller.app = MagicMock()
+        spawner.get_session = MagicMock(return_value=None)
+        spawner.untrack_session = MagicMock()
+        return spawner
+
+    @pytest.fixture
+    def service(self, mock_spawner: MagicMock) -> ScriptService:
+        """Create a ScriptService instance."""
+        return ScriptService(mock_spawner)
+
+    @pytest.mark.asyncio
+    async def test_stop_script_session_not_tracked(
+        self, service: ScriptService, mock_spawner: MagicMock
+    ):
+        """Test stopping a script when session is not in spawner."""
+        running = RunningScript(
+            script=ProjectScript(id="s1", name="S1", command="cmd1"),
+            session_id="sess1",
+            started_at=datetime.now(),
+        )
+        service._running_scripts = {"s1": running}
+
+        # Session not found in spawner
+        mock_spawner.get_session.return_value = None
+
+        result = await service.stop_script("s1")
+
+        # Still returns True because script was tracked and removed
+        assert result is True
+        assert "s1" not in service._running_scripts
+
+    @pytest.mark.asyncio
+    async def test_stop_script_no_app(
+        self, service: ScriptService, mock_spawner: MagicMock
+    ):
+        """Test stopping a script when app is None."""
+        running = RunningScript(
+            script=ProjectScript(id="s1", name="S1", command="cmd1"),
+            session_id="sess1",
+            started_at=datetime.now(),
+        )
+        service._running_scripts = {"s1": running}
+
+        mock_session = ManagedSession(
+            id="sess1", template_id="t1", project_id="proj1", tab_id="tab1"
+        )
+        mock_spawner.get_session.return_value = mock_session
+        mock_spawner.controller.app = None
+
+        result = await service.stop_script("s1")
+
+        # Still returns True because script was tracked and removed
+        assert result is True
+        assert "s1" not in service._running_scripts
+
+    @pytest.mark.asyncio
+    async def test_stop_script_iterm_session_not_found(
+        self, service: ScriptService, mock_spawner: MagicMock
+    ):
+        """Test stopping a script when iTerm2 session not found."""
+        running = RunningScript(
+            script=ProjectScript(id="s1", name="S1", command="cmd1"),
+            session_id="sess1",
+            started_at=datetime.now(),
+        )
+        service._running_scripts = {"s1": running}
+
+        mock_session = ManagedSession(
+            id="sess1", template_id="t1", project_id="proj1", tab_id="tab1"
+        )
+        mock_spawner.get_session.return_value = mock_session
+        mock_spawner.controller.app.get_session_by_id.return_value = None
+
+        result = await service.stop_script("s1")
+
+        # Still returns True because script was tracked and removed
+        assert result is True
+        assert "s1" not in service._running_scripts
+
+    @pytest.mark.asyncio
+    async def test_stop_script_terminator_fails(
+        self, service: ScriptService, mock_spawner: MagicMock
+    ):
+        """Test stopping a script when terminator fails."""
+        running = RunningScript(
+            script=ProjectScript(id="s1", name="S1", command="cmd1"),
+            session_id="sess1",
+            started_at=datetime.now(),
+        )
+        service._running_scripts = {"s1": running}
+
+        mock_session = ManagedSession(
+            id="sess1", template_id="t1", project_id="proj1", tab_id="tab1"
+        )
+        mock_spawner.get_session.return_value = mock_session
+
+        mock_iterm_session = MagicMock()
+        mock_spawner.controller.app.get_session_by_id.return_value = mock_iterm_session
+
+        with patch(
+            "iterm_controller.iterm.terminator.SessionTerminator"
+        ) as MockTerminator:
+            mock_terminator = MockTerminator.return_value
+            mock_terminator.close_session = AsyncMock(
+                return_value=MagicMock(success=False, error="Connection lost")
+            )
+
+            result = await service.stop_script("s1")
+
+        # Still returns True because script was tracked and removed
+        assert result is True
+        assert "s1" not in service._running_scripts
+        # Untrack should NOT be called when terminator fails
+        mock_spawner.untrack_session.assert_not_called()
+
+
+class TestScriptBehaviorAdditional:
+    """Additional tests for ScriptBehavior utility class."""
+
+    def test_on_repress_shell(self):
+        """Test shell sessions focus on repress."""
+        assert ScriptBehavior.on_repress(SessionType.SHELL) == "focus"
+
+    def test_on_repress_claude_task(self):
+        """Test claude task sessions focus on repress."""
+        assert ScriptBehavior.on_repress(SessionType.CLAUDE_TASK) == "focus"
+
+    def test_on_repress_review(self):
+        """Test review sessions focus on repress."""
+        assert ScriptBehavior.on_repress(SessionType.REVIEW) == "focus"
+
+    def test_on_complete_shell_success(self):
+        """Test shell sessions keep on success."""
+        assert ScriptBehavior.on_complete(SessionType.SHELL, exit_code=0) == "keep"
+
+    def test_on_complete_claude_task_success(self):
+        """Test claude task sessions notify on success."""
+        assert ScriptBehavior.on_complete(SessionType.CLAUDE_TASK, exit_code=0) == "notify"
+
+    def test_on_complete_review_success(self):
+        """Test review sessions keep on success."""
+        assert ScriptBehavior.on_complete(SessionType.REVIEW, exit_code=0) == "keep"
+
+
+class TestScriptValidatorAdditional:
+    """Additional tests for ScriptValidator."""
+
+    @pytest.fixture
+    def validator(self) -> ScriptValidator:
+        """Create a ScriptValidator instance."""
+        return ScriptValidator()
+
+    def test_validate_no_keybinding(self, validator: ScriptValidator):
+        """Test validating a script without keybinding."""
+        script = ProjectScript(
+            id="test",
+            name="Test",
+            command="echo hello",
+            keybinding=None,
+        )
+
+        errors = validator.validate(script)
+        assert errors == []
+
+    def test_validate_numeric_keybinding(self, validator: ScriptValidator):
+        """Test validating a script with numeric keybinding."""
+        script = ProjectScript(
+            id="test",
+            name="Test",
+            command="echo hello",
+            keybinding="1",
+        )
+
+        errors = validator.validate(script)
+        assert errors == []
+
+    def test_validate_all_missing_fields(self, validator: ScriptValidator):
+        """Test validation catches all missing fields."""
+        script = ProjectScript(
+            id="",
+            name="",
+            command="",
+        )
+
+        errors = validator.validate(script)
+        assert len(errors) == 3
+        assert "Script ID is required" in errors
+        assert "Script name is required" in errors
+        assert "Script command is required" in errors
+
+    def test_check_keybinding_conflicts_no_keybindings(
+        self, validator: ScriptValidator
+    ):
+        """Test no conflicts when no scripts have keybindings."""
+        scripts = [
+            ProjectScript(id="s1", name="S1", command="c1"),
+            ProjectScript(id="s2", name="S2", command="c2"),
+        ]
+
+        conflicts = validator.check_keybinding_conflicts(scripts)
+        assert conflicts == []
+
+    def test_check_keybinding_conflicts_empty_list(
+        self, validator: ScriptValidator
+    ):
+        """Test no conflicts with empty script list."""
+        conflicts = validator.check_keybinding_conflicts([])
+        assert conflicts == []
+
+    def test_validate_all_empty_list(self, validator: ScriptValidator):
+        """Test validating empty script list."""
+        errors = validator.validate_all([])
+        assert errors == []
+
+
+class TestScriptServiceOnSessionExitMultipleScripts:
+    """Tests for on_session_exit with multiple scripts."""
+
+    @pytest.fixture
+    def mock_spawner(self) -> MagicMock:
+        """Create a mock SessionSpawner."""
+        spawner = MagicMock()
+        spawner.controller = MagicMock()
+        spawner.controller.app = MagicMock()
+        return spawner
+
+    @pytest.fixture
+    def service(self, mock_spawner: MagicMock) -> ScriptService:
+        """Create a ScriptService instance."""
+        return ScriptService(mock_spawner)
+
+    def test_on_session_exit_only_removes_matching_script(self, service: ScriptService):
+        """Test that only the matching script is removed on exit."""
+        callback1 = MagicMock()
+        callback2 = MagicMock()
+
+        running1 = RunningScript(
+            script=ProjectScript(id="s1", name="S1", command="cmd1"),
+            session_id="sess1",
+            started_at=datetime.now(),
+            on_complete=callback1,
+        )
+        running2 = RunningScript(
+            script=ProjectScript(id="s2", name="S2", command="cmd2"),
+            session_id="sess2",
+            started_at=datetime.now(),
+            on_complete=callback2,
+        )
+        service._running_scripts = {"s1": running1, "s2": running2}
+
+        service.on_session_exit("sess1", exit_code=0)
+
+        # Only s1 should be removed
+        assert "s1" not in service._running_scripts
+        assert "s2" in service._running_scripts
+
+        # Only callback1 should be called
+        callback1.assert_called_once_with(0)
+        callback2.assert_not_called()
+
+    def test_on_session_exit_with_nonzero_exit_code(self, service: ScriptService):
+        """Test session exit with non-zero exit code."""
+        callback = MagicMock()
+        running = RunningScript(
+            script=ProjectScript(id="s1", name="S1", command="cmd1"),
+            session_id="sess1",
+            started_at=datetime.now(),
+            on_complete=callback,
+        )
+        service._running_scripts = {"s1": running}
+
+        service.on_session_exit("sess1", exit_code=42)
+
+        callback.assert_called_once_with(42)
+        assert "s1" not in service._running_scripts
