@@ -986,10 +986,11 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/plan-parser.md
   - Dependencies: 27.4.1, 27.4.2
 
-- [ ] **27.4.4 Add awaiting_review status handling**
+- [x] **27.4.4 Add awaiting_review status handling** `[complete]`
   - Scope: Update status parsing/formatting to handle awaiting_review status
   - Spec: specs/plan-parser.md
   - Dependencies: 27.1.1
+  - Note: Already implemented in plan_parser.py:375 (parsing), plan_parser.py:567 (formatting), with full test coverage
 
 ### 27.5 Configuration Updates
 
