@@ -20,6 +20,7 @@ from iterm_controller.models import (
     HealthCheck,
     HealthStatus,
     ManagedSession,
+    NotificationSettings,
     Phase,
     Plan,
     Project,
@@ -1637,6 +1638,124 @@ class TestConfigModels:
 
         restored = model_from_dict(AppSettings, data)
         assert restored.dangerously_skip_permissions is True
+
+    def test_notification_settings_defaults(self):
+        """Test NotificationSettings default values."""
+        settings = NotificationSettings()
+        assert settings.enabled is True
+        assert settings.sound_enabled is True
+        assert settings.sound_name == "default"
+        assert settings.on_session_waiting is True
+        assert settings.on_session_idle is False
+        assert settings.on_review_failed is True
+        assert settings.on_task_complete is False
+        assert settings.on_phase_complete is True
+        assert settings.on_orchestrator_done is True
+
+    def test_notification_settings_custom(self):
+        """Test NotificationSettings with custom values."""
+        settings = NotificationSettings(
+            enabled=False,
+            sound_enabled=False,
+            sound_name="Basso",
+            on_session_waiting=False,
+            on_session_idle=True,
+            on_review_failed=False,
+            on_task_complete=True,
+            on_phase_complete=False,
+            on_orchestrator_done=False,
+        )
+        assert settings.enabled is False
+        assert settings.sound_enabled is False
+        assert settings.sound_name == "Basso"
+        assert settings.on_session_waiting is False
+        assert settings.on_session_idle is True
+        assert settings.on_review_failed is False
+        assert settings.on_task_complete is True
+        assert settings.on_phase_complete is False
+        assert settings.on_orchestrator_done is False
+
+    def test_notification_settings_serialization(self):
+        """Test NotificationSettings serializes to/from dict correctly."""
+        settings = NotificationSettings(
+            enabled=True,
+            sound_enabled=True,
+            sound_name="Glass",
+            on_session_waiting=True,
+            on_session_idle=True,
+            on_review_failed=True,
+            on_task_complete=True,
+            on_phase_complete=True,
+            on_orchestrator_done=True,
+        )
+        data = model_to_dict(settings)
+        assert data["enabled"] is True
+        assert data["sound_enabled"] is True
+        assert data["sound_name"] == "Glass"
+        assert data["on_session_waiting"] is True
+        assert data["on_session_idle"] is True
+        assert data["on_review_failed"] is True
+        assert data["on_task_complete"] is True
+        assert data["on_phase_complete"] is True
+        assert data["on_orchestrator_done"] is True
+
+        restored = model_from_dict(NotificationSettings, data)
+        assert restored.enabled is True
+        assert restored.sound_enabled is True
+        assert restored.sound_name == "Glass"
+        assert restored.on_session_waiting is True
+        assert restored.on_session_idle is True
+        assert restored.on_review_failed is True
+        assert restored.on_task_complete is True
+        assert restored.on_phase_complete is True
+        assert restored.on_orchestrator_done is True
+
+    def test_app_settings_has_notifications_field(self):
+        """Test that AppSettings has a notifications field."""
+        settings = AppSettings()
+        assert hasattr(settings, "notifications")
+        assert isinstance(settings.notifications, NotificationSettings)
+
+    def test_app_settings_notifications_defaults(self):
+        """Test that AppSettings.notifications has correct default values."""
+        settings = AppSettings()
+        assert settings.notifications.enabled is True
+        assert settings.notifications.sound_enabled is True
+        assert settings.notifications.sound_name == "default"
+        assert settings.notifications.on_session_waiting is True
+        assert settings.notifications.on_session_idle is False
+
+    def test_app_settings_notifications_custom(self):
+        """Test AppSettings with custom NotificationSettings."""
+        notification_settings = NotificationSettings(
+            enabled=False,
+            sound_name="Blow",
+            on_task_complete=True,
+        )
+        settings = AppSettings(notifications=notification_settings)
+        assert settings.notifications.enabled is False
+        assert settings.notifications.sound_name == "Blow"
+        assert settings.notifications.on_task_complete is True
+
+    def test_app_settings_notifications_serialization(self):
+        """Test that AppSettings.notifications serializes correctly."""
+        notification_settings = NotificationSettings(
+            enabled=True,
+            sound_enabled=False,
+            sound_name="Ping",
+        )
+        settings = AppSettings(notifications=notification_settings)
+        data = model_to_dict(settings)
+
+        assert "notifications" in data
+        assert data["notifications"]["enabled"] is True
+        assert data["notifications"]["sound_enabled"] is False
+        assert data["notifications"]["sound_name"] == "Ping"
+
+        restored = model_from_dict(AppSettings, data)
+        assert restored.notifications.enabled is True
+        assert restored.notifications.sound_enabled is False
+        assert restored.notifications.sound_name == "Ping"
 
 
 class TestWindowLayoutModels:

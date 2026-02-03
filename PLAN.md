@@ -898,7 +898,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Dependencies: 27.1.4, 27.1.6, 27.1.7
   - Note: last_mode kept for now since mode screens haven't been removed yet (27.9.3)
 
-- [ ] **27.1.9 Add NotificationSettings model**
+- [x] **27.1.9 Add NotificationSettings model** `[complete]`
   - Scope: Create NotificationSettings with sound support and event toggles
   - Spec: specs/models.md
 

@@ -560,16 +560,47 @@ class AutoModeConfig:
 
 
 @dataclass
+class NotificationSettings:
+    """Notification settings for the application.
+
+    Controls when and how notifications are sent, including sound support
+    and toggles for specific events.
+
+    Attributes:
+        enabled: Master toggle for all notifications.
+        sound_enabled: Whether to play sounds with notifications.
+        sound_name: macOS system sound name ("default", "Basso", "Blow", etc.).
+        on_session_waiting: Notify when a session needs user input.
+        on_session_idle: Notify when a session becomes idle.
+        on_review_failed: Notify when a task review fails.
+        on_task_complete: Notify when a task is completed.
+        on_phase_complete: Notify when a phase is completed.
+        on_orchestrator_done: Notify when an orchestrator finishes all tasks.
+    """
+
+    enabled: bool = True
+    sound_enabled: bool = True
+    sound_name: str = "default"
+    on_session_waiting: bool = True
+    on_session_idle: bool = False
+    on_review_failed: bool = True
+    on_task_complete: bool = False
+    on_phase_complete: bool = True
+    on_orchestrator_done: bool = True
+
+
+@dataclass
 class AppSettings:
     """Global application settings."""
 
     default_ide: str = "vscode"
     default_shell: str = "zsh"
     polling_interval_ms: int = 500
-    notification_enabled: bool = True
+    notification_enabled: bool = True  # Deprecated: use notifications.enabled
     github_refresh_seconds: int = 60
     health_check_interval_seconds: float = 10.0
     dangerously_skip_permissions: bool = False  # Add --dangerously-skip-permissions to Claude sessions
+    notifications: NotificationSettings = field(default_factory=NotificationSettings)
 
 
 # =============================================================================
