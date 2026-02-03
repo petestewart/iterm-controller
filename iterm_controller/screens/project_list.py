@@ -148,11 +148,7 @@ class ProjectListScreen(Screen):
             return None
 
     async def action_open_project(self) -> None:
-        """Open the selected project dashboard or restore last mode.
-
-        If the project has a last_mode saved, navigates directly to that
-        mode screen. Otherwise, opens the project dashboard.
-        """
+        """Open the selected project in the unified project screen."""
         project_id = self._get_selected_project_id()
 
         if not project_id:
@@ -169,19 +165,10 @@ class ProjectListScreen(Screen):
         # Open the project in state
         await app.state.open_project(project_id)
 
-        # Always push the dashboard first
-        from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
+        # Push the unified project screen (replaces the old dashboard + mode screens)
+        from iterm_controller.screens.project_screen import ProjectScreen
 
-        self.app.push_screen(ProjectDashboardScreen(project_id))
-
-        # Check if we should restore last mode and push mode screen on top
-        if project.last_mode:
-            # Use screen factory to create mode screen (avoids circular imports)
-            mode_screen = app.screen_factory.create_mode_screen(
-                project.last_mode.value, project
-            )
-            if mode_screen:
-                self.app.push_screen(mode_screen)
+        self.app.push_screen(ProjectScreen(project_id))
 
     def action_new_project(self) -> None:
         """Create a new project."""

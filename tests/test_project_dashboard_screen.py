@@ -1,4 +1,9 @@
-"""Tests for the Project Dashboard screen."""
+"""Tests for the Project Dashboard screen.
+
+NOTE: ProjectDashboardScreen is deprecated and will be removed in task 27.9.3.
+It has been replaced by ProjectScreen, which provides a unified view of the project.
+These tests are kept for backwards compatibility until the screen is removed.
+"""
 
 from unittest.mock import MagicMock
 

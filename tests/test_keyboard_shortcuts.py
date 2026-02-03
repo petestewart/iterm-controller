@@ -9,6 +9,7 @@ from iterm_controller.screens.mission_control import MissionControlScreen
 from iterm_controller.screens.modals import HelpModal
 from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 from iterm_controller.screens.project_list import ProjectListScreen
+from iterm_controller.screens.project_screen import ProjectScreen
 from iterm_controller.screens.settings import SettingsScreen
 
 
@@ -65,8 +66,34 @@ class TestControlRoomShortcuts:
             assert str(i) in binding_keys
 
 
+class TestProjectScreenShortcuts:
+    """Tests for the new unified Project Screen shortcuts."""
+
+    def test_project_screen_has_bindings(self) -> None:
+        """Test that project screen has all required keybindings."""
+        screen = ProjectScreen(project_id="test")
+        binding_keys = [b.key for b in screen.BINDINGS]
+
+        assert "e" in binding_keys  # Edit artifact
+        assert "c" in binding_keys  # Commit
+        assert "p" in binding_keys  # Push
+        assert "r" in binding_keys  # Refresh
+        assert "s" in binding_keys  # Server (hidden)
+        assert "t" in binding_keys  # Tests (hidden)
+        assert "l" in binding_keys  # Lint (hidden)
+        assert "b" in binding_keys  # Build (hidden)
+        assert "o" in binding_keys  # Orchestrator (hidden)
+        assert "tab" in binding_keys  # Next section
+        assert "shift+tab" in binding_keys  # Prev section
+        assert "escape" in binding_keys  # Back
+
+        # Number shortcuts for session focus
+        for i in range(1, 10):
+            assert str(i) in binding_keys
+
+
 class TestProjectDashboardShortcuts:
-    """Tests for Project Dashboard screen shortcuts."""
+    """Tests for Project Dashboard screen shortcuts (deprecated, kept for backwards compatibility)."""
 
     def test_project_dashboard_has_bindings(self) -> None:
         """Test that project dashboard has all required keybindings."""

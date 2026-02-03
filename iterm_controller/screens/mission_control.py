@@ -326,9 +326,13 @@ class MissionControlScreen(Screen):
             )
             return
 
-        # Set as active project and open dashboard
+        # Set as active project and open project screen
         app.state.set_active_project(project.id)
-        app.push_screen("project_dashboard")
+
+        # Use ProjectScreen directly since it requires a project_id argument
+        from iterm_controller.screens.project_screen import ProjectScreen
+
+        app.push_screen(ProjectScreen(project.id))
 
     def action_expand_collapse(self) -> None:
         """Toggle expand/collapse for the selected session."""
