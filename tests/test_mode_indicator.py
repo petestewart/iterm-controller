@@ -92,67 +92,10 @@ class TestModeIndicatorWidget:
 
 @pytest.mark.asyncio
 class TestModeIndicatorIntegration:
-    """Integration tests for ModeIndicatorWidget with mode screens."""
+    """Integration tests for ModeIndicatorWidget with TestModeScreen.
 
-    async def test_plan_mode_screen_has_mode_indicator(self) -> None:
-        """Test that PlanModeScreen includes the mode indicator."""
-        from iterm_controller.app import ItermControllerApp
-        from iterm_controller.models import Project
-        from iterm_controller.screens.modes import PlanModeScreen
-
-        app = ItermControllerApp()
-        async with app.run_test():
-            project = Project(id="test", name="Test", path="/tmp/test")
-            app.state.projects[project.id] = project
-
-            await app.push_screen(PlanModeScreen(project))
-
-            # Should have a mode indicator widget
-            indicator = app.screen.query_one("#mode-indicator", ModeIndicatorWidget)
-            assert indicator is not None
-            assert indicator.current_mode == WorkflowMode.PLAN
-
-    async def test_docs_mode_screen_has_mode_indicator(self) -> None:
-        """Test that DocsModeScreen includes the mode indicator."""
-        import tempfile
-
-        from iterm_controller.app import ItermControllerApp
-        from iterm_controller.models import Project
-        from iterm_controller.screens.modes import DocsModeScreen
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            app = ItermControllerApp()
-            async with app.run_test():
-                project = Project(id="test", name="Test", path=tmpdir)
-                app.state.projects[project.id] = project
-
-                await app.push_screen(DocsModeScreen(project))
-
-                # Should have a mode indicator widget
-                indicator = app.screen.query_one("#mode-indicator", ModeIndicatorWidget)
-                assert indicator is not None
-                assert indicator.current_mode == WorkflowMode.DOCS
-
-    async def test_work_mode_screen_has_mode_indicator(self) -> None:
-        """Test that WorkModeScreen includes the mode indicator."""
-        import tempfile
-
-        from iterm_controller.app import ItermControllerApp
-        from iterm_controller.models import Project
-        from iterm_controller.screens.modes import WorkModeScreen
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            app = ItermControllerApp()
-            async with app.run_test():
-                project = Project(id="test", name="Test", path=tmpdir)
-                app.state.projects[project.id] = project
-
-                await app.push_screen(WorkModeScreen(project))
-
-                # Should have a mode indicator widget
-                indicator = app.screen.query_one("#mode-indicator", ModeIndicatorWidget)
-                assert indicator is not None
-                assert indicator.current_mode == WorkflowMode.WORK
+    Plan, Docs, and Work mode screen tests were removed in task 27.9.3.
+    """
 
     async def test_test_mode_screen_has_mode_indicator(self) -> None:
         """Test that TestModeScreen includes the mode indicator."""
@@ -174,30 +117,3 @@ class TestModeIndicatorIntegration:
                 indicator = app.screen.query_one("#mode-indicator", ModeIndicatorWidget)
                 assert indicator is not None
                 assert indicator.current_mode == WorkflowMode.TEST
-
-    async def test_mode_indicator_changes_on_mode_switch(self) -> None:
-        """Test that mode indicator updates when switching modes."""
-        import tempfile
-
-        from iterm_controller.app import ItermControllerApp
-        from iterm_controller.models import Project
-        from iterm_controller.screens.modes import DocsModeScreen, PlanModeScreen
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            app = ItermControllerApp()
-            async with app.run_test() as pilot:
-                project = Project(id="test", name="Test", path=tmpdir)
-                app.state.projects[project.id] = project
-
-                # Start in Plan Mode
-                await app.push_screen(PlanModeScreen(project))
-                indicator = app.screen.query_one("#mode-indicator", ModeIndicatorWidget)
-                assert indicator.current_mode == WorkflowMode.PLAN
-
-                # Switch to Docs Mode (press 2)
-                await pilot.press("2")
-
-                # Should now be on Docs Mode with updated indicator
-                assert isinstance(app.screen, DocsModeScreen)
-                indicator = app.screen.query_one("#mode-indicator", ModeIndicatorWidget)
-                assert indicator.current_mode == WorkflowMode.DOCS

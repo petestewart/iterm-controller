@@ -12,15 +12,10 @@ from textual.binding import Binding
 
 from iterm_controller.api import AppAPI
 from iterm_controller.screens.mission_control import MissionControlScreen
-from iterm_controller.screens.modes import (
-    DocsModeScreen,
-    PlanModeScreen,
-    TestModeScreen,
-    WorkModeScreen,
-)
+from iterm_controller.screens.modes import TestModeScreen
 from iterm_controller.screens.new_project import NewProjectScreen
-from iterm_controller.screens.project_dashboard import ProjectDashboardScreen
 from iterm_controller.screens.project_list import ProjectListScreen
+from iterm_controller.screens.project_screen import ProjectScreen
 from iterm_controller.screens.settings import SettingsScreen
 from iterm_controller.services import ScreenFactory, ServiceContainer, screen_factory
 from iterm_controller.state import AppState
@@ -37,18 +32,16 @@ class ItermControllerApp(App):
 
     SCREENS = {
         "project_list": ProjectListScreen,
-        "project_dashboard": ProjectDashboardScreen,
+        "project_screen": ProjectScreen,
         "new_project": NewProjectScreen,
         "settings": SettingsScreen,
     }
 
-    # Mode screens require a Project argument and are accessed via ProjectDashboard
-    # using keys 1-4. They are not registered in SCREENS because they need context.
-    # Navigation: ProjectDashboard -> 1/2/3/4 -> Mode Screen -> Esc -> ProjectDashboard
+    # Mode screens require a Project argument and are accessed via ProjectScreen.
+    # Plan, Docs, and Work modes were removed in task 27.9.3 as part of the
+    # unified ProjectScreen refactor. TestModeScreen is retained for test plan
+    # management.
     MODE_SCREENS = {
-        "plan": PlanModeScreen,
-        "docs": DocsModeScreen,
-        "work": WorkModeScreen,
         "test": TestModeScreen,
     }
 

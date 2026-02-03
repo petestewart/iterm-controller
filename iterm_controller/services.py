@@ -34,10 +34,7 @@ from iterm_controller.script_service import ScriptService
 # they are imported to avoid circular dependencies elsewhere
 from iterm_controller.screens.modals.mode_command import ModeCommandModal
 from iterm_controller.screens.modals.stage_advance import StageAdvanceModal
-from iterm_controller.screens.modes.docs_mode import DocsModeScreen
-from iterm_controller.screens.modes.plan_mode import PlanModeScreen
 from iterm_controller.screens.modes.test_mode import TestModeScreen
-from iterm_controller.screens.modes.work_mode import WorkModeScreen
 
 if TYPE_CHECKING:
     from iterm_controller.models import Project, WindowLayout
@@ -178,10 +175,8 @@ class ScreenFactory:
     """
 
     # Map of workflow mode names to screen classes
+    # Plan, Docs, and Work modes were removed in task 27.9.3
     _mode_screen_map: dict[str, type[Screen]] = {
-        "plan": PlanModeScreen,
-        "docs": DocsModeScreen,
-        "work": WorkModeScreen,
         "test": TestModeScreen,
     }
 

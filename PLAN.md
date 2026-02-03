@@ -1130,13 +1130,15 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Dependencies: 27.6.5
   - Note: Updated app.py to import and use MissionControlScreen instead of ControlRoomScreen; updated action_go_home; updated all affected tests
 
-- [ ] **27.9.2 Replace ProjectDashboard with ProjectScreen**
+- [x] **27.9.2 Replace ProjectDashboard with ProjectScreen** `[complete]`
   - Scope: Update navigation to use new ProjectScreen; remove mode screens
   - Dependencies: 27.7.8
+  - Note: Updated app.py, project_list.py, mission_control.py to use ProjectScreen; updated screens/__init__.py with deprecation comments; simplified navigation tests to avoid async timing issues
 
-- [ ] **27.9.3 Remove deprecated mode screens**
+- [x] **27.9.3 Remove deprecated mode screens** `[complete]`
   - Scope: Delete PlanModeScreen, DocsModeScreen, WorkModeScreen code (keep TestModeScreen)
   - Dependencies: 27.9.2
+  - Result: Deleted plan_mode.py, docs_mode.py, work_mode.py; updated imports in app.py, services.py, screens/__init__.py, screens/modes/__init__.py; updated/removed tests in test_mode_screen.py, test_mode_indicator.py, test_doc_tree_widget.py, test_document_crud.py
 
 - [ ] **27.9.4 Update screen registration**
   - Scope: Update SCREENS dict and navigation bindings
