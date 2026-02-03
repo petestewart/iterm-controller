@@ -642,3 +642,413 @@ class TestGitServiceCacheManagement:
 
             service._invalidate_cache(tmp_path)
             assert cache_key not in service._status_cache
+
+
+class TestGitServiceLastCommit:
+    """Tests for last commit info in status."""
+
+    @pytest.fixture
+    def service(self) -> GitService:
+        """Create a GitService instance."""
+        return GitService()
+
+    @pytest.mark.asyncio
+    async def test_get_status_includes_last_commit(
+        self, service: GitService, tmp_path: Path
+    ):
+        """Test that get_status includes last commit info."""
+        porcelain_output = "# branch.head main\n# branch.ab +0 -0\n"
+        log_output = "abc123def456789|Fix important bug\n"
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.side_effect = [porcelain_output, log_output]
+
+            status = await service.get_status(tmp_path)
+
+            assert status.last_commit_sha == "abc123def456789"
+            assert status.last_commit_message == "Fix important bug"
+
+    @pytest.mark.asyncio
+    async def test_get_status_handles_no_commits(
+        self, service: GitService, tmp_path: Path
+    ):
+        """Test that get_status handles empty repos with no commits."""
+        porcelain_output = "# branch.head main\n"
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            # First call is status, second is log which fails for empty repo
+            mock_run.side_effect = [
+                porcelain_output,
+                GitCommandError("fatal: your current branch 'main' does not have any commits yet"),
+            ]
+
+            status = await service.get_status(tmp_path)
+
+            assert status.branch == "main"
+            assert status.last_commit_sha is None
+            assert status.last_commit_message is None
+
+    @pytest.mark.asyncio
+    async def test_get_status_sets_fetched_at(
+        self, service: GitService, tmp_path: Path
+    ):
+        """Test that get_status sets fetched_at timestamp."""
+        porcelain_output = "# branch.head main\n# branch.ab +0 -0\n"
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            status = await service.get_status(tmp_path)
+
+            assert status.fetched_at is not None
+            # Fetched time should be recent (within last second)
+            assert (datetime.now() - status.fetched_at).total_seconds() < 1
+
+
+class TestGitServiceNetworkErrors:
+    """Tests for network error handling."""
+
+    @pytest.fixture
+    def service(self) -> GitService:
+        """Create a GitService instance."""
+        return GitService()
+
+    @pytest.mark.asyncio
+    async def test_fetch_network_error_could_not_resolve(
+        self, service: GitService, tmp_path: Path
+    ):
+        """Test handling 'could not resolve' network errors during fetch."""
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.side_effect = GitCommandError(
+                "fatal: Could not resolve host: github.com"
+            )
+
+            with pytest.raises(GitNetworkError):
+                await service.fetch(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_push_network_error(self, service: GitService, tmp_path: Path):
+        """Test handling network errors during push."""
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.side_effect = GitCommandError(
+                "fatal: unable to access 'https://github.com/repo.git/': "
+                "Could not resolve host: github.com"
+            )
+
+            with pytest.raises(GitNetworkError):
+                await service.push(tmp_path)
+
+    @pytest.mark.asyncio
+    async def test_pull_could_not_resolve_error(
+        self, service: GitService, tmp_path: Path
+    ):
+        """Test handling 'could not resolve' errors during pull."""
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.side_effect = GitCommandError(
+                "fatal: Could not resolve host: github.com"
+            )
+
+            with pytest.raises(GitNetworkError):
+                await service.pull(tmp_path)
+
+
+class TestGitServicePushBranch:
+    """Tests for push with specific branch."""
+
+    @pytest.fixture
+    def service(self) -> GitService:
+        """Create a GitService instance."""
+        return GitService()
+
+    @pytest.mark.asyncio
+    async def test_push_specific_branch(self, service: GitService, tmp_path: Path):
+        """Test pushing a specific branch."""
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = ""
+
+            await service.push(tmp_path, branch="feature-branch")
+
+            args = mock_run.call_args[0]
+            assert "push" in args
+            assert "origin" in args
+            assert "feature-branch" in args
+
+    @pytest.mark.asyncio
+    async def test_push_custom_remote(self, service: GitService, tmp_path: Path):
+        """Test pushing to a custom remote."""
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = ""
+
+            await service.push(tmp_path, remote="upstream")
+
+            args = mock_run.call_args[0]
+            assert "push" in args
+            assert "upstream" in args
+
+    @pytest.mark.asyncio
+    async def test_pull_specific_branch(self, service: GitService, tmp_path: Path):
+        """Test pulling a specific branch."""
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = ""
+
+            await service.pull(tmp_path, branch="main")
+
+            args = mock_run.call_args[0]
+            assert "pull" in args
+            assert "origin" in args
+            assert "main" in args
+
+    @pytest.mark.asyncio
+    async def test_pull_invalidates_cache(self, service: GitService, tmp_path: Path):
+        """Test that pull invalidates status cache."""
+        porcelain_output = "# branch.head main\n# branch.ab +0 -0\n"
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            # Populate cache
+            await service.get_status(tmp_path)
+            assert len(service._status_cache) == 1
+
+            # Pull
+            mock_run.return_value = ""
+            await service.pull(tmp_path)
+
+            # Cache should be invalidated
+            cache_key = str(tmp_path.resolve())
+            assert cache_key not in service._status_cache
+
+
+class TestGitServiceStashWithoutMessage:
+    """Tests for stash without message."""
+
+    @pytest.fixture
+    def service(self) -> GitService:
+        """Create a GitService instance."""
+        return GitService()
+
+    @pytest.mark.asyncio
+    async def test_stash_without_message(self, service: GitService, tmp_path: Path):
+        """Test stashing without a message."""
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = ""
+
+            await service.stash(tmp_path)
+
+            args = mock_run.call_args[0]
+            assert "stash" in args
+            assert "push" in args
+            assert "-m" not in args
+
+    @pytest.mark.asyncio
+    async def test_stash_invalidates_cache(self, service: GitService, tmp_path: Path):
+        """Test that stash invalidates status cache."""
+        porcelain_output = "# branch.head main\n# branch.ab +0 -0\n"
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            # Populate cache
+            await service.get_status(tmp_path)
+            cache_key = str(tmp_path.resolve())
+            assert cache_key in service._status_cache
+
+            # Stash
+            mock_run.return_value = ""
+            await service.stash(tmp_path)
+
+            # Cache should be invalidated
+            assert cache_key not in service._status_cache
+
+    @pytest.mark.asyncio
+    async def test_stash_pop_invalidates_cache(
+        self, service: GitService, tmp_path: Path
+    ):
+        """Test that stash pop invalidates status cache."""
+        porcelain_output = "# branch.head main\n# branch.ab +0 -0\n"
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            # Populate cache
+            await service.get_status(tmp_path)
+            cache_key = str(tmp_path.resolve())
+            assert cache_key in service._status_cache
+
+            # Stash pop
+            mock_run.return_value = ""
+            await service.stash_pop(tmp_path)
+
+            # Cache should be invalidated
+            assert cache_key not in service._status_cache
+
+
+class TestGitServiceStatusEdgeCases:
+    """Tests for edge cases in status parsing."""
+
+    @pytest.fixture
+    def service(self) -> GitService:
+        """Create a GitService instance."""
+        return GitService()
+
+    @pytest.mark.asyncio
+    async def test_get_status_empty_output(self, service: GitService, tmp_path: Path):
+        """Test parsing empty status output (clean repo)."""
+        porcelain_output = "# branch.head main\n# branch.ab +0 -0\n"
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            status = await service.get_status(tmp_path)
+
+            assert status.branch == "main"
+            assert status.staged is None
+            assert status.unstaged is None
+            assert status.untracked is None
+            assert status.has_conflicts is False
+
+    @pytest.mark.asyncio
+    async def test_get_status_detached_head(self, service: GitService, tmp_path: Path):
+        """Test parsing status for detached HEAD."""
+        porcelain_output = "# branch.head (detached)\n"
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            status = await service.get_status(tmp_path)
+
+            assert status.branch == "(detached)"
+
+    @pytest.mark.asyncio
+    async def test_get_status_added_file(self, service: GitService, tmp_path: Path):
+        """Test parsing added file."""
+        porcelain_output = """# branch.head main
+# branch.ab +0 -0
+1 A. N... 000000 100644 100644 0000000 abc1234 new_file.py
+"""
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            status = await service.get_status(tmp_path)
+
+            assert status.staged is not None
+            assert len(status.staged) == 1
+            assert status.staged[0].status == "A"
+            assert status.staged[0].path == "new_file.py"
+
+    @pytest.mark.asyncio
+    async def test_get_status_deleted_file(self, service: GitService, tmp_path: Path):
+        """Test parsing deleted file."""
+        porcelain_output = """# branch.head main
+# branch.ab +0 -0
+1 D. N... 100644 000000 000000 abc1234 0000000 deleted_file.py
+"""
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            status = await service.get_status(tmp_path)
+
+            assert status.staged is not None
+            assert len(status.staged) == 1
+            assert status.staged[0].status == "D"
+            assert status.staged[0].path == "deleted_file.py"
+
+    @pytest.mark.asyncio
+    async def test_get_status_rename_entry(self, service: GitService, tmp_path: Path):
+        """Test parsing renamed file (type 2 entry)."""
+        # Type 2 entries are for renames/copies
+        porcelain_output = """# branch.head main
+# branch.ab +0 -0
+2 R. N... 100644 100644 100644 abc1234 def5678 R100 new_name.py	old_name.py
+"""
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            status = await service.get_status(tmp_path)
+
+            assert status.staged is not None
+            assert len(status.staged) == 1
+            assert status.staged[0].status == "R"
+
+    @pytest.mark.asyncio
+    async def test_get_status_multiple_conflict_types(
+        self, service: GitService, tmp_path: Path
+    ):
+        """Test detecting various conflict states."""
+        # AU = Added by us, unmerged
+        porcelain_output = """# branch.head main
+# branch.ab +0 -0
+1 AU N... 100644 100644 100644 abc1234 def5678 conflict.py
+"""
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            status = await service.get_status(tmp_path)
+
+            assert status.has_conflicts is True
+
+
+class TestGitServiceUnstageInvalidatesCache:
+    """Tests for unstage cache invalidation."""
+
+    @pytest.fixture
+    def service(self) -> GitService:
+        """Create a GitService instance."""
+        return GitService()
+
+    @pytest.mark.asyncio
+    async def test_unstage_invalidates_cache(
+        self, service: GitService, tmp_path: Path
+    ):
+        """Test that unstaging invalidates status cache."""
+        porcelain_output = "# branch.head main\n# branch.ab +0 -0\n"
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            # Populate cache
+            await service.get_status(tmp_path)
+            cache_key = str(tmp_path.resolve())
+            assert cache_key in service._status_cache
+
+            # Unstage files
+            mock_run.return_value = ""
+            await service.unstage_files(tmp_path, ["file.py"])
+
+            # Cache should be invalidated
+            assert cache_key not in service._status_cache
+
+
+class TestGitServiceCommitInvalidatesCache:
+    """Tests for commit cache invalidation."""
+
+    @pytest.fixture
+    def service(self) -> GitService:
+        """Create a GitService instance."""
+        return GitService()
+
+    @pytest.mark.asyncio
+    async def test_commit_invalidates_cache(
+        self, service: GitService, tmp_path: Path
+    ):
+        """Test that committing invalidates status cache."""
+        porcelain_output = "# branch.head main\n# branch.ab +0 -0\n"
+
+        with patch.object(service, "_run_git", new_callable=AsyncMock) as mock_run:
+            mock_run.return_value = porcelain_output
+
+            # Populate cache
+            await service.get_status(tmp_path)
+            cache_key = str(tmp_path.resolve())
+            assert cache_key in service._status_cache
+
+            # Commit
+            mock_run.side_effect = ["", "abc123\n"]  # commit + rev-parse
+            await service.commit(tmp_path, "Test commit")
+
+            # Cache should be invalidated
+            assert cache_key not in service._status_cache

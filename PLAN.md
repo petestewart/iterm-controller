@@ -1147,9 +1147,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### 27.10 Testing & Polish
 
-- [ ] **27.10.1 Add unit tests for GitService**
+- [x] **27.10.1 Add unit tests for GitService** `[complete]`
   - Scope: Test status parsing, caching, error handling
   - Dependencies: 27.2.1
+  - Result: Expanded test suite from 39 to 60 tests covering last commit info, network errors, branch/remote operations, cache invalidation, and status parsing edge cases
 
 - [ ] **27.10.2 Add unit tests for ReviewService**
   - Scope: Test context building, result handling, notification triggers
