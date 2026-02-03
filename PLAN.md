@@ -1182,7 +1182,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 ## Open Questions
 
 - [~] **Multi-window support**: Should projects span multiple iTerm2 windows? Current design assumes single window per project.
-- [ ] **Review parser strategy**: Should the parser be a separate slash command or built into the app?
+- [x] **Review parser strategy**: Uses separate slash command (`/review-task`) with a `/parse-review` subagent for structured output extraction. Implemented in 27.2.3.
 
 ---
 *Generated from PRD.md and specs/README.md on 2026-01-31*
