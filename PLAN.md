@@ -1069,7 +1069,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/ui.md
   - Dependencies: 27.1.5
 
-- [ ] **27.7.3 Create DocsSection widget**
+- [x] **27.7.3 Create DocsSection widget** `[complete]`
   - Scope: Create collapsible section showing documentation files
   - Spec: specs/ui.md
 
