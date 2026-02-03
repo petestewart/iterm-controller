@@ -12,6 +12,7 @@ from iterm_controller.models import (
     ReviewConfig,
     ReviewContextConfig,
     ReviewResult,
+    SessionType,
     Task,
     TaskReview,
     TaskStatus,
@@ -846,3 +847,1011 @@ class TestReviewStateManager:
 
         manager.clear()
         assert len(manager.active_reviews) == 0
+
+
+class TestReviewServiceRunReview:
+    """Tests for ReviewService.run_review method."""
+
+    @pytest.fixture
+    def mock_spawner(self) -> MagicMock:
+        """Create a mock SessionSpawner."""
+        spawner = MagicMock()
+        spawner.controller = MagicMock()
+        spawner.controller.app = MagicMock()
+        spawner.controller.app.windows = []
+        spawner.get_session = MagicMock(return_value=None)
+        spawner.get_sessions_for_project = MagicMock(return_value=[])
+        spawner.spawn_session = AsyncMock(
+            return_value=MagicMock(success=True, session_id="session-1")
+        )
+        return spawner
+
+    @pytest.fixture
+    def mock_git_service(self) -> MagicMock:
+        """Create a mock GitService."""
+        git = MagicMock()
+        git.get_diff = AsyncMock(return_value="diff --git a/file.py\n+new line")
+        return git
+
+    @pytest.fixture
+    def mock_plan_manager(self) -> MagicMock:
+        """Create a mock PlanStateManager."""
+        manager = MagicMock()
+        manager.update_task_status = MagicMock()
+        return manager
+
+    @pytest.fixture
+    def mock_notifier(self) -> MagicMock:
+        """Create a mock Notifier."""
+        notifier = MagicMock()
+        notifier.notify = AsyncMock(return_value=True)
+        return notifier
+
+    @pytest.fixture
+    def service(
+        self,
+        mock_spawner: MagicMock,
+        mock_git_service: MagicMock,
+        mock_plan_manager: MagicMock,
+        mock_notifier: MagicMock,
+    ) -> ReviewService:
+        """Create a ReviewService instance."""
+        return ReviewService(
+            session_spawner=mock_spawner,
+            git_service=mock_git_service,
+            plan_manager=mock_plan_manager,
+            notifier=mock_notifier,
+        )
+
+    @pytest.fixture
+    def project(self) -> Project:
+        """Create a test project."""
+        return Project(
+            id="test-project",
+            name="Test Project",
+            path="/test/path",
+            review_config=ReviewConfig(
+                enabled=True,
+                command="/review-task",
+                max_revisions=3,
+            ),
+            git_config=GitConfig(default_branch="main"),
+        )
+
+    @pytest.fixture
+    def task(self) -> Task:
+        """Create a test task."""
+        return Task(
+            id="1.1",
+            title="Implement feature X",
+            status=TaskStatus.AWAITING_REVIEW,
+            scope="Add the feature X to the system",
+            acceptance="Feature X works correctly",
+            revision_count=0,
+        )
+
+    @pytest.fixture
+    def context(self) -> ReviewContext:
+        """Create a test review context."""
+        return ReviewContext(
+            task_id="1.1",
+            task_definition="# Task 1.1: Implement feature X",
+            git_diff="diff --git a/file.py\n+new line",
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_review_creates_pending_review(
+        self,
+        service: ReviewService,
+        project: Project,
+        task: Task,
+        context: ReviewContext,
+    ):
+        """Test that run_review creates a pending review initially."""
+        # The review should be tracked during execution
+        review = await service.run_review(project, task, context)
+
+        assert review.task_id == task.id
+        assert review.attempt == 1
+        assert review.reviewer_command == "/review-task"
+
+    @pytest.mark.asyncio
+    async def test_run_review_returns_parsed_result(
+        self,
+        service: ReviewService,
+        project: Project,
+        task: Task,
+        context: ReviewContext,
+    ):
+        """Test that run_review returns a TaskReview with parsed results."""
+        review = await service.run_review(project, task, context)
+
+        assert review is not None
+        assert isinstance(review.result, ReviewResult)
+        assert review.reviewed_at is not None
+
+    @pytest.mark.asyncio
+    async def test_run_review_cleans_up_active_reviews(
+        self,
+        service: ReviewService,
+        project: Project,
+        task: Task,
+        context: ReviewContext,
+    ):
+        """Test that run_review removes active review on completion."""
+        await service.run_review(project, task, context)
+
+        # Should be cleaned up after completion
+        assert task.id not in service._active_reviews
+
+    @pytest.mark.asyncio
+    async def test_run_review_handles_spawn_failure(
+        self,
+        service: ReviewService,
+        mock_spawner: MagicMock,
+        project: Project,
+        task: Task,
+        context: ReviewContext,
+    ):
+        """Test that run_review handles session spawn failure."""
+        mock_spawner.spawn_session = AsyncMock(
+            return_value=MagicMock(success=False, error="Connection failed")
+        )
+
+        with pytest.raises(ReviewError):
+            await service.run_review(project, task, context)
+
+        # Should clean up even on failure
+        assert task.id not in service._active_reviews
+
+    @pytest.mark.asyncio
+    async def test_run_review_increments_attempt(
+        self,
+        service: ReviewService,
+        project: Project,
+        context: ReviewContext,
+    ):
+        """Test that run_review uses correct attempt number."""
+        task = Task(
+            id="1.1",
+            title="Implement feature X",
+            status=TaskStatus.AWAITING_REVIEW,
+            revision_count=2,  # Already revised twice
+        )
+
+        review = await service.run_review(project, task, context)
+
+        assert review.attempt == 3  # revision_count + 1
+
+    @pytest.mark.asyncio
+    async def test_run_review_uses_project_config(
+        self,
+        service: ReviewService,
+        task: Task,
+        context: ReviewContext,
+    ):
+        """Test that run_review uses project's review config."""
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/test/path",
+            review_config=ReviewConfig(
+                enabled=True,
+                command="/custom-review",
+                model="claude-opus",
+            ),
+        )
+
+        review = await service.run_review(project, task, context)
+
+        assert review.reviewer_command == "/custom-review"
+
+    @pytest.mark.asyncio
+    async def test_run_review_uses_default_config_when_none(
+        self,
+        service: ReviewService,
+        task: Task,
+        context: ReviewContext,
+    ):
+        """Test that run_review uses default config when project has none."""
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path="/test/path",
+            review_config=None,
+        )
+
+        review = await service.run_review(project, task, context)
+
+        # Should use default command
+        assert review.reviewer_command == "/review-task"
+
+
+class TestReviewServiceRunTests:
+    """Tests for ReviewService._run_tests method."""
+
+    @pytest.fixture
+    def mock_spawner(self) -> MagicMock:
+        """Create a mock SessionSpawner."""
+        spawner = MagicMock()
+        spawner.controller = MagicMock()
+        spawner.get_sessions_for_project = MagicMock(return_value=[])
+        return spawner
+
+    @pytest.fixture
+    def mock_git_service(self) -> MagicMock:
+        """Create a mock GitService."""
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_plan_manager(self) -> MagicMock:
+        """Create a mock PlanStateManager."""
+        return MagicMock()
+
+    @pytest.fixture
+    def service(
+        self,
+        mock_spawner: MagicMock,
+        mock_git_service: MagicMock,
+        mock_plan_manager: MagicMock,
+    ) -> ReviewService:
+        """Create a ReviewService instance."""
+        return ReviewService(
+            session_spawner=mock_spawner,
+            git_service=mock_git_service,
+            plan_manager=mock_plan_manager,
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_tests_no_test_files(
+        self, service: ReviewService, tmp_path: Path
+    ):
+        """Test _run_tests returns None when no test config exists."""
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path=str(tmp_path),
+        )
+
+        result = await service._run_tests(project)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_run_tests_detects_pytest(
+        self, service: ReviewService, tmp_path: Path
+    ):
+        """Test _run_tests detects pytest.ini."""
+        (tmp_path / "pytest.ini").write_text("[pytest]\n")
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path=str(tmp_path),
+        )
+
+        # Mock the subprocess to avoid actually running pytest
+        with patch("asyncio.create_subprocess_shell") as mock_proc:
+            mock_process = MagicMock()
+            mock_process.communicate = AsyncMock(
+                return_value=(b"Tests passed!", None)
+            )
+            mock_proc.return_value = mock_process
+
+            result = await service._run_tests(project)
+
+            assert result == "Tests passed!"
+            mock_proc.assert_called()
+
+    @pytest.mark.asyncio
+    async def test_run_tests_detects_package_json(
+        self, service: ReviewService, tmp_path: Path
+    ):
+        """Test _run_tests detects package.json for npm test."""
+        (tmp_path / "package.json").write_text("{}")
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path=str(tmp_path),
+        )
+
+        with patch("asyncio.create_subprocess_shell") as mock_proc:
+            mock_process = MagicMock()
+            mock_process.communicate = AsyncMock(return_value=(b"npm tests ok", None))
+            mock_proc.return_value = mock_process
+
+            result = await service._run_tests(project)
+
+            assert "npm tests ok" in result
+
+    @pytest.mark.asyncio
+    async def test_run_tests_handles_timeout(
+        self, service: ReviewService, tmp_path: Path
+    ):
+        """Test _run_tests handles test timeout."""
+        (tmp_path / "pytest.ini").write_text("[pytest]\n")
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path=str(tmp_path),
+        )
+
+        import asyncio
+
+        with patch("asyncio.create_subprocess_shell") as mock_proc:
+            mock_process = MagicMock()
+            mock_process.communicate = AsyncMock(
+                side_effect=asyncio.TimeoutError()
+            )
+            mock_proc.return_value = mock_process
+
+            result = await service._run_tests(project)
+
+            assert "[Test timeout" in result
+
+    @pytest.mark.asyncio
+    async def test_run_tests_handles_command_failure(
+        self, service: ReviewService, tmp_path: Path
+    ):
+        """Test _run_tests handles command failures gracefully."""
+        (tmp_path / "pytest.ini").write_text("[pytest]\n")
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path=str(tmp_path),
+        )
+
+        with patch("asyncio.create_subprocess_shell") as mock_proc:
+            mock_proc.side_effect = Exception("Command not found")
+
+            result = await service._run_tests(project)
+
+            # Should return None when all commands fail
+            assert result is None
+
+
+class TestReviewServiceRunLint:
+    """Tests for ReviewService._run_lint method."""
+
+    @pytest.fixture
+    def mock_spawner(self) -> MagicMock:
+        """Create a mock SessionSpawner."""
+        spawner = MagicMock()
+        spawner.controller = MagicMock()
+        spawner.get_sessions_for_project = MagicMock(return_value=[])
+        return spawner
+
+    @pytest.fixture
+    def mock_git_service(self) -> MagicMock:
+        """Create a mock GitService."""
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_plan_manager(self) -> MagicMock:
+        """Create a mock PlanStateManager."""
+        return MagicMock()
+
+    @pytest.fixture
+    def service(
+        self,
+        mock_spawner: MagicMock,
+        mock_git_service: MagicMock,
+        mock_plan_manager: MagicMock,
+    ) -> ReviewService:
+        """Create a ReviewService instance."""
+        return ReviewService(
+            session_spawner=mock_spawner,
+            git_service=mock_git_service,
+            plan_manager=mock_plan_manager,
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_lint_no_lint_config(
+        self, service: ReviewService, tmp_path: Path
+    ):
+        """Test _run_lint returns None when no lint config exists."""
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path=str(tmp_path),
+        )
+
+        result = await service._run_lint(project)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_run_lint_detects_pyproject(
+        self, service: ReviewService, tmp_path: Path
+    ):
+        """Test _run_lint detects pyproject.toml for ruff."""
+        (tmp_path / "pyproject.toml").write_text("[tool.ruff]\n")
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path=str(tmp_path),
+        )
+
+        with patch("asyncio.create_subprocess_shell") as mock_proc:
+            mock_process = MagicMock()
+            mock_process.communicate = AsyncMock(
+                return_value=(b"All checks passed", None)
+            )
+            mock_proc.return_value = mock_process
+
+            result = await service._run_lint(project)
+
+            assert result == "All checks passed"
+
+    @pytest.mark.asyncio
+    async def test_run_lint_handles_timeout(
+        self, service: ReviewService, tmp_path: Path
+    ):
+        """Test _run_lint handles lint timeout."""
+        (tmp_path / "pyproject.toml").write_text("[tool.ruff]\n")
+        project = Project(
+            id="test-project",
+            name="Test Project",
+            path=str(tmp_path),
+        )
+
+        import asyncio
+
+        with patch("asyncio.create_subprocess_shell") as mock_proc:
+            mock_process = MagicMock()
+            mock_process.communicate = AsyncMock(
+                side_effect=asyncio.TimeoutError()
+            )
+            mock_proc.return_value = mock_process
+
+            result = await service._run_lint(project)
+
+            assert "[Lint timeout" in result
+
+
+class TestReviewServiceGetProjectWindow:
+    """Tests for ReviewService._get_project_window method."""
+
+    @pytest.fixture
+    def mock_spawner(self) -> MagicMock:
+        """Create a mock SessionSpawner."""
+        spawner = MagicMock()
+        spawner.controller = MagicMock()
+        spawner.controller.app = MagicMock()
+        spawner.controller.app.windows = []
+        spawner.get_sessions_for_project = MagicMock(return_value=[])
+        return spawner
+
+    @pytest.fixture
+    def mock_git_service(self) -> MagicMock:
+        """Create a mock GitService."""
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_plan_manager(self) -> MagicMock:
+        """Create a mock PlanStateManager."""
+        return MagicMock()
+
+    @pytest.fixture
+    def service(
+        self,
+        mock_spawner: MagicMock,
+        mock_git_service: MagicMock,
+        mock_plan_manager: MagicMock,
+    ) -> ReviewService:
+        """Create a ReviewService instance."""
+        return ReviewService(
+            session_spawner=mock_spawner,
+            git_service=mock_git_service,
+            plan_manager=mock_plan_manager,
+        )
+
+    @pytest.fixture
+    def project(self) -> Project:
+        """Create a test project."""
+        return Project(
+            id="test-project",
+            name="Test Project",
+            path="/test/path",
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_project_window_no_sessions(
+        self,
+        service: ReviewService,
+        mock_spawner: MagicMock,
+        project: Project,
+    ):
+        """Test _get_project_window returns None when no sessions exist."""
+        mock_spawner.get_sessions_for_project.return_value = []
+
+        result = await service._get_project_window(project)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_project_window_session_without_window_id(
+        self,
+        service: ReviewService,
+        mock_spawner: MagicMock,
+        project: Project,
+    ):
+        """Test _get_project_window handles sessions without window_id."""
+        session = MagicMock()
+        session.window_id = None
+        mock_spawner.get_sessions_for_project.return_value = [session]
+
+        result = await service._get_project_window(project)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_project_window_finds_window(
+        self,
+        service: ReviewService,
+        mock_spawner: MagicMock,
+        project: Project,
+    ):
+        """Test _get_project_window finds matching window."""
+        session = MagicMock()
+        session.window_id = "window-1"
+
+        mock_window = MagicMock()
+        mock_window.window_id = "window-1"
+
+        mock_spawner.get_sessions_for_project.return_value = [session]
+        mock_spawner.controller.app.windows = [mock_window]
+
+        result = await service._get_project_window(project)
+
+        assert result is mock_window
+
+    @pytest.mark.asyncio
+    async def test_get_project_window_no_matching_window(
+        self,
+        service: ReviewService,
+        mock_spawner: MagicMock,
+        project: Project,
+    ):
+        """Test _get_project_window returns None when window not found."""
+        session = MagicMock()
+        session.window_id = "window-1"
+
+        mock_window = MagicMock()
+        mock_window.window_id = "window-2"  # Different ID
+
+        mock_spawner.get_sessions_for_project.return_value = [session]
+        mock_spawner.controller.app.windows = [mock_window]
+
+        result = await service._get_project_window(project)
+
+        assert result is None
+
+
+class TestReviewServiceNotificationTriggers:
+    """Tests for notification triggers in ReviewService."""
+
+    @pytest.fixture
+    def mock_spawner(self) -> MagicMock:
+        """Create a mock SessionSpawner."""
+        spawner = MagicMock()
+        spawner.controller = MagicMock()
+        spawner.controller.app = MagicMock()
+        spawner.controller.app.windows = []
+        spawner.get_session = MagicMock(return_value=None)
+        spawner.get_sessions_for_project = MagicMock(return_value=[])
+        return spawner
+
+    @pytest.fixture
+    def mock_git_service(self) -> MagicMock:
+        """Create a mock GitService."""
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_plan_manager(self) -> MagicMock:
+        """Create a mock PlanStateManager."""
+        manager = MagicMock()
+        manager.update_task_status = MagicMock()
+        return manager
+
+    @pytest.fixture
+    def mock_notifier(self) -> MagicMock:
+        """Create a mock Notifier."""
+        notifier = MagicMock()
+        notifier.notify = AsyncMock(return_value=True)
+        return notifier
+
+    @pytest.fixture
+    def service(
+        self,
+        mock_spawner: MagicMock,
+        mock_git_service: MagicMock,
+        mock_plan_manager: MagicMock,
+        mock_notifier: MagicMock,
+    ) -> ReviewService:
+        """Create a ReviewService instance."""
+        return ReviewService(
+            session_spawner=mock_spawner,
+            git_service=mock_git_service,
+            plan_manager=mock_plan_manager,
+            notifier=mock_notifier,
+        )
+
+    @pytest.fixture
+    def project(self) -> Project:
+        """Create a test project."""
+        return Project(
+            id="test-project",
+            name="Test Project",
+            path="/test/path",
+        )
+
+    @pytest.fixture
+    def task(self) -> Task:
+        """Create a test task."""
+        return Task(
+            id="1.1",
+            title="Implement feature X",
+            status=TaskStatus.AWAITING_REVIEW,
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_notification_on_approval(
+        self,
+        service: ReviewService,
+        mock_notifier: MagicMock,
+        project: Project,
+        task: Task,
+    ):
+        """Test that approval doesn't trigger notification."""
+        review = TaskReview(
+            id="rev-1",
+            task_id=task.id,
+            attempt=1,
+            result=ReviewResult.APPROVED,
+            issues=[],
+            summary="LGTM",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        config = ReviewConfig(max_revisions=3)
+
+        await service._handle_review_result(project, task, review, config)
+
+        mock_notifier.notify.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_notification_on_max_revisions(
+        self,
+        service: ReviewService,
+        mock_notifier: MagicMock,
+        project: Project,
+        task: Task,
+    ):
+        """Test notification when max revisions reached."""
+        review = TaskReview(
+            id="rev-1",
+            task_id=task.id,
+            attempt=3,
+            result=ReviewResult.NEEDS_REVISION,
+            issues=["Still failing"],
+            summary="Failed again",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        config = ReviewConfig(max_revisions=3)
+
+        await service._handle_review_result(project, task, review, config)
+
+        mock_notifier.notify.assert_called_once()
+        call_kwargs = mock_notifier.notify.call_args.kwargs
+        assert "Failed" in call_kwargs["title"]
+        assert "3 attempts" in call_kwargs["message"]
+        assert call_kwargs["sound"] == "Basso"
+
+    @pytest.mark.asyncio
+    async def test_notification_on_rejection(
+        self,
+        service: ReviewService,
+        mock_notifier: MagicMock,
+        project: Project,
+        task: Task,
+    ):
+        """Test notification when review is rejected."""
+        review = TaskReview(
+            id="rev-1",
+            task_id=task.id,
+            attempt=1,
+            result=ReviewResult.REJECTED,
+            issues=["Security vulnerability"],
+            summary="Critical security flaw detected",
+            blocking=True,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        config = ReviewConfig(max_revisions=3)
+
+        await service._handle_review_result(project, task, review, config)
+
+        mock_notifier.notify.assert_called_once()
+        call_kwargs = mock_notifier.notify.call_args.kwargs
+        assert "Rejected" in call_kwargs["title"]
+        assert "Blocking issue" in call_kwargs["message"]
+
+    @pytest.mark.asyncio
+    async def test_no_notification_without_notifier(
+        self,
+        mock_spawner: MagicMock,
+        mock_git_service: MagicMock,
+        mock_plan_manager: MagicMock,
+        project: Project,
+        task: Task,
+    ):
+        """Test no crash when notifier is None."""
+        service = ReviewService(
+            session_spawner=mock_spawner,
+            git_service=mock_git_service,
+            plan_manager=mock_plan_manager,
+            notifier=None,
+        )
+
+        review = TaskReview(
+            id="rev-1",
+            task_id=task.id,
+            attempt=3,
+            result=ReviewResult.NEEDS_REVISION,
+            issues=["Still failing"],
+            summary="Failed",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        config = ReviewConfig(max_revisions=3)
+
+        # Should not raise
+        await service._handle_review_result(project, task, review, config)
+
+    @pytest.mark.asyncio
+    async def test_notification_truncates_long_title(
+        self,
+        service: ReviewService,
+        mock_notifier: MagicMock,
+        project: Project,
+    ):
+        """Test that notification title is truncated for long task titles."""
+        task = Task(
+            id="1.1",
+            title="A" * 100,  # Very long title
+            status=TaskStatus.AWAITING_REVIEW,
+        )
+        review = TaskReview(
+            id="rev-1",
+            task_id=task.id,
+            attempt=1,
+            result=ReviewResult.REJECTED,
+            issues=[],
+            summary="Rejected",
+            blocking=True,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        config = ReviewConfig(max_revisions=3)
+
+        await service._handle_review_result(project, task, review, config)
+
+        call_kwargs = mock_notifier.notify.call_args.kwargs
+        # Title should be truncated to ~30 chars for task name
+        assert len(call_kwargs["title"]) < 50
+
+    @pytest.mark.asyncio
+    async def test_notification_truncates_long_summary(
+        self,
+        service: ReviewService,
+        mock_notifier: MagicMock,
+        project: Project,
+        task: Task,
+    ):
+        """Test that notification message truncates long summaries."""
+        review = TaskReview(
+            id="rev-1",
+            task_id=task.id,
+            attempt=1,
+            result=ReviewResult.REJECTED,
+            issues=[],
+            summary="B" * 200,  # Very long summary
+            blocking=True,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        config = ReviewConfig(max_revisions=3)
+
+        await service._handle_review_result(project, task, review, config)
+
+        call_kwargs = mock_notifier.notify.call_args.kwargs
+        # Message should be truncated to ~100 chars for summary
+        assert len(call_kwargs["message"]) < 120
+
+
+class TestReviewServiceRunReviewCommand:
+    """Tests for ReviewService._run_review_command method."""
+
+    @pytest.fixture
+    def mock_spawner(self) -> MagicMock:
+        """Create a mock SessionSpawner."""
+        spawner = MagicMock()
+        spawner.controller = MagicMock()
+        spawner.controller.app = MagicMock()
+        spawner.controller.app.windows = []
+        spawner.get_session = MagicMock(return_value=MagicMock())
+        spawner.get_sessions_for_project = MagicMock(return_value=[])
+        spawner.spawn_session = AsyncMock(
+            return_value=MagicMock(success=True, session_id="session-1")
+        )
+        return spawner
+
+    @pytest.fixture
+    def mock_git_service(self) -> MagicMock:
+        """Create a mock GitService."""
+        return MagicMock()
+
+    @pytest.fixture
+    def mock_plan_manager(self) -> MagicMock:
+        """Create a mock PlanStateManager."""
+        return MagicMock()
+
+    @pytest.fixture
+    def service(
+        self,
+        mock_spawner: MagicMock,
+        mock_git_service: MagicMock,
+        mock_plan_manager: MagicMock,
+    ) -> ReviewService:
+        """Create a ReviewService instance."""
+        return ReviewService(
+            session_spawner=mock_spawner,
+            git_service=mock_git_service,
+            plan_manager=mock_plan_manager,
+        )
+
+    @pytest.fixture
+    def project(self) -> Project:
+        """Create a test project."""
+        return Project(
+            id="test-project",
+            name="Test Project",
+            path="/test/path",
+        )
+
+    @pytest.fixture
+    def task(self) -> Task:
+        """Create a test task."""
+        return Task(
+            id="1.1",
+            title="Implement feature X",
+            status=TaskStatus.AWAITING_REVIEW,
+        )
+
+    @pytest.fixture
+    def context(self) -> ReviewContext:
+        """Create a test review context."""
+        return ReviewContext(
+            task_id="1.1",
+            task_definition="# Task 1.1",
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_review_command_spawns_session(
+        self,
+        service: ReviewService,
+        mock_spawner: MagicMock,
+        project: Project,
+        task: Task,
+        context: ReviewContext,
+    ):
+        """Test that _run_review_command spawns a session."""
+        await service._run_review_command(
+            project=project,
+            task=task,
+            context=context,
+            command="/review-task",
+            model=None,
+        )
+
+        mock_spawner.spawn_session.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_run_review_command_uses_model_override(
+        self,
+        service: ReviewService,
+        mock_spawner: MagicMock,
+        project: Project,
+        task: Task,
+        context: ReviewContext,
+    ):
+        """Test that _run_review_command uses model override in command."""
+        await service._run_review_command(
+            project=project,
+            task=task,
+            context=context,
+            command="/review-task",
+            model="claude-opus",
+        )
+
+        # Check that the template includes the model flag
+        call_args = mock_spawner.spawn_session.call_args
+        template = call_args.kwargs.get("template") or call_args.args[0]
+        assert "--model claude-opus" in template.command
+
+    @pytest.mark.asyncio
+    async def test_run_review_command_raises_on_spawn_failure(
+        self,
+        service: ReviewService,
+        mock_spawner: MagicMock,
+        project: Project,
+        task: Task,
+        context: ReviewContext,
+    ):
+        """Test that _run_review_command raises on spawn failure."""
+        mock_spawner.spawn_session = AsyncMock(
+            return_value=MagicMock(success=False, error="Connection refused")
+        )
+
+        from iterm_controller.review_service import ReviewCommandError
+
+        with pytest.raises(ReviewCommandError) as exc_info:
+            await service._run_review_command(
+                project=project,
+                task=task,
+                context=context,
+                command="/review-task",
+                model=None,
+            )
+
+        assert "Failed to spawn review session" in str(exc_info.value)
+
+    @pytest.mark.asyncio
+    async def test_run_review_command_sets_session_type(
+        self,
+        service: ReviewService,
+        mock_spawner: MagicMock,
+        project: Project,
+        task: Task,
+        context: ReviewContext,
+    ):
+        """Test that _run_review_command sets session type to REVIEW."""
+        mock_session = MagicMock()
+        mock_spawner.get_session.return_value = mock_session
+
+        await service._run_review_command(
+            project=project,
+            task=task,
+            context=context,
+            command="/review-task",
+            model=None,
+        )
+
+        assert mock_session.session_type == SessionType.REVIEW
+        assert mock_session.task_id == task.id
+
+    @pytest.mark.asyncio
+    async def test_run_review_command_uses_project_working_dir(
+        self,
+        service: ReviewService,
+        mock_spawner: MagicMock,
+        project: Project,
+        task: Task,
+        context: ReviewContext,
+    ):
+        """Test that _run_review_command uses project path as working dir."""
+        await service._run_review_command(
+            project=project,
+            task=task,
+            context=context,
+            command="/review-task",
+            model=None,
+        )
+
+        call_args = mock_spawner.spawn_session.call_args
+        template = call_args.kwargs.get("template") or call_args.args[0]
+        assert template.working_dir == project.path

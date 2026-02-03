@@ -1152,9 +1152,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Dependencies: 27.2.1
   - Result: Expanded test suite from 39 to 60 tests covering last commit info, network errors, branch/remote operations, cache invalidation, and status parsing edge cases
 
-- [ ] **27.10.2 Add unit tests for ReviewService**
+- [x] **27.10.2 Add unit tests for ReviewService** `[complete]`
   - Scope: Test context building, result handling, notification triggers
   - Dependencies: 27.2.3
+  - Result: Expanded test suite from 49 to 86 tests covering run_review pipeline, _run_review_command, _run_tests, _run_lint, _get_project_window, and notification trigger scenarios
 
 - [ ] **27.10.3 Add unit tests for ScriptService**
   - Scope: Test script running, completion callbacks
