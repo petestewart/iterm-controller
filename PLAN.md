@@ -874,7 +874,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/models.md
   - Dependencies: 27.1.2
 
-- [ ] **27.1.4 Add Review models**
+- [x] **27.1.4 Add Review models** `[complete]`
   - Scope: Create ReviewResult enum, TaskReview, ReviewConfig, ReviewContextConfig dataclasses
   - Spec: specs/models.md
 

@@ -21,12 +21,16 @@ from iterm_controller.models import (
     Project,
     ProjectTemplate,
     PullRequest,
+    ReviewConfig,
+    ReviewContextConfig,
+    ReviewResult,
     SessionLayout,
     SessionProgress,
     SessionTemplate,
     SessionType,
     TabLayout,
     Task,
+    TaskReview,
     TaskStatus,
     TestPlan,
     TestSection,
@@ -88,6 +92,203 @@ class TestEnums:
         assert WorkflowMode.DOCS.value == "docs"
         assert WorkflowMode.WORK.value == "work"
         assert WorkflowMode.TEST.value == "test"
+
+    def test_review_result_values(self):
+        """Test ReviewResult enum values match spec."""
+        assert ReviewResult.PENDING.value == "pending"
+        assert ReviewResult.APPROVED.value == "approved"
+        assert ReviewResult.NEEDS_REVISION.value == "needs_revision"
+        assert ReviewResult.REJECTED.value == "rejected"
+
+
+class TestReviewModels:
+    """Test review-related dataclasses."""
+
+    def test_task_review_creation(self):
+        """Test creating a TaskReview with all fields."""
+        reviewed_at = datetime.now()
+        review = TaskReview(
+            id="review-123",
+            task_id="1.1",
+            attempt=1,
+            result=ReviewResult.APPROVED,
+            issues=[],
+            summary="Task completed correctly",
+            blocking=False,
+            reviewed_at=reviewed_at,
+            reviewer_command="/review-task",
+            raw_output="Review output...",
+        )
+        assert review.id == "review-123"
+        assert review.task_id == "1.1"
+        assert review.attempt == 1
+        assert review.result == ReviewResult.APPROVED
+        assert review.issues == []
+        assert review.summary == "Task completed correctly"
+        assert review.blocking is False
+        assert review.reviewed_at == reviewed_at
+        assert review.reviewer_command == "/review-task"
+        assert review.raw_output == "Review output..."
+
+    def test_task_review_with_issues(self):
+        """Test TaskReview with issues list."""
+        review = TaskReview(
+            id="review-456",
+            task_id="2.1",
+            attempt=2,
+            result=ReviewResult.NEEDS_REVISION,
+            issues=["Missing error handling", "Need more tests"],
+            summary="Implementation needs work",
+            blocking=False,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        assert review.result == ReviewResult.NEEDS_REVISION
+        assert len(review.issues) == 2
+        assert "Missing error handling" in review.issues
+        assert review.raw_output is None
+
+    def test_task_review_rejected_blocking(self):
+        """Test TaskReview with rejected/blocking status."""
+        review = TaskReview(
+            id="review-789",
+            task_id="3.1",
+            attempt=1,
+            result=ReviewResult.REJECTED,
+            issues=["Security vulnerability found"],
+            summary="Critical issue requires human review",
+            blocking=True,
+            reviewed_at=datetime.now(),
+            reviewer_command="/review-task",
+        )
+        assert review.result == ReviewResult.REJECTED
+        assert review.blocking is True
+
+    def test_task_review_serialization(self):
+        """Test TaskReview serializes to/from dict correctly."""
+        reviewed_at = datetime.now()
+        review = TaskReview(
+            id="review-123",
+            task_id="1.1",
+            attempt=1,
+            result=ReviewResult.NEEDS_REVISION,
+            issues=["Issue 1", "Issue 2"],
+            summary="Needs work",
+            blocking=False,
+            reviewed_at=reviewed_at,
+            reviewer_command="/review-task",
+            raw_output="Raw output here",
+        )
+        data = model_to_dict(review)
+        assert data["id"] == "review-123"
+        assert data["task_id"] == "1.1"
+        assert data["attempt"] == 1
+        assert data["result"] == "needs_revision"
+        assert data["issues"] == ["Issue 1", "Issue 2"]
+        assert data["summary"] == "Needs work"
+        assert data["blocking"] is False
+
+        restored = model_from_dict(TaskReview, data)
+        assert restored.id == "review-123"
+        assert restored.result == ReviewResult.NEEDS_REVISION
+        assert len(restored.issues) == 2
+
+    def test_review_context_config_defaults(self):
+        """Test ReviewContextConfig default values."""
+        config = ReviewContextConfig()
+        assert config.include_task_definition is True
+        assert config.include_git_diff is True
+        assert config.include_test_results is True
+        assert config.include_lint_results is False
+        assert config.include_session_log is False
+
+    def test_review_context_config_custom(self):
+        """Test ReviewContextConfig with custom values."""
+        config = ReviewContextConfig(
+            include_task_definition=True,
+            include_git_diff=True,
+            include_test_results=False,
+            include_lint_results=True,
+            include_session_log=True,
+        )
+        assert config.include_test_results is False
+        assert config.include_lint_results is True
+        assert config.include_session_log is True
+
+    def test_review_context_config_serialization(self):
+        """Test ReviewContextConfig serializes to/from dict correctly."""
+        config = ReviewContextConfig(
+            include_git_diff=False,
+            include_lint_results=True,
+        )
+        data = model_to_dict(config)
+        assert data["include_git_diff"] is False
+        assert data["include_lint_results"] is True
+
+        restored = model_from_dict(ReviewContextConfig, data)
+        assert restored.include_git_diff is False
+        assert restored.include_lint_results is True
+
+    def test_review_config_defaults(self):
+        """Test ReviewConfig default values."""
+        config = ReviewConfig()
+        assert config.enabled is True
+        assert config.command == "/review-task"
+        assert config.model is None
+        assert config.max_revisions == 3
+        assert config.trigger == "script_completion"
+        assert config.context is None
+
+    def test_review_config_custom(self):
+        """Test ReviewConfig with custom values."""
+        context = ReviewContextConfig(include_lint_results=True)
+        config = ReviewConfig(
+            enabled=True,
+            command="/custom-review",
+            model="opus",
+            max_revisions=5,
+            trigger="manual",
+            context=context,
+        )
+        assert config.command == "/custom-review"
+        assert config.model == "opus"
+        assert config.max_revisions == 5
+        assert config.trigger == "manual"
+        assert config.context is not None
+        assert config.context.include_lint_results is True
+
+    def test_review_config_serialization(self):
+        """Test ReviewConfig serializes to/from dict correctly."""
+        context = ReviewContextConfig(include_session_log=True)
+        config = ReviewConfig(
+            enabled=False,
+            command="/review",
+            model="haiku",
+            max_revisions=2,
+            trigger="script_completion",
+            context=context,
+        )
+        data = model_to_dict(config)
+        assert data["enabled"] is False
+        assert data["command"] == "/review"
+        assert data["model"] == "haiku"
+        assert data["max_revisions"] == 2
+        assert data["context"]["include_session_log"] is True
+
+        restored = model_from_dict(ReviewConfig, data)
+        assert restored.enabled is False
+        assert restored.model == "haiku"
+        assert restored.context is not None
+        assert restored.context.include_session_log is True
+
+    def test_review_config_with_none_context_serialization(self):
+        """Test ReviewConfig with None context serializes correctly."""
+        config = ReviewConfig(context=None)
+        data = model_to_dict(config)
+        assert data["context"] is None
+
+        restored = model_from_dict(ReviewConfig, data)
+        assert restored.context is None
 
 
 class TestProjectModel:

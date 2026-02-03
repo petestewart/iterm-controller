@@ -92,6 +92,59 @@ class ManagedSession:
 
 
 # =============================================================================
+# Review Models
+# =============================================================================
+
+
+class ReviewResult(Enum):
+    """Result of a task review."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    NEEDS_REVISION = "needs_revision"
+    REJECTED = "rejected"  # Blocking, needs human
+
+
+@dataclass
+class TaskReview:
+    """A single review attempt for a task."""
+
+    id: str
+    task_id: str
+    attempt: int
+    result: ReviewResult
+    issues: list[str]
+    summary: str
+    blocking: bool
+    reviewed_at: datetime
+    reviewer_command: str
+    raw_output: str | None = None
+
+
+@dataclass
+class ReviewContextConfig:
+    """What context to provide to the reviewer."""
+
+    include_task_definition: bool = True
+    include_git_diff: bool = True
+    include_test_results: bool = True
+    include_lint_results: bool = False
+    include_session_log: bool = False
+
+
+@dataclass
+class ReviewConfig:
+    """Review settings for a project."""
+
+    enabled: bool = True
+    command: str = "/review-task"
+    model: str | None = None
+    max_revisions: int = 3
+    trigger: str = "script_completion"
+    context: ReviewContextConfig | None = None
+
+
+# =============================================================================
 # Task Models
 # =============================================================================
 
