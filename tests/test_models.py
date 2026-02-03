@@ -12,7 +12,11 @@ from iterm_controller.models import (
     AppSettings,
     AttentionState,
     AutoModeConfig,
+    GitCommit,
+    GitConfig,
+    GitFileStatus,
     GitHubStatus,
+    GitStatus,
     HealthCheck,
     HealthStatus,
     ManagedSession,
@@ -1535,6 +1539,245 @@ class TestGitHubModels:
         assert status.available is True
         assert status.current_branch == "feature/test"
         assert status.ahead == 2
+
+
+class TestGitModels:
+    """Test Git-related dataclasses."""
+
+    def test_git_file_status_creation(self):
+        """Test creating a GitFileStatus with all fields."""
+        file_status = GitFileStatus(
+            path="src/app.py",
+            status="M",
+            staged=True,
+        )
+        assert file_status.path == "src/app.py"
+        assert file_status.status == "M"
+        assert file_status.staged is True
+
+    def test_git_file_status_unstaged(self):
+        """Test GitFileStatus for unstaged changes."""
+        file_status = GitFileStatus(
+            path="README.md",
+            status="M",
+            staged=False,
+        )
+        assert file_status.staged is False
+
+    def test_git_file_status_untracked(self):
+        """Test GitFileStatus for untracked files."""
+        file_status = GitFileStatus(
+            path="new_file.py",
+            status="?",
+            staged=False,
+        )
+        assert file_status.status == "?"
+        assert file_status.staged is False
+
+    def test_git_file_status_added(self):
+        """Test GitFileStatus for added files."""
+        file_status = GitFileStatus(
+            path="new_module.py",
+            status="A",
+            staged=True,
+        )
+        assert file_status.status == "A"
+        assert file_status.staged is True
+
+    def test_git_file_status_deleted(self):
+        """Test GitFileStatus for deleted files."""
+        file_status = GitFileStatus(
+            path="old_file.py",
+            status="D",
+            staged=True,
+        )
+        assert file_status.status == "D"
+
+    def test_git_file_status_serialization(self):
+        """Test GitFileStatus serializes to/from dict correctly."""
+        file_status = GitFileStatus(
+            path="src/module.py",
+            status="M",
+            staged=True,
+        )
+        data = model_to_dict(file_status)
+        assert data["path"] == "src/module.py"
+        assert data["status"] == "M"
+        assert data["staged"] is True
+
+        restored = model_from_dict(GitFileStatus, data)
+        assert restored.path == "src/module.py"
+        assert restored.status == "M"
+        assert restored.staged is True
+
+    def test_git_status_minimal(self):
+        """Test creating a minimal GitStatus."""
+        status = GitStatus(branch="main")
+        assert status.branch == "main"
+        assert status.ahead == 0
+        assert status.behind == 0
+        assert status.staged is None
+        assert status.unstaged is None
+        assert status.untracked is None
+        assert status.has_conflicts is False
+        assert status.last_commit_sha is None
+        assert status.last_commit_message is None
+        assert status.fetched_at is None
+
+    def test_git_status_full(self):
+        """Test creating a full GitStatus with all fields."""
+        now = datetime.now()
+        staged_file = GitFileStatus(path="staged.py", status="M", staged=True)
+        unstaged_file = GitFileStatus(path="unstaged.py", status="M", staged=False)
+        untracked_file = GitFileStatus(path="new.py", status="?", staged=False)
+
+        status = GitStatus(
+            branch="feature/test",
+            ahead=2,
+            behind=1,
+            staged=[staged_file],
+            unstaged=[unstaged_file],
+            untracked=[untracked_file],
+            has_conflicts=False,
+            last_commit_sha="abc123def456",
+            last_commit_message="Add feature",
+            fetched_at=now,
+        )
+        assert status.branch == "feature/test"
+        assert status.ahead == 2
+        assert status.behind == 1
+        assert len(status.staged) == 1
+        assert status.staged[0].path == "staged.py"
+        assert len(status.unstaged) == 1
+        assert len(status.untracked) == 1
+        assert status.has_conflicts is False
+        assert status.last_commit_sha == "abc123def456"
+        assert status.last_commit_message == "Add feature"
+        assert status.fetched_at == now
+
+    def test_git_status_with_conflicts(self):
+        """Test GitStatus with merge conflicts."""
+        status = GitStatus(
+            branch="main",
+            has_conflicts=True,
+        )
+        assert status.has_conflicts is True
+
+    def test_git_status_serialization(self):
+        """Test GitStatus serializes to/from dict correctly."""
+        staged_file = GitFileStatus(path="file.py", status="A", staged=True)
+        status = GitStatus(
+            branch="develop",
+            ahead=3,
+            behind=0,
+            staged=[staged_file],
+            last_commit_sha="deadbeef",
+            last_commit_message="Initial commit",
+        )
+        data = model_to_dict(status)
+        assert data["branch"] == "develop"
+        assert data["ahead"] == 3
+        assert len(data["staged"]) == 1
+        assert data["staged"][0]["path"] == "file.py"
+        assert data["last_commit_sha"] == "deadbeef"
+
+        restored = model_from_dict(GitStatus, data)
+        assert restored.branch == "develop"
+        assert restored.ahead == 3
+        assert len(restored.staged) == 1
+        assert restored.staged[0].status == "A"
+        assert restored.last_commit_sha == "deadbeef"
+
+    def test_git_status_empty_lists_serialization(self):
+        """Test GitStatus with empty file lists serializes correctly."""
+        status = GitStatus(
+            branch="main",
+            staged=[],
+            unstaged=[],
+            untracked=[],
+        )
+        data = model_to_dict(status)
+        assert data["staged"] == []
+        assert data["unstaged"] == []
+        assert data["untracked"] == []
+
+        restored = model_from_dict(GitStatus, data)
+        assert restored.staged == []
+        assert restored.unstaged == []
+        assert restored.untracked == []
+
+    def test_git_commit_creation(self):
+        """Test creating a GitCommit with all fields."""
+        commit_date = datetime.now()
+        commit = GitCommit(
+            sha="abc123def456789",
+            short_sha="abc123d",
+            message="Add feature X",
+            author="John Doe",
+            date=commit_date,
+        )
+        assert commit.sha == "abc123def456789"
+        assert commit.short_sha == "abc123d"
+        assert commit.message == "Add feature X"
+        assert commit.author == "John Doe"
+        assert commit.date == commit_date
+
+    def test_git_commit_serialization(self):
+        """Test GitCommit serializes to/from dict correctly."""
+        commit_date = datetime.now()
+        commit = GitCommit(
+            sha="fedcba987654321",
+            short_sha="fedcba9",
+            message="Fix bug in module",
+            author="Jane Smith",
+            date=commit_date,
+        )
+        data = model_to_dict(commit)
+        assert data["sha"] == "fedcba987654321"
+        assert data["short_sha"] == "fedcba9"
+        assert data["message"] == "Fix bug in module"
+        assert data["author"] == "Jane Smith"
+
+        restored = model_from_dict(GitCommit, data)
+        assert restored.sha == "fedcba987654321"
+        assert restored.short_sha == "fedcba9"
+        assert restored.message == "Fix bug in module"
+        assert restored.author == "Jane Smith"
+
+    def test_git_config_defaults(self):
+        """Test GitConfig default values."""
+        config = GitConfig()
+        assert config.auto_stage is False
+        assert config.default_branch == "main"
+        assert config.remote == "origin"
+
+    def test_git_config_custom(self):
+        """Test GitConfig with custom values."""
+        config = GitConfig(
+            auto_stage=True,
+            default_branch="develop",
+            remote="upstream",
+        )
+        assert config.auto_stage is True
+        assert config.default_branch == "develop"
+        assert config.remote == "upstream"
+
+    def test_git_config_serialization(self):
+        """Test GitConfig serializes to/from dict correctly."""
+        config = GitConfig(
+            auto_stage=True,
+            default_branch="master",
+            remote="origin",
+        )
+        data = model_to_dict(config)
+        assert data["auto_stage"] is True
+        assert data["default_branch"] == "master"
+        assert data["remote"] == "origin"
+
+        restored = model_from_dict(GitConfig, data)
+        assert restored.auto_stage is True
+        assert restored.default_branch == "master"
+        assert restored.remote == "origin"
 
 
 class TestAppConfig:

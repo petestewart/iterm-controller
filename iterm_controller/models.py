@@ -657,6 +657,56 @@ class GitHubStatus:
 
 
 # =============================================================================
+# Git Models
+# =============================================================================
+
+
+@dataclass
+class GitFileStatus:
+    """Status of a single file in git."""
+
+    path: str  # File path relative to repo root
+    status: str  # "M" (modified), "A" (added), "D" (deleted), "?" (untracked), etc.
+    staged: bool  # Whether the change is staged
+
+
+@dataclass
+class GitStatus:
+    """Current git status for a project."""
+
+    branch: str  # Current branch name
+    ahead: int = 0  # Commits ahead of remote
+    behind: int = 0  # Commits behind remote
+    staged: list[GitFileStatus] | None = None  # Staged changes
+    unstaged: list[GitFileStatus] | None = None  # Unstaged changes
+    untracked: list[GitFileStatus] | None = None  # Untracked files
+    has_conflicts: bool = False  # Whether there are merge conflicts
+    last_commit_sha: str | None = None  # SHA of last commit
+    last_commit_message: str | None = None  # Message of last commit
+    fetched_at: datetime | None = None  # When status was last fetched
+
+
+@dataclass
+class GitCommit:
+    """A git commit."""
+
+    sha: str  # Full commit SHA
+    short_sha: str  # Short SHA (7 chars)
+    message: str  # Commit message (first line)
+    author: str  # Author name
+    date: datetime  # Commit date
+
+
+@dataclass
+class GitConfig:
+    """Git settings for a project."""
+
+    auto_stage: bool = False  # Auto-stage changes before commit
+    default_branch: str = "main"  # Default branch name
+    remote: str = "origin"  # Remote name
+
+
+# =============================================================================
 # Project Models
 # =============================================================================
 

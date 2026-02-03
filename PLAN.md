@@ -883,7 +883,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/models.md
   - Dependencies: 27.1.1, 27.1.4
 
-- [ ] **27.1.6 Add Git models**
+- [x] **27.1.6 Add Git models** `[complete]`
   - Scope: Create GitFileStatus, GitStatus, GitCommit, GitConfig dataclasses
   - Spec: specs/models.md
 
