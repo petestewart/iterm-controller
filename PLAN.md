@@ -1030,9 +1030,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/mission-control.md
   - Note: Already implemented as part of 27.6.1 (SessionCard widget) in widgets/session_card.py:257-369 with full test coverage
 
-- [ ] **27.6.3 Create OrchestratorProgress widget**
+- [x] **27.6.3 Create OrchestratorProgress widget** `[complete]`
   - Scope: Create progress bar widget for orchestrator sessions showing completed/total tasks
   - Spec: specs/mission-control.md
+  - Note: Already implemented in widgets/session_card.py:183-254 with full test coverage in tests/test_session_card_widget.py
 
 - [ ] **27.6.4 Create SessionList container**
   - Scope: Create scrollable container for SessionCards with expand/collapse support
