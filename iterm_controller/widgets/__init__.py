@@ -15,6 +15,11 @@ from iterm_controller.widgets.session_card import (
     SessionCardHeader,
 )
 from iterm_controller.widgets.session_list import SessionListWidget
+from iterm_controller.widgets.session_list_container import (
+    EmptyState,
+    SessionList,
+    sort_sessions,
+)
 from iterm_controller.widgets.task_list import TaskListWidget
 from iterm_controller.widgets.task_progress import TaskProgressWidget
 from iterm_controller.widgets.task_queue import TaskQueueWidget
@@ -27,6 +32,7 @@ __all__ = [
     "ArtifactListWidget",
     "BlockedTasksWidget",
     "DocTreeWidget",
+    "EmptyState",
     "GitHubPanelWidget",
     "HealthStatusWidget",
     "ModeIndicatorWidget",
@@ -35,7 +41,9 @@ __all__ = [
     "ProjectHeaderWidget",
     "SessionCard",
     "SessionCardHeader",
+    "SessionList",
     "SessionListWidget",
+    "sort_sessions",
     "TaskListWidget",
     "TaskProgressWidget",
     "TaskQueueWidget",

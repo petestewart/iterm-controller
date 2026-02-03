@@ -1035,7 +1035,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/mission-control.md
   - Note: Already implemented in widgets/session_card.py:183-254 with full test coverage in tests/test_session_card_widget.py
 
-- [ ] **27.6.4 Create SessionList container**
+- [x] **27.6.4 Create SessionList container** `[complete]`
   - Scope: Create scrollable container for SessionCards with expand/collapse support
   - Spec: specs/mission-control.md
   - Dependencies: 27.6.1
