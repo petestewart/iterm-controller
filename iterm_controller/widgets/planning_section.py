@@ -353,15 +353,6 @@ class PlanningSection(Static):
 
         return text
 
-    def watch_children(self) -> None:
-        """Update artifacts container when it exists."""
-        try:
-            container = self.query_one("#artifacts-container", Vertical)
-            self._update_artifacts_display(container)
-        except Exception:
-            # Container may not exist if collapsed
-            pass
-
     def _update_artifacts_display(self, container: Vertical) -> None:
         """Update the artifacts container with current status."""
         container.remove_children()
