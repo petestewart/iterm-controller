@@ -1162,9 +1162,10 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Dependencies: 27.2.2
   - Result: Added 24 new tests covering _get_project_window, run_script edge cases, stop_script edge cases, ScriptBehavior for all session types, and on_session_exit with multiple scripts (total 64 tests)
 
-- [ ] **27.10.4 Add integration tests for output streaming**
+- [x] **27.10.4 Add integration tests for output streaming** `[complete]`
   - Scope: Test subscriber pattern, buffer management
   - Dependencies: 27.3.3
+  - Result: Added 25 integration tests covering buffer management (rolling buffer, ANSI preservation, multiline), batching behavior, multiple subscribers, concurrent sessions, error handling, and SessionMonitor integration
 
 - [ ] **27.10.5 Add UI tests for new screens**
   - Scope: Test MissionControl and ProjectScreen rendering and interactions

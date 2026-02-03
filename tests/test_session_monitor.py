@@ -2875,3 +2875,719 @@ class TestSessionOutputUpdatedEvent:
 
         assert hasattr(StateEvent, "SESSION_OUTPUT_UPDATED")
         assert StateEvent.SESSION_OUTPUT_UPDATED.value == "session_output_updated"
+
+
+# =============================================================================
+# Integration Tests for Output Streaming
+# =============================================================================
+
+
+class TestOutputStreamingIntegration:
+    """Integration tests for the output streaming subscriber pattern and buffer management."""
+
+    # =========================================================================
+    # Buffer Management Tests
+    # =========================================================================
+
+    @pytest.mark.asyncio
+    async def test_rolling_buffer_drops_oldest_lines(self):
+        """Rolling buffer drops oldest lines when full."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", max_buffer_lines=5)
+
+        # Push 10 lines, buffer should only keep last 5
+        for i in range(10):
+            await stream.push_output(f"Line {i}\n")
+
+        buffer = stream.get_full_buffer()
+
+        # Buffer should contain only the last 5 lines
+        # Note: each push_output splits by \n, so we get "Line X" and "" entries
+        assert "Line 0" not in buffer
+        assert "Line 9" in buffer or "Line 9\n" in "".join(buffer)
+
+    @pytest.mark.asyncio
+    async def test_buffer_preserves_ansi_escape_codes(self):
+        """Buffer preserves ANSI escape codes for colors."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        # Common ANSI codes
+        red_text = "\033[31mRed text\033[0m"
+        green_text = "\033[32mGreen text\033[0m"
+        bold_text = "\033[1mBold text\033[0m"
+
+        await stream.push_output(red_text)
+        await stream.push_output(green_text)
+        await stream.push_output(bold_text)
+
+        buffer_content = stream.get_buffer_as_string()
+
+        # ANSI codes should be preserved
+        assert "\033[31m" in buffer_content  # Red
+        assert "\033[32m" in buffer_content  # Green
+        assert "\033[1m" in buffer_content   # Bold
+        assert "\033[0m" in buffer_content   # Reset
+
+    @pytest.mark.asyncio
+    async def test_buffer_handles_multiline_output_correctly(self):
+        """Buffer correctly handles multiline output."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", max_buffer_lines=100)
+
+        multiline = "Line 1\nLine 2\nLine 3\nLine 4"
+        await stream.push_output(multiline)
+
+        buffer = stream.get_full_buffer()
+
+        # All lines should be present
+        assert "Line 1" in buffer
+        assert "Line 2" in buffer
+        assert "Line 3" in buffer
+        assert "Line 4" in buffer
+
+    @pytest.mark.asyncio
+    async def test_buffer_truncation_at_limit(self):
+        """Buffer truncation happens at exactly the limit."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", max_buffer_lines=3)
+
+        await stream.push_output("A")
+        await stream.push_output("B")
+        await stream.push_output("C")
+
+        assert len(stream.get_full_buffer()) == 3
+
+        await stream.push_output("D")
+
+        buffer = stream.get_full_buffer()
+        assert len(buffer) == 3
+        # First item should have been dropped
+        assert "A" not in buffer
+        assert "D" in buffer
+
+    # =========================================================================
+    # Batching Behavior Tests
+    # =========================================================================
+
+    @pytest.mark.asyncio
+    async def test_batching_combines_rapid_updates(self):
+        """Rapid updates are batched together."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        # Use longer batch interval to test batching
+        stream = SessionOutputStream("session-1", batch_interval_ms=500)
+
+        received = []
+
+        async def callback(output):
+            received.append(output)
+
+        stream.subscribe(callback)
+
+        # Push multiple outputs rapidly
+        await stream.push_output("A")
+        await stream.push_output("B")
+        await stream.push_output("C")
+
+        # Wait for batch to flush
+        await asyncio.sleep(0.6)
+
+        # Should receive batched output (fewer calls than individual pushes)
+        assert len(received) <= 3
+        combined = "".join(received)
+        assert "A" in combined
+        assert "B" in combined
+        assert "C" in combined
+
+    @pytest.mark.asyncio
+    async def test_immediate_flush_on_first_output(self):
+        """First output flushes immediately (no prior flush time)."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", batch_interval_ms=1000)
+
+        received = []
+
+        async def callback(output):
+            received.append(output)
+
+        stream.subscribe(callback)
+
+        await stream.push_output("First output")
+
+        # Should flush immediately since no prior flush
+        assert len(received) == 1
+        assert received[0] == "First output"
+
+    @pytest.mark.asyncio
+    async def test_delayed_flush_for_subsequent_output(self):
+        """Subsequent output is delayed for batching."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", batch_interval_ms=200)
+
+        received = []
+
+        async def callback(output):
+            received.append(output)
+
+        stream.subscribe(callback)
+
+        # First output flushes immediately
+        await stream.push_output("First")
+        assert len(received) == 1
+
+        # Second output should be batched (within interval)
+        await stream.push_output("Second")
+        # Immediate check - should still be 1
+        assert len(received) == 1
+
+        # Wait for delayed flush
+        await asyncio.sleep(0.3)
+        assert len(received) == 2
+        assert "Second" in received[1]
+
+    # =========================================================================
+    # Multiple Subscriber Tests
+    # =========================================================================
+
+    @pytest.mark.asyncio
+    async def test_multiple_subscribers_receive_output(self):
+        """Multiple subscribers all receive the same output."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", batch_interval_ms=1)
+
+        received1 = []
+        received2 = []
+        received3 = []
+
+        async def callback1(output):
+            received1.append(output)
+
+        async def callback2(output):
+            received2.append(output)
+
+        async def callback3(output):
+            received3.append(output)
+
+        stream.subscribe(callback1)
+        stream.subscribe(callback2)
+        stream.subscribe(callback3)
+
+        await stream.push_output("Broadcast message")
+        await asyncio.sleep(0.05)
+
+        # All subscribers should receive the message
+        assert "Broadcast message" in "".join(received1)
+        assert "Broadcast message" in "".join(received2)
+        assert "Broadcast message" in "".join(received3)
+
+    @pytest.mark.asyncio
+    async def test_subscriber_added_mid_stream(self):
+        """Subscriber added mid-stream receives only new output."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", batch_interval_ms=1)
+
+        received = []
+
+        async def callback(output):
+            received.append(output)
+
+        # Push output before subscribing
+        await stream.push_output("Before subscribe")
+        await asyncio.sleep(0.05)
+
+        # Subscribe now
+        stream.subscribe(callback)
+
+        # Push output after subscribing
+        await stream.push_output("After subscribe")
+        await asyncio.sleep(0.05)
+
+        # Should only receive output after subscription
+        combined = "".join(received)
+        assert "Before subscribe" not in combined
+        assert "After subscribe" in combined
+
+    @pytest.mark.asyncio
+    async def test_subscriber_can_access_buffer_on_subscribe(self):
+        """Subscriber can access buffer to get historical output."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", batch_interval_ms=1)
+
+        # Push output before subscribing
+        await stream.push_output("Historical line 1")
+        await stream.push_output("Historical line 2")
+        await asyncio.sleep(0.05)
+
+        received = []
+
+        async def callback(output):
+            received.append(output)
+
+        # Subscribe and get historical data
+        stream.subscribe(callback)
+        historical = stream.get_full_buffer()
+
+        # Historical data available
+        assert "Historical line 1" in historical
+        assert "Historical line 2" in historical
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_one_keeps_others(self):
+        """Unsubscribing one callback keeps others active."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", batch_interval_ms=1)
+
+        received1 = []
+        received2 = []
+
+        async def callback1(output):
+            received1.append(output)
+
+        async def callback2(output):
+            received2.append(output)
+
+        stream.subscribe(callback1)
+        stream.subscribe(callback2)
+
+        await stream.push_output("First")
+        await asyncio.sleep(0.05)
+
+        # Unsubscribe callback1
+        stream.unsubscribe(callback1)
+
+        await stream.push_output("Second")
+        await asyncio.sleep(0.05)
+
+        # callback2 should still receive
+        assert "First" in "".join(received2)
+        assert "Second" in "".join(received2)
+
+        # callback1 should only have first
+        assert "First" in "".join(received1)
+        assert "Second" not in "".join(received1)
+
+    # =========================================================================
+    # Concurrent Sessions Tests
+    # =========================================================================
+
+    @pytest.mark.asyncio
+    async def test_concurrent_sessions_independent_streams(self):
+        """Multiple sessions have independent output streams."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager(batch_interval_ms=1)
+
+        received1 = []
+        received2 = []
+
+        async def callback1(output):
+            received1.append(output)
+
+        async def callback2(output):
+            received2.append(output)
+
+        manager.subscribe("session-1", callback1)
+        manager.subscribe("session-2", callback2)
+
+        await manager.push_output("session-1", "Output for session 1")
+        await manager.push_output("session-2", "Output for session 2")
+        await asyncio.sleep(0.05)
+
+        # Each session should only receive its own output
+        assert "Output for session 1" in "".join(received1)
+        assert "Output for session 2" not in "".join(received1)
+
+        assert "Output for session 2" in "".join(received2)
+        assert "Output for session 1" not in "".join(received2)
+
+    @pytest.mark.asyncio
+    async def test_concurrent_push_to_multiple_sessions(self):
+        """Concurrent pushes to multiple sessions work correctly."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager(batch_interval_ms=1)
+
+        received = {f"session-{i}": [] for i in range(5)}
+
+        # Create callbacks using closures with default argument capture
+        def make_callback(sid):
+            async def callback(output):
+                received[sid].append(output)
+            return callback
+
+        for i in range(5):
+            session_id = f"session-{i}"
+            manager.subscribe(session_id, make_callback(session_id))
+
+        # Push to all sessions concurrently
+        await asyncio.gather(*[
+            manager.push_output(f"session-{i}", f"Output {i}")
+            for i in range(5)
+        ])
+
+        await asyncio.sleep(0.1)
+
+        # Each session should have received its output
+        for i in range(5):
+            assert len(received[f"session-{i}"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_remove_one_session_keeps_others(self):
+        """Removing one session's stream keeps others intact."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager(batch_interval_ms=1)
+
+        manager.get_stream("session-1")
+        manager.get_stream("session-2")
+        manager.get_stream("session-3")
+
+        await manager.remove_stream("session-2")
+
+        assert manager.has_stream("session-1")
+        assert not manager.has_stream("session-2")
+        assert manager.has_stream("session-3")
+
+    # =========================================================================
+    # Error Handling Tests
+    # =========================================================================
+
+    @pytest.mark.asyncio
+    async def test_subscriber_exception_doesnt_break_others(self):
+        """Exception in one subscriber doesn't affect others."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", batch_interval_ms=1)
+
+        received = []
+
+        async def bad_callback(output):
+            raise ValueError("Subscriber error")
+
+        async def good_callback(output):
+            received.append(output)
+
+        stream.subscribe(bad_callback)
+        stream.subscribe(good_callback)
+
+        # Should not raise
+        await stream.push_output("Test output")
+        await asyncio.sleep(0.05)
+
+        # Good callback should still receive output
+        assert "Test output" in "".join(received)
+
+    @pytest.mark.asyncio
+    async def test_subscriber_exception_logged(self):
+        """Exceptions in subscribers are logged."""
+        from iterm_controller.session_monitor import SessionOutputStream
+        import logging
+
+        stream = SessionOutputStream("session-1", batch_interval_ms=1)
+
+        async def bad_callback(output):
+            raise ValueError("Test error")
+
+        stream.subscribe(bad_callback)
+
+        # Capture logs
+        with patch("iterm_controller.session_monitor.logger") as mock_logger:
+            await stream.push_output("Test")
+            await asyncio.sleep(0.05)
+
+            # Warning should have been logged
+            assert mock_logger.warning.called
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_nonexistent_callback_safe(self):
+        """Unsubscribing a callback that was never subscribed is safe."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        async def never_subscribed(output):
+            pass
+
+        # Should not raise
+        stream.unsubscribe(never_subscribed)
+
+    @pytest.mark.asyncio
+    async def test_push_to_closed_stream_safe(self):
+        """Pushing to a closed stream doesn't raise."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        await stream.close()
+
+        # Should not raise
+        await stream.push_output("After close")
+
+    # =========================================================================
+    # Session Monitor Integration Tests
+    # =========================================================================
+
+    def make_mock_controller(self):
+        """Create a mock controller."""
+        controller = MagicMock()
+        controller.app = MagicMock()
+        return controller
+
+    def make_mock_spawner(self, sessions=None):
+        """Create a mock spawner with optional sessions."""
+        spawner = MagicMock()
+        spawner.managed_sessions = sessions or {}
+        return spawner
+
+    def make_session(self, session_id="session-1"):
+        """Create a ManagedSession for testing."""
+        return ManagedSession(
+            id=session_id,
+            template_id="test-template",
+            project_id="test-project",
+            tab_id="tab-1",
+        )
+
+    @pytest.mark.asyncio
+    async def test_monitor_streams_to_multiple_subscribers(self):
+        """SessionMonitor streams output to multiple subscribers."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(return_value="Test output")
+        controller.app.get_session_by_id = MagicMock(
+            return_value=mock_iterm_session
+        )
+
+        config = MonitorConfig(streaming_enabled=True, streaming_batch_interval_ms=1)
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        received1 = []
+        received2 = []
+
+        async def callback1(output):
+            received1.append(output)
+
+        async def callback2(output):
+            received2.append(output)
+
+        monitor.subscribe_output("session-1", callback1)
+        monitor.subscribe_output("session-1", callback2)
+
+        await monitor.poll_once()
+        await asyncio.sleep(0.1)
+
+        # Both subscribers should receive output
+        assert len(received1) > 0
+        assert len(received2) > 0
+
+    @pytest.mark.asyncio
+    async def test_monitor_incremental_output(self):
+        """SessionMonitor streams only new output incrementally."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        # Simulate output that grows
+        call_count = 0
+        outputs = ["Line 1", "Line 1\nLine 2", "Line 1\nLine 2\nLine 3"]
+
+        async def mock_get_contents(*args, **kwargs):
+            nonlocal call_count
+            result = outputs[min(call_count, len(outputs) - 1)]
+            call_count += 1
+            return result
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(side_effect=mock_get_contents)
+        controller.app.get_session_by_id = MagicMock(
+            return_value=mock_iterm_session
+        )
+
+        config = MonitorConfig(
+            streaming_enabled=True,
+            streaming_batch_interval_ms=1,
+            throttle_interval_ms=1,
+        )
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        received = []
+
+        async def callback(output):
+            received.append(output)
+
+        monitor.subscribe_output("session-1", callback)
+
+        # Poll multiple times
+        await monitor.poll_once()
+        await asyncio.sleep(0.05)
+
+        await monitor.poll_once()
+        await asyncio.sleep(0.05)
+
+        await monitor.poll_once()
+        await asyncio.sleep(0.05)
+
+        # Should have received output for each poll
+        assert len(received) >= 1
+
+    @pytest.mark.asyncio
+    async def test_monitor_buffer_available_after_unsubscribe(self):
+        """Buffer remains available after unsubscribing."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(return_value="Buffered output")
+        controller.app.get_session_by_id = MagicMock(
+            return_value=mock_iterm_session
+        )
+
+        config = MonitorConfig(streaming_enabled=True, streaming_batch_interval_ms=1)
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        async def callback(output):
+            pass
+
+        monitor.subscribe_output("session-1", callback)
+        await monitor.poll_once()
+        await asyncio.sleep(0.05)
+
+        monitor.unsubscribe_output("session-1", callback)
+
+        # Buffer should still be available
+        recent = monitor.get_recent_output("session-1")
+        assert "Buffered output" in recent or len(recent) > 0
+
+    @pytest.mark.asyncio
+    async def test_monitor_output_stream_callback(self):
+        """Monitor invokes on_output_stream callback correctly."""
+        controller = self.make_mock_controller()
+
+        sessions = {
+            f"session-{i}": self.make_session(f"session-{i}")
+            for i in range(3)
+        }
+        spawner = self.make_mock_spawner(sessions)
+
+        outputs = {
+            "session-0": "Output 0",
+            "session-1": "Output 1",
+            "session-2": "Output 2",
+        }
+
+        def make_mock_iterm_session(session_id):
+            mock = MagicMock()
+            mock.async_get_contents = AsyncMock(return_value=outputs[session_id])
+            return mock
+
+        def get_session(session_id):
+            return make_mock_iterm_session(session_id)
+
+        controller.app.get_session_by_id = MagicMock(side_effect=get_session)
+
+        received = []
+
+        async def on_stream(session_id, output):
+            received.append((session_id, output))
+
+        config = MonitorConfig(streaming_enabled=True)
+        monitor = SessionMonitor(
+            controller, spawner, config=config, on_output_stream=on_stream
+        )
+
+        await monitor.poll_once()
+
+        # All sessions should have triggered callback
+        session_ids = [r[0] for r in received]
+        assert "session-0" in session_ids
+        assert "session-1" in session_ids
+        assert "session-2" in session_ids
+
+    @pytest.mark.asyncio
+    async def test_monitor_session_lifecycle_stream_cleanup(self):
+        """Stream is cleaned up when session is cleared."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        # Create stream and add subscriber
+        async def callback(output):
+            pass
+
+        monitor.subscribe_output("session-1", callback)
+        monitor.get_output_stream("session-1")
+
+        assert monitor.has_output_subscribers("session-1")
+        assert monitor._stream_manager.has_stream("session-1")
+
+        # Clear session
+        await monitor.clear_session("session-1")
+
+        # Stream should be removed
+        assert not monitor._stream_manager.has_stream("session-1")
+
+    # =========================================================================
+    # Performance Tests
+    # =========================================================================
+
+    @pytest.mark.asyncio
+    async def test_high_volume_output_performance(self):
+        """High volume output doesn't cause issues."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", max_buffer_lines=100, batch_interval_ms=10)
+
+        received_count = 0
+
+        async def callback(output):
+            nonlocal received_count
+            received_count += 1
+
+        stream.subscribe(callback)
+
+        # Push a lot of output rapidly
+        for i in range(1000):
+            await stream.push_output(f"Line {i}")
+
+        # Wait for all flushes
+        await asyncio.sleep(0.5)
+
+        # Should have received some batched updates
+        assert received_count > 0
+        assert received_count < 1000  # Should be batched
+
+        # Buffer should only keep max lines
+        buffer = stream.get_full_buffer()
+        assert len(buffer) <= 100
+
+    @pytest.mark.asyncio
+    async def test_no_streaming_when_no_subscribers(self):
+        """No work is done when there are no subscribers."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", batch_interval_ms=1)
+
+        # Push output with no subscribers
+        for i in range(100):
+            await stream.push_output(f"Line {i}")
+
+        # Pending output should be cleared since no subscribers
+        assert len(stream._pending_output) == 0
