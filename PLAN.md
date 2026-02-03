@@ -869,7 +869,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Create SessionType enum (CLAUDE_TASK, ORCHESTRATOR, REVIEW, TEST_RUNNER, SCRIPT, SERVER, SHELL) and SessionProgress dataclass
   - Spec: specs/models.md
 
-- [ ] **27.1.3 Update ManagedSession model**
+- [x] **27.1.3 Update ManagedSession model** `[complete]`
   - Scope: Add session_type, task_id, display_name, progress fields to ManagedSession
   - Spec: specs/models.md
   - Dependencies: 27.1.2

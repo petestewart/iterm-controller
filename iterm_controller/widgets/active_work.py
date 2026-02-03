@@ -130,7 +130,7 @@ class ActiveWorkWidget(Static, can_focus=True):
 
         Looks up the session in two ways:
         1. By task.session_id if set (direct link)
-        2. By searching sessions for one whose metadata["task_id"] matches (reverse lookup)
+        2. By searching sessions for one whose task_id matches (reverse lookup)
 
         Args:
             task: The task to look up.
@@ -146,7 +146,7 @@ class ActiveWorkWidget(Static, can_focus=True):
 
         # Reverse lookup: search sessions for one linked to this task
         for session in self._sessions.values():
-            if session.metadata.get("task_id") == task.id:
+            if session.task_id == task.id:
                 return session
 
         return None

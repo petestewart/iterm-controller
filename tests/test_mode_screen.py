@@ -1061,10 +1061,10 @@ class TestManagedSessionMetadata:
             tab_id="tab-1",
         )
 
-        session.metadata["task_id"] = "1.1"
+        session.task_id = "1.1"
         session.metadata["task_title"] = "Add auth middleware"
 
-        assert session.metadata["task_id"] == "1.1"
+        assert session.task_id == "1.1"
         assert session.metadata["task_title"] == "Add auth middleware"
 
     def test_managed_session_serializes_with_metadata(self) -> None:
@@ -1079,12 +1079,12 @@ class TestManagedSessionMetadata:
             project_id="project-1",
             tab_id="tab-1",
         )
-        session.metadata["task_id"] = "2.1"
+        session.task_id = "2.1"
 
         data = asdict(session)
 
-        assert "metadata" in data
-        assert data["metadata"]["task_id"] == "2.1"
+        assert "task_id" in data
+        assert data["task_id"] == "2.1"
 
 
 @pytest.mark.asyncio
@@ -1124,7 +1124,7 @@ class TestWorkModeSessionEventHandlers:
                     tab_id="tab-1",
                     attention_state=AttentionState.IDLE,
                 )
-                session.metadata["task_id"] = "1.1"
+                session.task_id = "1.1"
                 app.state.add_session(session)
 
                 await app.push_screen(WorkModeScreen(project))
@@ -1299,7 +1299,7 @@ class TestSessionListWidgetTaskInfo:
             project_id="project-1",
             tab_id="tab-1",
         )
-        session.metadata["task_id"] = "1.3"
+        session.task_id = "1.3"
         session.metadata["task_title"] = "Build API layer"
 
         widget = SessionListWidget(sessions=[session], show_project=False)

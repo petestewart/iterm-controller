@@ -576,7 +576,7 @@ class ItermControllerAPI:
                 if session:
                     # Link task if provided
                     if task_id:
-                        session.metadata["task_id"] = task_id
+                        session.task_id = task_id
 
                     # Add to state
                     self._state.add_session(session)
@@ -1660,7 +1660,7 @@ class AppAPI:
                 if session:
                     # Link task if provided
                     if task_id:
-                        session.metadata["task_id"] = task_id
+                        session.task_id = task_id
 
                     # Add to app state
                     self._app.state.add_session(session)
@@ -1712,7 +1712,7 @@ class AppAPI:
                 session = self._spawner.get_session(result.session_id)
                 if session:
                     if task_id:
-                        session.metadata["task_id"] = task_id
+                        session.task_id = task_id
                     self._app.state.add_session(session)
                     return SessionResult(
                         success=True, session=session, spawn_result=result

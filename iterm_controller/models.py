@@ -70,6 +70,12 @@ class ManagedSession:
     tab_id: str  # iTerm2 tab ID
     window_id: str = ""  # iTerm2 window ID (for spawning in same window)
 
+    # Session type and context
+    session_type: SessionType = SessionType.SHELL
+    task_id: str | None = None  # If working on a specific task
+    display_name: str | None = None  # Custom display name override
+    progress: SessionProgress | None = None  # For orchestrator sessions
+
     # Runtime state
     attention_state: AttentionState = AttentionState.IDLE
     last_output: str = ""  # Last captured output chunk
@@ -80,9 +86,9 @@ class ManagedSession:
     spawned_at: datetime = field(default_factory=datetime.now)
     is_managed: bool = True  # True if we spawned it
 
-    # Task linking metadata
+    # Extensible metadata for additional data
     metadata: dict[str, str] = field(default_factory=dict)
-    # Common metadata keys: task_id, task_title
+    # Common metadata keys: task_title, test_plan_path, test_runner, test_command
 
 
 # =============================================================================

@@ -146,7 +146,7 @@ async def cmd_list_sessions(args: argparse.Namespace) -> int:
                     "attention_state": s.attention_state.value,
                     "is_active": s.is_active,
                     "spawned_at": s.spawned_at.isoformat() if s.spawned_at else None,
-                    "task_id": s.metadata.get("task_id"),
+                    "task_id": s.task_id,
                 }
                 for s in sessions
             ])
@@ -162,7 +162,7 @@ async def cmd_list_sessions(args: argparse.Namespace) -> int:
                         "Project": s.project_id,
                         "Template": s.template_id,
                         "State": s.attention_state.value.upper(),
-                        "Task": s.metadata.get("task_id", "-"),
+                        "Task": s.task_id or "-",
                     }
                     for s in sessions
                 ],

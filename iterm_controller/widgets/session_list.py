@@ -242,7 +242,7 @@ class SessionListWidget(Static, can_focus=True):
             text.append(name_padded)
 
         # Task info if session is linked to a task
-        task_id = session.metadata.get("task_id", "")
+        task_id = session.task_id or ""
         if task_id:
             task_display = f"Task {task_id:<{SESSION_TASK_ID_WIDTH}}"
             text.append(task_display, style="cyan")

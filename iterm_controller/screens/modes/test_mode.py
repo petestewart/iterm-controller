@@ -19,6 +19,7 @@ from iterm_controller.models import (
     AttentionState,
     ManagedSession,
     SessionTemplate,
+    SessionType,
     TestPlan,
     TestStatus,
     TestStep,
@@ -653,6 +654,7 @@ class TestModeScreen(ModeScreen):
                     # Get the managed session
                     managed = spawner.get_session(result.session_id)
                     if managed:
+                        managed.session_type = SessionType.TEST_RUNNER
                         managed.metadata["test_runner"] = "true"
                         managed.metadata["test_command"] = command
                         app.state.add_session(managed)
