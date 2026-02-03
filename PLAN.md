@@ -994,25 +994,29 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### 27.5 Configuration Updates
 
-- [ ] **27.5.1 Add scripts config schema**
+- [x] **27.5.1 Add scripts config schema** `[complete]`
   - Scope: Update config loading to parse scripts array from project config
   - Spec: specs/config.md
   - Dependencies: 27.1.7
+  - Note: Already working - dacite automatically handles nested ProjectScript dataclasses with SessionType enum casting
 
-- [ ] **27.5.2 Add review config schema**
+- [x] **27.5.2 Add review config schema** `[complete]`
   - Scope: Update config loading to parse review block from project config
   - Spec: specs/config.md
   - Dependencies: 27.1.4
+  - Note: Already working - dacite automatically handles ReviewConfig and ReviewContextConfig nested dataclasses
 
-- [ ] **27.5.3 Add git config schema**
+- [x] **27.5.3 Add git config schema** `[complete]`
   - Scope: Update config loading to parse git block from project config
   - Spec: specs/config.md
   - Dependencies: 27.1.6
+  - Note: Already working - dacite automatically handles GitConfig dataclass with defaults
 
-- [ ] **27.5.4 Update notification settings schema**
+- [x] **27.5.4 Update notification settings schema** `[complete]`
   - Scope: Add sound_enabled, sound_name, and new event toggles to notification settings config
   - Spec: specs/config.md
   - Dependencies: 27.1.9
+  - Note: Already working - NotificationSettings model was implemented in 27.1.9 and dacite parses it correctly
 
 ### 27.6 Mission Control Screen
 

@@ -26,7 +26,18 @@ from iterm_controller.exceptions import (
     ConfigSaveError,
     ConfigValidationError,
 )
-from iterm_controller.models import AppConfig, AppSettings, Project, SessionTemplate
+from iterm_controller.models import (
+    AppConfig,
+    AppSettings,
+    GitConfig,
+    NotificationSettings,
+    Project,
+    ProjectScript,
+    ReviewConfig,
+    ReviewContextConfig,
+    SessionTemplate,
+    SessionType,
+)
 
 
 class TestMergeConfigs:
@@ -474,3 +485,381 @@ class TestConfigErrorHandling:
                 with patch("iterm_controller.config.CONFIG_DIR", global_path.parent):
                     with pytest.raises(ConfigLoadError):
                         load_merged_config(project_dir)
+
+
+class TestProjectScriptsConfig:
+    """Test project scripts configuration loading (Phase 27.5.1)."""
+
+    def test_load_scripts_array(self):
+        """Scripts array is parsed into ProjectScript objects."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_data = {
+                "projects": [{
+                    "id": "my-app",
+                    "name": "My App",
+                    "path": "/test/path",
+                    "scripts": [
+                        {
+                            "id": "server",
+                            "name": "Server",
+                            "command": "bin/dev",
+                            "keybinding": "s",
+                            "session_type": "server",
+                            "show_in_toolbar": True
+                        },
+                        {
+                            "id": "tests",
+                            "name": "Tests",
+                            "command": "bin/rails test",
+                            "keybinding": "t",
+                            "session_type": "test_runner"
+                        }
+                    ]
+                }]
+            }
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    config = load_global_config()
+                    assert len(config.projects[0].scripts) == 2
+                    server_script = config.projects[0].scripts[0]
+                    assert isinstance(server_script, ProjectScript)
+                    assert server_script.id == "server"
+                    assert server_script.command == "bin/dev"
+                    assert server_script.session_type == SessionType.SERVER
+                    assert server_script.show_in_toolbar is True
+
+    def test_scripts_with_env_vars(self):
+        """Scripts can include environment variables."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_data = {
+                "projects": [{
+                    "id": "my-app",
+                    "name": "My App",
+                    "path": "/test/path",
+                    "scripts": [{
+                        "id": "server",
+                        "name": "Server",
+                        "command": "bin/dev",
+                        "env": {"PORT": "3000", "NODE_ENV": "development"},
+                        "working_dir": "./src"
+                    }]
+                }]
+            }
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    config = load_global_config()
+                    script = config.projects[0].scripts[0]
+                    assert script.env == {"PORT": "3000", "NODE_ENV": "development"}
+                    assert script.working_dir == "./src"
+
+    def test_scripts_default_values(self):
+        """Scripts use correct default values for optional fields."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_data = {
+                "projects": [{
+                    "id": "my-app",
+                    "name": "My App",
+                    "path": "/test/path",
+                    "scripts": [{
+                        "id": "lint",
+                        "name": "Lint",
+                        "command": "bin/rubocop -A"
+                    }]
+                }]
+            }
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    config = load_global_config()
+                    script = config.projects[0].scripts[0]
+                    assert script.keybinding is None
+                    assert script.working_dir is None
+                    assert script.env is None
+                    assert script.session_type == SessionType.SCRIPT
+                    assert script.show_in_toolbar is True
+
+
+class TestReviewConfig:
+    """Test review configuration loading (Phase 27.5.2)."""
+
+    def test_load_review_config(self):
+        """Review config is parsed into ReviewConfig objects."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_data = {
+                "projects": [{
+                    "id": "my-app",
+                    "name": "My App",
+                    "path": "/test/path",
+                    "review_config": {
+                        "enabled": True,
+                        "command": "/review-task",
+                        "model": "opus",
+                        "max_revisions": 3,
+                        "trigger": "script_completion"
+                    }
+                }]
+            }
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    config = load_global_config()
+                    review_config = config.projects[0].review_config
+                    assert isinstance(review_config, ReviewConfig)
+                    assert review_config.enabled is True
+                    assert review_config.command == "/review-task"
+                    assert review_config.model == "opus"
+                    assert review_config.max_revisions == 3
+                    assert review_config.trigger == "script_completion"
+
+    def test_load_review_context_config(self):
+        """Review context config is parsed correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_data = {
+                "projects": [{
+                    "id": "my-app",
+                    "name": "My App",
+                    "path": "/test/path",
+                    "review_config": {
+                        "enabled": True,
+                        "command": "/review-task",
+                        "context": {
+                            "include_task_definition": True,
+                            "include_git_diff": True,
+                            "include_test_results": False,
+                            "include_lint_results": True,
+                            "include_session_log": False
+                        }
+                    }
+                }]
+            }
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    config = load_global_config()
+                    context = config.projects[0].review_config.context
+                    assert isinstance(context, ReviewContextConfig)
+                    assert context.include_task_definition is True
+                    assert context.include_git_diff is True
+                    assert context.include_test_results is False
+                    assert context.include_lint_results is True
+                    assert context.include_session_log is False
+
+
+class TestGitConfig:
+    """Test git configuration loading (Phase 27.5.3)."""
+
+    def test_load_git_config(self):
+        """Git config is parsed into GitConfig objects."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_data = {
+                "projects": [{
+                    "id": "my-app",
+                    "name": "My App",
+                    "path": "/test/path",
+                    "git_config": {
+                        "auto_stage": True,
+                        "default_branch": "develop",
+                        "remote": "upstream"
+                    }
+                }]
+            }
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    config = load_global_config()
+                    git_config = config.projects[0].git_config
+                    assert isinstance(git_config, GitConfig)
+                    assert git_config.auto_stage is True
+                    assert git_config.default_branch == "develop"
+                    assert git_config.remote == "upstream"
+
+    def test_git_config_defaults(self):
+        """Git config uses correct defaults when not all fields specified."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_data = {
+                "projects": [{
+                    "id": "my-app",
+                    "name": "My App",
+                    "path": "/test/path",
+                    "git_config": {}
+                }]
+            }
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    config = load_global_config()
+                    git_config = config.projects[0].git_config
+                    assert git_config.auto_stage is False
+                    assert git_config.default_branch == "main"
+                    assert git_config.remote == "origin"
+
+
+class TestNotificationSettingsConfig:
+    """Test notification settings configuration loading (Phase 27.5.4)."""
+
+    def test_load_notification_settings(self):
+        """Notification settings are parsed correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_data = {
+                "settings": {
+                    "notifications": {
+                        "enabled": True,
+                        "sound_enabled": True,
+                        "sound_name": "Ping",
+                        "on_session_waiting": True,
+                        "on_session_idle": False,
+                        "on_review_failed": True,
+                        "on_task_complete": False,
+                        "on_phase_complete": True,
+                        "on_orchestrator_done": True
+                    }
+                }
+            }
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    config = load_global_config()
+                    n = config.settings.notifications
+                    assert isinstance(n, NotificationSettings)
+                    assert n.enabled is True
+                    assert n.sound_enabled is True
+                    assert n.sound_name == "Ping"
+                    assert n.on_session_waiting is True
+                    assert n.on_session_idle is False
+                    assert n.on_review_failed is True
+                    assert n.on_task_complete is False
+                    assert n.on_phase_complete is True
+                    assert n.on_orchestrator_done is True
+
+    def test_notification_settings_defaults(self):
+        """Notification settings use correct defaults."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_data = {
+                "settings": {
+                    "notifications": {}
+                }
+            }
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    config = load_global_config()
+                    n = config.settings.notifications
+                    assert n.enabled is True
+                    assert n.sound_enabled is True
+                    assert n.sound_name == "default"
+                    assert n.on_session_waiting is True
+                    assert n.on_session_idle is False
+
+    def test_notification_settings_quiet_hours(self):
+        """Notification settings parse quiet hours correctly."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_data = {
+                "settings": {
+                    "notifications": {
+                        "quiet_hours_start": "22:00",
+                        "quiet_hours_end": "08:00"
+                    }
+                }
+            }
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    config = load_global_config()
+                    n = config.settings.notifications
+                    assert n.quiet_hours_start == "22:00"
+                    assert n.quiet_hours_end == "08:00"
+
+
+class TestCompleteProjectConfig:
+    """Test loading complete project configuration with all new fields."""
+
+    def test_load_complete_project_config(self):
+        """Load a project with scripts, review, and git config."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_path = Path(tmpdir) / "config.json"
+            config_data = {
+                "settings": {
+                    "default_ide": "cursor",
+                    "polling_interval_ms": 500,
+                    "notifications": {
+                        "enabled": True,
+                        "sound_enabled": True,
+                        "on_review_failed": True,
+                        "on_phase_complete": True
+                    }
+                },
+                "projects": [{
+                    "id": "my-app",
+                    "name": "My App",
+                    "path": "/Users/me/src/my-app",
+                    "scripts": [
+                        {"id": "server", "name": "Server", "command": "bin/dev", "keybinding": "s"},
+                        {"id": "tests", "name": "Tests", "command": "pytest", "keybinding": "t"}
+                    ],
+                    "review_config": {
+                        "enabled": True,
+                        "command": "/review-task",
+                        "max_revisions": 3
+                    },
+                    "git_config": {
+                        "default_branch": "main"
+                    }
+                }]
+            }
+            with open(config_path, "w") as f:
+                json.dump(config_data, f)
+
+            with patch("iterm_controller.config.GLOBAL_CONFIG_PATH", config_path):
+                with patch("iterm_controller.config.CONFIG_DIR", Path(tmpdir)):
+                    config = load_global_config()
+
+                    # Settings
+                    assert config.settings.default_ide == "cursor"
+                    assert config.settings.notifications.on_review_failed is True
+
+                    # Project
+                    project = config.projects[0]
+                    assert project.id == "my-app"
+
+                    # Scripts
+                    assert len(project.scripts) == 2
+                    assert project.scripts[0].keybinding == "s"
+
+                    # Review
+                    assert project.review_config.enabled is True
+                    assert project.review_config.max_revisions == 3
+
+                    # Git
+                    assert project.git_config.default_branch == "main"
