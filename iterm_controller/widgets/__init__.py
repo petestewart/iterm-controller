@@ -5,6 +5,7 @@ from iterm_controller.widgets.artifact_list import ArtifactListWidget
 from iterm_controller.widgets.blocked_tasks import BlockedTasksWidget
 from iterm_controller.widgets.doc_tree import DocTreeWidget
 from iterm_controller.widgets.docs_section import DocsSection
+from iterm_controller.widgets.env_section import EnvSection
 from iterm_controller.widgets.git_section import GitSection
 from iterm_controller.widgets.github_panel import GitHubPanelWidget
 from iterm_controller.widgets.planning_section import PlanningSection
@@ -38,6 +39,7 @@ __all__ = [
     "DocTreeWidget",
     "DocsSection",
     "EmptyState",
+    "EnvSection",
     "GitHubPanelWidget",
     "GitSection",
     "PlanningSection",

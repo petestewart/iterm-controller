@@ -1078,7 +1078,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/ui.md
   - Dependencies: 27.3.1
 
-- [ ] **27.7.5 Create EnvSection widget**
+- [x] **27.7.5 Create EnvSection widget** `[complete]`
   - Scope: Create section showing environment variables with edit capability
   - Spec: specs/ui.md
 
