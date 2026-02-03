@@ -21,9 +21,11 @@ from iterm_controller.session_monitor import (
     OutputCache,
     OutputChange,
     OutputProcessor,
+    OutputStreamManager,
     OutputThrottle,
     SessionMonitor,
     SessionNotFoundError,
+    SessionOutputStream,
     SHELL_PROMPT_PATTERNS,
     truncate_output,
 )
@@ -673,7 +675,8 @@ class TestSessionMonitor:
         result2 = await monitor.poll_once()
         assert "session-1" not in result2
 
-    def test_clear_session(self):
+    @pytest.mark.asyncio
+    async def test_clear_session(self):
         """Clear session removes all cached state for that session."""
         controller = self.make_mock_controller()
         spawner = self.make_mock_spawner()
@@ -684,13 +687,14 @@ class TestSessionMonitor:
         monitor._processor._last_output["session-1"] = "output"
         monitor._throttle._last_process["session-1"] = datetime.now()
 
-        monitor.clear_session("session-1")
+        await monitor.clear_session("session-1")
 
         assert monitor._cache.get("session-1") is None
         assert "session-1" not in monitor._processor._last_output
         assert "session-1" not in monitor._throttle._last_process
 
-    def test_clear_all(self):
+    @pytest.mark.asyncio
+    async def test_clear_all(self):
         """Clear all removes all cached state."""
         controller = self.make_mock_controller()
         spawner = self.make_mock_spawner()
@@ -702,7 +706,7 @@ class TestSessionMonitor:
         monitor._processor._last_output["session-1"] = "output"
         monitor._throttle._last_process["session-1"] = datetime.now()
 
-        monitor.clear_all()
+        await monitor.clear_all()
 
         assert monitor._cache.get("session-1") is None
         assert monitor._cache.get("session-2") is None
@@ -1738,7 +1742,8 @@ class TestSessionMonitorAdaptivePolling:
 
         assert interval == 0.5
 
-    def test_clear_session_resets_adaptive_poller(self):
+    @pytest.mark.asyncio
+    async def test_clear_session_resets_adaptive_poller(self):
         """clear_session resets adaptive poller for that session."""
         controller = self.make_mock_controller()
         spawner = self.make_mock_spawner()
@@ -1753,12 +1758,13 @@ class TestSessionMonitorAdaptivePolling:
         assert monitor._adaptive_poller.get_interval_ms("session-1") == 250
 
         # Clear the session
-        monitor.clear_session("session-1")
+        await monitor.clear_session("session-1")
 
         # Should be back to default
         assert monitor._adaptive_poller.get_interval_ms("session-1") == 500
 
-    def test_clear_all_resets_adaptive_poller(self):
+    @pytest.mark.asyncio
+    async def test_clear_all_resets_adaptive_poller(self):
         """clear_all resets all adaptive poller intervals."""
         controller = self.make_mock_controller()
         spawner = self.make_mock_spawner()
@@ -1773,7 +1779,7 @@ class TestSessionMonitorAdaptivePolling:
         monitor._adaptive_poller.on_output("session-2", had_output=True)
 
         # Clear all
-        monitor.clear_all()
+        await monitor.clear_all()
 
         # All should be back to default
         assert monitor._adaptive_poller.get_interval_ms("session-1") == 500
@@ -2204,3 +2210,668 @@ class TestMaxOutputBufferConstant:
         assert MAX_OUTPUT_BUFFER_BYTES >= 10 * 1024
         # Should be at most 1MB to prevent memory issues
         assert MAX_OUTPUT_BUFFER_BYTES <= 1024 * 1024
+
+
+# =============================================================================
+# Output Streaming Tests
+# =============================================================================
+
+
+class TestSessionOutputStream:
+    """Test SessionOutputStream functionality."""
+
+    def test_init(self):
+        """Stream initializes with correct parameters."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", max_buffer_lines=50, batch_interval_ms=200)
+
+        assert stream.session_id == "session-1"
+        assert stream.max_buffer_lines == 50
+        assert stream._batch_interval_seconds == 0.2
+
+    def test_init_defaults(self):
+        """Stream initializes with correct defaults."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        assert stream.max_buffer_lines == 100
+        assert stream._batch_interval_seconds == 0.1
+
+    @pytest.mark.asyncio
+    async def test_push_output_adds_to_buffer(self):
+        """push_output adds lines to buffer."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        await stream.push_output("Line 1\nLine 2\nLine 3")
+
+        buffer = stream.get_full_buffer()
+        assert "Line 1" in buffer
+        assert "Line 2" in buffer
+        assert "Line 3" in buffer
+
+    @pytest.mark.asyncio
+    async def test_push_output_empty_does_nothing(self):
+        """push_output with empty string does nothing."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        await stream.push_output("")
+
+        assert len(stream.get_full_buffer()) == 0
+
+    @pytest.mark.asyncio
+    async def test_buffer_respects_max_lines(self):
+        """Buffer respects max_buffer_lines limit."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", max_buffer_lines=5)
+
+        # Push more lines than the limit
+        for i in range(10):
+            await stream.push_output(f"Line {i}")
+
+        buffer = stream.get_full_buffer()
+        # Should only have the last 5 lines
+        assert len(buffer) == 5
+        assert "Line 9" in buffer
+        assert "Line 0" not in buffer
+
+    @pytest.mark.asyncio
+    async def test_subscribe_and_notify(self):
+        """Subscribers are notified of output."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", batch_interval_ms=1)
+        received = []
+
+        async def callback(output):
+            received.append(output)
+
+        stream.subscribe(callback)
+        await stream.push_output("Hello")
+
+        # Wait for flush
+        await asyncio.sleep(0.1)
+
+        assert len(received) > 0
+        assert "Hello" in "".join(received)
+
+    @pytest.mark.asyncio
+    async def test_unsubscribe_stops_notifications(self):
+        """Unsubscribed callbacks are not called."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1", batch_interval_ms=1)
+        received = []
+
+        async def callback(output):
+            received.append(output)
+
+        stream.subscribe(callback)
+        stream.unsubscribe(callback)
+
+        await stream.push_output("Hello")
+        await asyncio.sleep(0.1)
+
+        assert len(received) == 0
+
+    def test_subscriber_count(self):
+        """subscriber_count returns correct count."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        async def callback1(output):
+            pass
+
+        async def callback2(output):
+            pass
+
+        assert stream.subscriber_count == 0
+
+        stream.subscribe(callback1)
+        assert stream.subscriber_count == 1
+
+        stream.subscribe(callback2)
+        assert stream.subscriber_count == 2
+
+        stream.unsubscribe(callback1)
+        assert stream.subscriber_count == 1
+
+    def test_has_subscribers(self):
+        """has_subscribers returns correct value."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        async def callback(output):
+            pass
+
+        assert stream.has_subscribers is False
+
+        stream.subscribe(callback)
+        assert stream.has_subscribers is True
+
+        stream.unsubscribe(callback)
+        assert stream.has_subscribers is False
+
+    @pytest.mark.asyncio
+    async def test_get_recent_output(self):
+        """get_recent_output returns specified number of lines."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        for i in range(10):
+            await stream.push_output(f"Line {i}")
+
+        recent = stream.get_recent_output(3)
+        assert len(recent) == 3
+        assert recent[-1] == "Line 9"
+
+    @pytest.mark.asyncio
+    async def test_get_buffer_as_string(self):
+        """get_buffer_as_string returns buffer as joined string."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        await stream.push_output("Line 1\nLine 2\nLine 3")
+
+        result = stream.get_buffer_as_string()
+        assert "Line 1" in result
+        assert "Line 2" in result
+        assert "Line 3" in result
+
+    @pytest.mark.asyncio
+    async def test_get_buffer_as_string_with_limit(self):
+        """get_buffer_as_string with limit returns limited lines."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        for i in range(10):
+            await stream.push_output(f"Line {i}")
+
+        result = stream.get_buffer_as_string(lines=3)
+        assert "Line 9" in result
+        assert "Line 0" not in result
+
+    def test_clear(self):
+        """clear empties the buffer."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        # Need to run async in sync context
+        asyncio.get_event_loop().run_until_complete(stream.push_output("Hello"))
+
+        stream.clear()
+
+        assert len(stream.get_full_buffer()) == 0
+
+    @pytest.mark.asyncio
+    async def test_close(self):
+        """close cleans up and clears subscribers."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        stream = SessionOutputStream("session-1")
+
+        async def callback(output):
+            pass
+
+        stream.subscribe(callback)
+        await stream.push_output("Hello")
+
+        await stream.close()
+
+        assert stream.subscriber_count == 0
+        assert len(stream.get_full_buffer()) == 0
+
+
+class TestOutputStreamManager:
+    """Test OutputStreamManager functionality."""
+
+    def test_init(self):
+        """Manager initializes with correct parameters."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager(default_buffer_lines=50, batch_interval_ms=200)
+
+        assert manager._default_buffer_lines == 50
+        assert manager._batch_interval_ms == 200
+
+    def test_init_defaults(self):
+        """Manager initializes with correct defaults."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager()
+
+        assert manager._default_buffer_lines == 100
+        assert manager._batch_interval_ms == 100
+
+    def test_get_stream_creates_new(self):
+        """get_stream creates a new stream if none exists."""
+        from iterm_controller.session_monitor import OutputStreamManager, SessionOutputStream
+
+        manager = OutputStreamManager()
+
+        stream = manager.get_stream("session-1")
+
+        assert isinstance(stream, SessionOutputStream)
+        assert stream.session_id == "session-1"
+
+    def test_get_stream_returns_existing(self):
+        """get_stream returns existing stream."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager()
+
+        stream1 = manager.get_stream("session-1")
+        stream2 = manager.get_stream("session-1")
+
+        assert stream1 is stream2
+
+    def test_has_stream(self):
+        """has_stream returns correct value."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager()
+
+        assert manager.has_stream("session-1") is False
+
+        manager.get_stream("session-1")
+
+        assert manager.has_stream("session-1") is True
+
+    @pytest.mark.asyncio
+    async def test_remove_stream(self):
+        """remove_stream closes and removes stream."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager()
+
+        manager.get_stream("session-1")
+        assert manager.has_stream("session-1") is True
+
+        await manager.remove_stream("session-1")
+
+        assert manager.has_stream("session-1") is False
+
+    @pytest.mark.asyncio
+    async def test_push_output(self):
+        """push_output creates stream and pushes output."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager()
+
+        await manager.push_output("session-1", "Hello")
+
+        stream = manager.get_stream("session-1")
+        assert "Hello" in stream.get_full_buffer()
+
+    def test_subscribe(self):
+        """subscribe adds callback to stream."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager()
+
+        async def callback(output):
+            pass
+
+        manager.subscribe("session-1", callback)
+
+        assert manager.has_subscribers("session-1") is True
+
+    def test_unsubscribe(self):
+        """unsubscribe removes callback from stream."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager()
+
+        async def callback(output):
+            pass
+
+        manager.subscribe("session-1", callback)
+        manager.unsubscribe("session-1", callback)
+
+        assert manager.has_subscribers("session-1") is False
+
+    def test_get_recent_output(self):
+        """get_recent_output returns output from stream."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager()
+
+        # Empty for non-existent stream
+        assert manager.get_recent_output("nonexistent") == []
+
+        asyncio.get_event_loop().run_until_complete(
+            manager.push_output("session-1", "Hello")
+        )
+
+        recent = manager.get_recent_output("session-1")
+        assert "Hello" in recent
+
+    @pytest.mark.asyncio
+    async def test_clear_all(self):
+        """clear_all removes all streams."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager()
+
+        manager.get_stream("session-1")
+        manager.get_stream("session-2")
+
+        await manager.clear_all()
+
+        assert manager.active_streams == []
+
+    def test_active_streams(self):
+        """active_streams returns list of session IDs."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        manager = OutputStreamManager()
+
+        manager.get_stream("session-1")
+        manager.get_stream("session-2")
+
+        active = manager.active_streams
+
+        assert "session-1" in active
+        assert "session-2" in active
+
+
+class TestSessionMonitorOutputStreaming:
+    """Test SessionMonitor output streaming integration."""
+
+    def make_mock_controller(self):
+        """Create a mock controller."""
+        controller = MagicMock()
+        controller.app = MagicMock()
+        return controller
+
+    def make_mock_spawner(self, sessions=None):
+        """Create a mock spawner with optional sessions."""
+        spawner = MagicMock()
+        spawner.managed_sessions = sessions or {}
+        return spawner
+
+    def make_session(self, session_id="session-1"):
+        """Create a ManagedSession for testing."""
+        return ManagedSession(
+            id=session_id,
+            template_id="test-template",
+            project_id="test-project",
+            tab_id="tab-1",
+        )
+
+    def test_monitor_has_stream_manager(self):
+        """SessionMonitor has an OutputStreamManager."""
+        from iterm_controller.session_monitor import OutputStreamManager
+
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        assert hasattr(monitor, "_stream_manager")
+        assert isinstance(monitor._stream_manager, OutputStreamManager)
+
+    def test_monitor_exposes_stream_manager(self):
+        """SessionMonitor exposes stream_manager via property."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        assert monitor.stream_manager is monitor._stream_manager
+
+    def test_streaming_enabled_by_default(self):
+        """Streaming is enabled by default."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        assert monitor.is_streaming_enabled is True
+
+    def test_streaming_can_be_disabled(self):
+        """Streaming can be disabled via config."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        config = MonitorConfig(streaming_enabled=False)
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        assert monitor.is_streaming_enabled is False
+
+    def test_config_includes_streaming_settings(self):
+        """MonitorConfig includes streaming settings."""
+        config = MonitorConfig()
+
+        assert hasattr(config, "streaming_enabled")
+        assert hasattr(config, "streaming_buffer_lines")
+        assert hasattr(config, "streaming_batch_interval_ms")
+
+    def test_config_streaming_defaults(self):
+        """MonitorConfig has correct streaming defaults."""
+        config = MonitorConfig()
+
+        assert config.streaming_enabled is True
+        assert config.streaming_buffer_lines == 100
+        assert config.streaming_batch_interval_ms == 100
+
+    def test_subscribe_output(self):
+        """subscribe_output adds callback to stream."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        async def callback(output):
+            pass
+
+        monitor.subscribe_output("session-1", callback)
+
+        assert monitor.has_output_subscribers("session-1") is True
+
+    def test_unsubscribe_output(self):
+        """unsubscribe_output removes callback from stream."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        async def callback(output):
+            pass
+
+        monitor.subscribe_output("session-1", callback)
+        monitor.unsubscribe_output("session-1", callback)
+
+        assert monitor.has_output_subscribers("session-1") is False
+
+    def test_get_output_stream(self):
+        """get_output_stream returns stream for session."""
+        from iterm_controller.session_monitor import SessionOutputStream
+
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        stream = monitor.get_output_stream("session-1")
+
+        assert isinstance(stream, SessionOutputStream)
+        assert stream.session_id == "session-1"
+
+    def test_get_recent_output(self):
+        """get_recent_output returns output from stream."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        # Empty for new session
+        recent = monitor.get_recent_output("session-1")
+        assert recent == []
+
+    @pytest.mark.asyncio
+    async def test_poll_streams_output_when_enabled(self):
+        """Poll streams output when streaming is enabled."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(return_value="New output")
+        controller.app.get_session_by_id = MagicMock(
+            return_value=mock_iterm_session
+        )
+
+        config = MonitorConfig(streaming_enabled=True, streaming_batch_interval_ms=1)
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        received = []
+
+        async def callback(output):
+            received.append(output)
+
+        monitor.subscribe_output("session-1", callback)
+        await monitor.poll_once()
+
+        # Wait for flush
+        await asyncio.sleep(0.1)
+
+        assert len(received) > 0
+        assert "New output" in "".join(received)
+
+    @pytest.mark.asyncio
+    async def test_poll_does_not_stream_when_disabled(self):
+        """Poll does not stream output when streaming is disabled."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(return_value="New output")
+        controller.app.get_session_by_id = MagicMock(
+            return_value=mock_iterm_session
+        )
+
+        config = MonitorConfig(streaming_enabled=False)
+        monitor = SessionMonitor(controller, spawner, config=config)
+
+        received = []
+
+        async def callback(output):
+            received.append(output)
+
+        monitor.subscribe_output("session-1", callback)
+        await monitor.poll_once()
+        await asyncio.sleep(0.1)
+
+        # No output because streaming is disabled
+        assert len(received) == 0
+
+    @pytest.mark.asyncio
+    async def test_on_output_stream_callback_invoked(self):
+        """on_output_stream callback is invoked with streaming."""
+        controller = self.make_mock_controller()
+
+        session = self.make_session("session-1")
+        spawner = self.make_mock_spawner({"session-1": session})
+
+        mock_iterm_session = MagicMock()
+        mock_iterm_session.async_get_contents = AsyncMock(return_value="New output")
+        controller.app.get_session_by_id = MagicMock(
+            return_value=mock_iterm_session
+        )
+
+        received = []
+
+        async def on_stream(session_id, output):
+            received.append((session_id, output))
+
+        config = MonitorConfig(streaming_enabled=True)
+        monitor = SessionMonitor(
+            controller, spawner, config=config, on_output_stream=on_stream
+        )
+
+        await monitor.poll_once()
+
+        assert len(received) == 1
+        assert received[0][0] == "session-1"
+        assert received[0][1] == "New output"
+
+    @pytest.mark.asyncio
+    async def test_clear_session_removes_stream(self):
+        """clear_session removes output stream for that session."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        # Create a stream
+        monitor.get_output_stream("session-1")
+        assert monitor._stream_manager.has_stream("session-1") is True
+
+        await monitor.clear_session("session-1")
+
+        assert monitor._stream_manager.has_stream("session-1") is False
+
+    @pytest.mark.asyncio
+    async def test_clear_all_removes_all_streams(self):
+        """clear_all removes all output streams."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        # Create streams
+        monitor.get_output_stream("session-1")
+        monitor.get_output_stream("session-2")
+
+        await monitor.clear_all()
+
+        assert monitor._stream_manager.active_streams == []
+
+    @pytest.mark.asyncio
+    async def test_stop_clears_streams(self):
+        """stop clears all output streams."""
+        controller = self.make_mock_controller()
+        spawner = self.make_mock_spawner()
+        monitor = SessionMonitor(controller, spawner)
+
+        # Create streams
+        monitor.get_output_stream("session-1")
+        monitor.get_output_stream("session-2")
+
+        await monitor.start()
+        await monitor.stop()
+
+        assert monitor._stream_manager.active_streams == []
+
+
+class TestSessionOutputUpdatedEvent:
+    """Test SessionOutputUpdated event message."""
+
+    def test_event_creation(self):
+        """SessionOutputUpdated can be created."""
+        from iterm_controller.state.events import SessionOutputUpdated
+
+        event = SessionOutputUpdated("session-1", "New output")
+
+        assert event.session_id == "session-1"
+        assert event.output == "New output"
+
+    def test_event_in_state_events(self):
+        """SessionOutputUpdated is exported from state module."""
+        from iterm_controller.state import SessionOutputUpdated
+
+        event = SessionOutputUpdated("session-1", "output")
+        assert event.session_id == "session-1"
+
+    def test_state_event_enum_has_session_output_updated(self):
+        """StateEvent enum has SESSION_OUTPUT_UPDATED."""
+        from iterm_controller.state.events import StateEvent
+
+        assert hasattr(StateEvent, "SESSION_OUTPUT_UPDATED")
+        assert StateEvent.SESSION_OUTPUT_UPDATED.value == "session_output_updated"

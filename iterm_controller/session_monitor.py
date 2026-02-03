@@ -2,6 +2,9 @@
 
 This module provides the core monitoring capabilities for tracking session
 output and detecting when sessions need user attention.
+
+It also provides output streaming to TUI subscribers in real-time via
+the SessionOutputStream class and subscriber pattern.
 """
 
 from __future__ import annotations
@@ -9,9 +12,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Awaitable, Callable
 
 from iterm_controller.models import AttentionState
 
@@ -67,6 +71,354 @@ def truncate_output(output: str, max_bytes: int = MAX_OUTPUT_BUFFER_BYTES) -> st
         result = result[newline_idx + 1 :]
 
     return result
+
+
+# =============================================================================
+# Output Streaming
+# =============================================================================
+
+# Type alias for output subscriber callbacks
+OutputSubscriberCallback = Callable[[str], Awaitable[None]]
+
+
+class SessionOutputStream:
+    """Manages output streaming for a single session.
+
+    Streams terminal output to subscribers in real-time, maintaining a
+    rolling buffer of recent output lines. ANSI escape codes are preserved
+    for color rendering in the TUI.
+
+    Attributes:
+        session_id: The ID of the session being streamed.
+        max_buffer_lines: Maximum number of lines to keep in the buffer.
+    """
+
+    def __init__(
+        self,
+        session_id: str,
+        max_buffer_lines: int = 100,
+        batch_interval_ms: int = 100,
+    ) -> None:
+        """Initialize the output stream.
+
+        Args:
+            session_id: The session ID this stream is for.
+            max_buffer_lines: Maximum lines to keep in the rolling buffer.
+            batch_interval_ms: Minimum interval between batched updates.
+        """
+        self.session_id = session_id
+        self.max_buffer_lines = max_buffer_lines
+        self._batch_interval_seconds = batch_interval_ms / 1000
+
+        self._output_buffer: deque[str] = deque(maxlen=max_buffer_lines)
+        self._subscribers: list[OutputSubscriberCallback] = []
+        self._pending_output: list[str] = []
+        self._last_flush_time: datetime | None = None
+        self._flush_task: asyncio.Task | None = None
+        self._lock = asyncio.Lock()
+
+    async def push_output(self, chunk: str) -> None:
+        """Push new output to buffer and notify subscribers.
+
+        Output is split by newlines and added to the rolling buffer.
+        Subscribers are notified with the new chunk.
+
+        Args:
+            chunk: New output text to add.
+        """
+        if not chunk:
+            return
+
+        async with self._lock:
+            # Split by newlines and add to buffer (preserves ANSI codes)
+            lines = chunk.split("\n")
+            self._output_buffer.extend(lines)
+
+            # Add to pending output for batching
+            self._pending_output.append(chunk)
+
+            # Check if we should flush immediately or schedule a flush
+            await self._maybe_flush()
+
+    async def _maybe_flush(self) -> None:
+        """Check if we should flush pending output to subscribers."""
+        now = datetime.now()
+
+        # If no pending output, nothing to do
+        if not self._pending_output:
+            return
+
+        # If no subscribers, just clear pending output
+        if not self._subscribers:
+            self._pending_output.clear()
+            self._last_flush_time = now
+            return
+
+        # Check if enough time has passed since last flush
+        should_flush = False
+        if self._last_flush_time is None:
+            should_flush = True
+        else:
+            elapsed = (now - self._last_flush_time).total_seconds()
+            if elapsed >= self._batch_interval_seconds:
+                should_flush = True
+
+        if should_flush:
+            await self._flush_to_subscribers()
+        elif self._flush_task is None or self._flush_task.done():
+            # Schedule a delayed flush
+            self._flush_task = asyncio.create_task(self._delayed_flush())
+
+    async def _delayed_flush(self) -> None:
+        """Wait for batch interval and then flush."""
+        await asyncio.sleep(self._batch_interval_seconds)
+        async with self._lock:
+            if self._pending_output:
+                await self._flush_to_subscribers()
+
+    async def _flush_to_subscribers(self) -> None:
+        """Flush pending output to all subscribers."""
+        if not self._pending_output:
+            return
+
+        # Combine pending output into a single chunk
+        combined = "".join(self._pending_output)
+        self._pending_output.clear()
+        self._last_flush_time = datetime.now()
+
+        # Notify all subscribers
+        for callback in self._subscribers:
+            try:
+                await callback(combined)
+            except Exception as e:
+                logger.warning(f"Error in output subscriber for {self.session_id}: {e}")
+
+    def subscribe(self, callback: OutputSubscriberCallback) -> None:
+        """Add a subscriber for output updates.
+
+        Args:
+            callback: Async function called with new output chunks.
+        """
+        if callback not in self._subscribers:
+            self._subscribers.append(callback)
+
+    def unsubscribe(self, callback: OutputSubscriberCallback) -> None:
+        """Remove a subscriber.
+
+        Args:
+            callback: The callback to remove.
+        """
+        try:
+            self._subscribers.remove(callback)
+        except ValueError:
+            pass  # Callback wasn't subscribed
+
+    @property
+    def subscriber_count(self) -> int:
+        """Number of active subscribers."""
+        return len(self._subscribers)
+
+    @property
+    def has_subscribers(self) -> bool:
+        """Check if there are any subscribers."""
+        return len(self._subscribers) > 0
+
+    def get_recent_output(self, lines: int = 10) -> list[str]:
+        """Get the most recent N lines from buffer.
+
+        Args:
+            lines: Number of lines to retrieve.
+
+        Returns:
+            List of the most recent output lines.
+        """
+        return list(self._output_buffer)[-lines:]
+
+    def get_full_buffer(self) -> list[str]:
+        """Get the full output buffer.
+
+        Returns:
+            List of all lines in the buffer.
+        """
+        return list(self._output_buffer)
+
+    def get_buffer_as_string(self, lines: int | None = None) -> str:
+        """Get buffer content as a single string.
+
+        Args:
+            lines: Optional limit on number of lines. None for all.
+
+        Returns:
+            Buffer content joined with newlines.
+        """
+        if lines is None:
+            return "\n".join(self._output_buffer)
+        return "\n".join(list(self._output_buffer)[-lines:])
+
+    def clear(self) -> None:
+        """Clear the output buffer and pending output."""
+        self._output_buffer.clear()
+        self._pending_output.clear()
+        self._last_flush_time = None
+
+    async def close(self) -> None:
+        """Close the stream and clean up.
+
+        Flushes any pending output before closing.
+        """
+        async with self._lock:
+            if self._pending_output and self._subscribers:
+                await self._flush_to_subscribers()
+
+            if self._flush_task and not self._flush_task.done():
+                self._flush_task.cancel()
+                try:
+                    await self._flush_task
+                except asyncio.CancelledError:
+                    pass
+
+            self._subscribers.clear()
+            self._output_buffer.clear()
+            self._pending_output.clear()
+
+
+class OutputStreamManager:
+    """Manages output streams for all sessions.
+
+    Provides a centralized way to create, access, and clean up
+    output streams for managed sessions.
+    """
+
+    def __init__(
+        self,
+        default_buffer_lines: int = 100,
+        batch_interval_ms: int = 100,
+    ) -> None:
+        """Initialize the stream manager.
+
+        Args:
+            default_buffer_lines: Default buffer size for new streams.
+            batch_interval_ms: Default batch interval for new streams.
+        """
+        self._streams: dict[str, SessionOutputStream] = {}
+        self._default_buffer_lines = default_buffer_lines
+        self._batch_interval_ms = batch_interval_ms
+
+    def get_stream(self, session_id: str) -> SessionOutputStream:
+        """Get or create an output stream for a session.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            The output stream for the session.
+        """
+        if session_id not in self._streams:
+            self._streams[session_id] = SessionOutputStream(
+                session_id=session_id,
+                max_buffer_lines=self._default_buffer_lines,
+                batch_interval_ms=self._batch_interval_ms,
+            )
+        return self._streams[session_id]
+
+    def has_stream(self, session_id: str) -> bool:
+        """Check if a stream exists for a session.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            True if the stream exists.
+        """
+        return session_id in self._streams
+
+    async def remove_stream(self, session_id: str) -> None:
+        """Remove and close a stream for a session.
+
+        Args:
+            session_id: The session ID.
+        """
+        if session_id in self._streams:
+            stream = self._streams.pop(session_id)
+            await stream.close()
+
+    async def push_output(self, session_id: str, chunk: str) -> None:
+        """Push output to a session's stream.
+
+        Creates the stream if it doesn't exist.
+
+        Args:
+            session_id: The session ID.
+            chunk: The output chunk to push.
+        """
+        stream = self.get_stream(session_id)
+        await stream.push_output(chunk)
+
+    def subscribe(
+        self,
+        session_id: str,
+        callback: OutputSubscriberCallback,
+    ) -> None:
+        """Subscribe to output updates for a session.
+
+        Args:
+            session_id: The session ID.
+            callback: The callback to invoke with new output.
+        """
+        stream = self.get_stream(session_id)
+        stream.subscribe(callback)
+
+    def unsubscribe(
+        self,
+        session_id: str,
+        callback: OutputSubscriberCallback,
+    ) -> None:
+        """Unsubscribe from output updates for a session.
+
+        Args:
+            session_id: The session ID.
+            callback: The callback to remove.
+        """
+        if session_id in self._streams:
+            self._streams[session_id].unsubscribe(callback)
+
+    def get_recent_output(self, session_id: str, lines: int = 10) -> list[str]:
+        """Get recent output for a session.
+
+        Args:
+            session_id: The session ID.
+            lines: Number of lines to retrieve.
+
+        Returns:
+            List of recent output lines, empty if no stream exists.
+        """
+        if session_id in self._streams:
+            return self._streams[session_id].get_recent_output(lines)
+        return []
+
+    def has_subscribers(self, session_id: str) -> bool:
+        """Check if a session has any subscribers.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            True if the session has subscribers.
+        """
+        if session_id in self._streams:
+            return self._streams[session_id].has_subscribers
+        return False
+
+    async def clear_all(self) -> None:
+        """Close and remove all streams."""
+        for stream in list(self._streams.values()):
+            await stream.close()
+        self._streams.clear()
+
+    @property
+    def active_streams(self) -> list[str]:
+        """List of session IDs with active streams."""
+        return list(self._streams.keys())
 
 
 # =============================================================================
@@ -631,9 +983,15 @@ class MonitorConfig:
     adaptive_max_interval_ms: int = 2000
     adaptive_default_interval_ms: int = 500
 
+    # Output streaming settings
+    streaming_enabled: bool = True
+    streaming_buffer_lines: int = 100
+    streaming_batch_interval_ms: int = 100
+
 
 OutputCallback = Callable[["ManagedSession", str, bool], None]
 AttentionStateCallback = Callable[["ManagedSession", AttentionState, AttentionState], None]
+OutputStreamCallback = Callable[[str, str], Awaitable[None]]  # (session_id, output) -> None
 
 
 class SessionMonitor:
@@ -654,6 +1012,7 @@ class SessionMonitor:
         config: MonitorConfig | None = None,
         on_output: OutputCallback | None = None,
         on_attention_state_change: AttentionStateCallback | None = None,
+        on_output_stream: OutputStreamCallback | None = None,
     ) -> None:
         """Initialize the session monitor.
 
@@ -665,12 +1024,15 @@ class SessionMonitor:
                       Signature: (session, new_output, had_change)
             on_attention_state_change: Callback invoked when attention state changes.
                       Signature: (session, old_state, new_state)
+            on_output_stream: Async callback invoked when output is streamed.
+                      Signature: (session_id, output) -> None
         """
         self.controller = controller
         self.spawner = spawner
         self.config = config or MonitorConfig()
         self.on_output = on_output
         self.on_attention_state_change = on_attention_state_change
+        self.on_output_stream = on_output_stream
 
         # Components
         self._reader = BatchOutputReader(controller, self.config.lines_to_read)
@@ -682,6 +1044,12 @@ class SessionMonitor:
             min_interval_ms=self.config.adaptive_min_interval_ms,
             max_interval_ms=self.config.adaptive_max_interval_ms,
             default_interval_ms=self.config.adaptive_default_interval_ms,
+        )
+
+        # Output streaming
+        self._stream_manager = OutputStreamManager(
+            default_buffer_lines=self.config.streaming_buffer_lines,
+            batch_interval_ms=self.config.streaming_batch_interval_ms,
         )
 
         # State
@@ -720,6 +1088,9 @@ class SessionMonitor:
             except asyncio.CancelledError:
                 pass
             self._task = None
+
+        # Clean up output streams
+        await self._stream_manager.clear_all()
 
         logger.info("Session monitor stopped")
 
@@ -877,6 +1248,10 @@ class SessionMonitor:
                         self.on_output(session, change.new_output, True)
                     except Exception as e:
                         logger.error(f"Error in output callback: {e}")
+
+                # Stream output to subscribers (if streaming enabled)
+                if self.config.streaming_enabled:
+                    await self._stream_output(session.id, change.new_output)
             else:
                 # No output change - update adaptive polling for idle
                 if self.config.adaptive_polling_enabled:
@@ -884,7 +1259,7 @@ class SessionMonitor:
 
         return changes
 
-    def clear_session(self, session_id: str) -> None:
+    async def clear_session(self, session_id: str) -> None:
         """Clear all cached state for a session.
 
         Call this when a session is closed or reset.
@@ -893,13 +1268,17 @@ class SessionMonitor:
         self._processor.clear(session_id)
         self._throttle.clear(session_id)
         self._adaptive_poller.reset_session(session_id)
+        # Clean up output stream
+        await self._stream_manager.remove_stream(session_id)
 
-    def clear_all(self) -> None:
+    async def clear_all(self) -> None:
         """Clear all cached state."""
         self._cache.clear()
         self._processor.clear()
         self._throttle.clear()
         self._adaptive_poller.reset_all()
+        # Clean up all output streams
+        await self._stream_manager.clear_all()
 
     def get_session_poll_interval(self, session_id: str) -> float:
         """Get the current polling interval for a session.
@@ -940,6 +1319,102 @@ class SessionMonitor:
     def adaptive_poller(self) -> AdaptivePoller:
         """Access the adaptive poller for advanced use."""
         return self._adaptive_poller
+
+    # =========================================================================
+    # Output Streaming API
+    # =========================================================================
+
+    async def _stream_output(self, session_id: str, output: str) -> None:
+        """Stream output to subscribers and invoke callback.
+
+        Args:
+            session_id: The session ID.
+            output: The new output content.
+        """
+        # Push to stream manager
+        await self._stream_manager.push_output(session_id, output)
+
+        # Invoke callback if set
+        if self.on_output_stream:
+            try:
+                await self.on_output_stream(session_id, output)
+            except Exception as e:
+                logger.error(f"Error in output stream callback: {e}")
+
+    def subscribe_output(
+        self,
+        session_id: str,
+        callback: OutputSubscriberCallback,
+    ) -> None:
+        """Subscribe to output updates for a session.
+
+        The callback will be invoked with new output chunks as they
+        are detected. ANSI escape codes are preserved for colors.
+
+        Args:
+            session_id: The session ID to subscribe to.
+            callback: Async function called with new output chunks.
+        """
+        self._stream_manager.subscribe(session_id, callback)
+
+    def unsubscribe_output(
+        self,
+        session_id: str,
+        callback: OutputSubscriberCallback,
+    ) -> None:
+        """Unsubscribe from output updates for a session.
+
+        Args:
+            session_id: The session ID.
+            callback: The callback to remove.
+        """
+        self._stream_manager.unsubscribe(session_id, callback)
+
+    def get_output_stream(self, session_id: str) -> SessionOutputStream:
+        """Get the output stream for a session.
+
+        Creates the stream if it doesn't exist.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            The session's output stream.
+        """
+        return self._stream_manager.get_stream(session_id)
+
+    def get_recent_output(self, session_id: str, lines: int = 10) -> list[str]:
+        """Get recent output lines for a session.
+
+        Args:
+            session_id: The session ID.
+            lines: Number of lines to retrieve.
+
+        Returns:
+            List of recent output lines.
+        """
+        return self._stream_manager.get_recent_output(session_id, lines)
+
+    def has_output_subscribers(self, session_id: str) -> bool:
+        """Check if a session has any output subscribers.
+
+        Args:
+            session_id: The session ID.
+
+        Returns:
+            True if the session has subscribers.
+        """
+        return self._stream_manager.has_subscribers(session_id)
+
+    @property
+    def stream_manager(self) -> OutputStreamManager:
+        """Access the output stream manager for advanced use."""
+        return self._stream_manager
+
+    @property
+    def is_streaming_enabled(self) -> bool:
+        """Check if output streaming is enabled."""
+        return self.config.streaming_enabled
 
     @property
     def is_adaptive_polling_enabled(self) -> bool:

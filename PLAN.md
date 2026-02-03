@@ -952,7 +952,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/app.md
   - Dependencies: 27.2.3
 
-- [ ] **27.3.3 Add output streaming to SessionMonitor**
+- [x] **27.3.3 Add output streaming to SessionMonitor** `[complete]`
   - Scope: Add SessionOutputStream class, subscriber pattern, and SessionOutputUpdated events
   - Spec: specs/session-monitor.md
   - Acceptance:

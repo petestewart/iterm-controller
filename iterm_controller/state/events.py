@@ -32,6 +32,7 @@ class StateEvent(Enum):
     SESSION_SPAWNED = "session_spawned"
     SESSION_CLOSED = "session_closed"
     SESSION_STATUS_CHANGED = "session_status_changed"
+    SESSION_OUTPUT_UPDATED = "session_output_updated"
     TASK_STATUS_CHANGED = "task_status_changed"
     PLAN_RELOADED = "plan_reloaded"
     PLAN_CONFLICT = "plan_conflict"
@@ -100,6 +101,20 @@ class SessionStatusChanged(StateMessage):
     def __init__(self, session: ManagedSession) -> None:
         super().__init__()
         self.session = session
+
+
+class SessionOutputUpdated(StateMessage):
+    """Posted when new output is available for a session.
+
+    This is used for live output streaming to the TUI. The output
+    contains only the new content (not the full buffer) and may
+    include ANSI escape codes for colors.
+    """
+
+    def __init__(self, session_id: str, output: str) -> None:
+        super().__init__()
+        self.session_id = session_id
+        self.output = output
 
 
 class TaskStatusChanged(StateMessage):
