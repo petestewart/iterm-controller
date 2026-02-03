@@ -1060,7 +1060,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### 27.7 Project Screen
 
-- [ ] **27.7.1 Create PlanningSection widget**
+- [x] **27.7.1 Create PlanningSection widget** `[complete]`
   - Scope: Create collapsible section showing planning artifacts (PROBLEM, PRD, specs, PLAN)
   - Spec: specs/ui.md
 

@@ -5,6 +5,7 @@ from iterm_controller.widgets.artifact_list import ArtifactListWidget
 from iterm_controller.widgets.blocked_tasks import BlockedTasksWidget
 from iterm_controller.widgets.doc_tree import DocTreeWidget
 from iterm_controller.widgets.github_panel import GitHubPanelWidget
+from iterm_controller.widgets.planning_section import PlanningSection
 from iterm_controller.widgets.health_status import HealthStatusWidget
 from iterm_controller.widgets.mode_indicator import ModeIndicatorWidget
 from iterm_controller.widgets.project_header import ProjectHeaderWidget
@@ -34,6 +35,7 @@ __all__ = [
     "DocTreeWidget",
     "EmptyState",
     "GitHubPanelWidget",
+    "PlanningSection",
     "HealthStatusWidget",
     "ModeIndicatorWidget",
     "OrchestratorProgress",
