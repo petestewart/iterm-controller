@@ -1040,7 +1040,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/mission-control.md
   - Dependencies: 27.6.1
 
-- [ ] **27.6.5 Create MissionControlScreen**
+- [x] **27.6.5 Create MissionControlScreen** `[complete]`
   - Scope: Create main screen with session list, keybindings, empty state
   - Spec: specs/mission-control.md
   - Acceptance:
@@ -1052,10 +1052,11 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
     - k kills session
   - Dependencies: 27.6.4, 27.3.3
 
-- [ ] **27.6.6 Subscribe to output updates**
+- [x] **27.6.6 Subscribe to output updates** `[complete]`
   - Scope: Wire MissionControlScreen to SessionOutputUpdated events
   - Spec: specs/mission-control.md
   - Dependencies: 27.6.5, 27.3.3
+  - Note: Implemented as part of 27.6.5 via `on_session_output_updated` handler
 
 ### 27.7 Project Screen
 

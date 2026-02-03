@@ -4,6 +4,7 @@ This package contains all Textual screens for the iTerm Controller application.
 """
 
 from iterm_controller.screens.control_room import ControlRoomScreen
+from iterm_controller.screens.mission_control import MissionControlScreen
 from iterm_controller.screens.mode_screen import ModeScreen
 from iterm_controller.screens.modes import (
     DocsModeScreen,
@@ -19,6 +20,7 @@ from iterm_controller.screens.settings import SettingsScreen
 __all__ = [
     "ControlRoomScreen",
     "DocsModeScreen",
+    "MissionControlScreen",
     "ModeScreen",
     "NewProjectScreen",
     "PlanModeScreen",
