@@ -18,12 +18,35 @@ import dacite
 # =============================================================================
 
 
+class SessionType(Enum):
+    """What kind of work this session is doing."""
+
+    CLAUDE_TASK = "claude_task"  # Working on specific task
+    ORCHESTRATOR = "orchestrator"  # Running task loop script
+    REVIEW = "review"  # Running review command
+    TEST_RUNNER = "test_runner"  # Running tests
+    SCRIPT = "script"  # Custom project script
+    SERVER = "server"  # Dev server
+    SHELL = "shell"  # Interactive shell
+
+
 class AttentionState(Enum):
     """Session attention state for user notification."""
 
     WAITING = "waiting"  # Needs user input (highest priority)
     WORKING = "working"  # Actively producing output
     IDLE = "idle"  # At prompt, not doing anything
+
+
+@dataclass
+class SessionProgress:
+    """Progress tracking for orchestrator sessions."""
+
+    total_tasks: int
+    completed_tasks: int
+    current_task_id: str | None = None
+    current_task_title: str | None = None
+    phase_id: str | None = None
 
 
 @dataclass

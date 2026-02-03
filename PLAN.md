@@ -865,7 +865,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Add AWAITING_REVIEW status to TaskStatus enum
   - Spec: specs/models.md
 
-- [ ] **27.1.2 Add SessionType enum and SessionProgress**
+- [x] **27.1.2 Add SessionType enum and SessionProgress** `[complete]`
   - Scope: Create SessionType enum (CLAUDE_TASK, ORCHESTRATOR, REVIEW, TEST_RUNNER, SCRIPT, SERVER, SHELL) and SessionProgress dataclass
   - Spec: specs/models.md
 

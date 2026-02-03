@@ -22,7 +22,9 @@ from iterm_controller.models import (
     ProjectTemplate,
     PullRequest,
     SessionLayout,
+    SessionProgress,
     SessionTemplate,
+    SessionType,
     TabLayout,
     Task,
     TaskStatus,
@@ -44,6 +46,16 @@ from iterm_controller.models import (
 
 class TestEnums:
     """Test enum definitions and values."""
+
+    def test_session_type_values(self):
+        """Test SessionType enum values match spec."""
+        assert SessionType.CLAUDE_TASK.value == "claude_task"
+        assert SessionType.ORCHESTRATOR.value == "orchestrator"
+        assert SessionType.REVIEW.value == "review"
+        assert SessionType.TEST_RUNNER.value == "test_runner"
+        assert SessionType.SCRIPT.value == "script"
+        assert SessionType.SERVER.value == "server"
+        assert SessionType.SHELL.value == "shell"
 
     def test_attention_state_values(self):
         assert AttentionState.WAITING.value == "waiting"
@@ -210,6 +222,75 @@ class TestSessionModels:
 
         restored = model_from_dict(ManagedSession, data)
         assert restored.attention_state == AttentionState.WAITING
+
+    def test_session_progress_creation(self):
+        """Test creating a SessionProgress with all fields."""
+        progress = SessionProgress(
+            total_tasks=10,
+            completed_tasks=5,
+            current_task_id="2.1",
+            current_task_title="Implement feature X",
+            phase_id="2",
+        )
+        assert progress.total_tasks == 10
+        assert progress.completed_tasks == 5
+        assert progress.current_task_id == "2.1"
+        assert progress.current_task_title == "Implement feature X"
+        assert progress.phase_id == "2"
+
+    def test_session_progress_defaults(self):
+        """Test SessionProgress default values for optional fields."""
+        progress = SessionProgress(
+            total_tasks=5,
+            completed_tasks=2,
+        )
+        assert progress.total_tasks == 5
+        assert progress.completed_tasks == 2
+        assert progress.current_task_id is None
+        assert progress.current_task_title is None
+        assert progress.phase_id is None
+
+    def test_session_progress_serialization(self):
+        """Test SessionProgress serializes to/from dict correctly."""
+        progress = SessionProgress(
+            total_tasks=8,
+            completed_tasks=3,
+            current_task_id="1.5",
+            current_task_title="Build tests",
+            phase_id="1",
+        )
+        data = model_to_dict(progress)
+        assert data["total_tasks"] == 8
+        assert data["completed_tasks"] == 3
+        assert data["current_task_id"] == "1.5"
+        assert data["current_task_title"] == "Build tests"
+        assert data["phase_id"] == "1"
+
+        restored = model_from_dict(SessionProgress, data)
+        assert restored.total_tasks == 8
+        assert restored.completed_tasks == 3
+        assert restored.current_task_id == "1.5"
+        assert restored.current_task_title == "Build tests"
+        assert restored.phase_id == "1"
+
+    def test_session_progress_none_values_serialization(self):
+        """Test SessionProgress with None values serializes correctly."""
+        progress = SessionProgress(
+            total_tasks=10,
+            completed_tasks=0,
+            current_task_id=None,
+            current_task_title=None,
+            phase_id=None,
+        )
+        data = model_to_dict(progress)
+        assert data["current_task_id"] is None
+        assert data["current_task_title"] is None
+        assert data["phase_id"] is None
+
+        restored = model_from_dict(SessionProgress, data)
+        assert restored.current_task_id is None
+        assert restored.current_task_title is None
+        assert restored.phase_id is None
 
 
 class TestTaskModels:
