@@ -19,6 +19,7 @@ if TYPE_CHECKING:
         Plan,
         Project,
         ReviewResult,
+        SessionProgress,
         TaskReview,
         TestPlan,
     )
@@ -50,6 +51,11 @@ class StateEvent(Enum):
     REVIEW_STARTED = "review_started"
     REVIEW_COMPLETED = "review_completed"
     REVIEW_FAILED = "review_failed"
+    # Script events
+    SCRIPT_STARTED = "script_started"
+    SCRIPT_COMPLETED = "script_completed"
+    # Orchestrator events
+    ORCHESTRATOR_PROGRESS = "orchestrator_progress"
 
 
 # =============================================================================
@@ -243,3 +249,39 @@ class ReviewFailed(StateMessage):
         super().__init__()
         self.task_id = task_id
         self.review = review
+
+
+class ScriptStarted(StateMessage):
+    """Posted when a script starts running."""
+
+    def __init__(
+        self, project_id: str, script_id: str, session_id: str
+    ) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.script_id = script_id
+        self.session_id = session_id
+
+
+class ScriptCompleted(StateMessage):
+    """Posted when a script finishes."""
+
+    def __init__(
+        self, project_id: str, script_id: str, exit_code: int
+    ) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.script_id = script_id
+        self.exit_code = exit_code
+
+
+class OrchestratorProgress(StateMessage):
+    """Posted when orchestrator makes progress on tasks."""
+
+    def __init__(
+        self, project_id: str, session_id: str, progress: SessionProgress
+    ) -> None:
+        super().__init__()
+        self.project_id = project_id
+        self.session_id = session_id
+        self.progress = progress

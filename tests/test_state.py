@@ -15,6 +15,7 @@ from iterm_controller.state import (
     AppState,
     ConfigChanged,
     HealthStatusChanged,
+    OrchestratorProgress,
     PlanConflict,
     PlanReloaded,
     ProjectClosed,
@@ -23,6 +24,8 @@ from iterm_controller.state import (
     ReviewFailed,
     ReviewStarted,
     ReviewStateManager,
+    ScriptCompleted,
+    ScriptStarted,
     SessionClosed,
     SessionSpawned,
     SessionStatusChanged,
@@ -1056,3 +1059,66 @@ class TestAppStateReviewOperations:
         state.connect_app(mock_app)
 
         assert state._review_manager._app is mock_app
+
+
+class TestNewEventMessages:
+    """Tests for the new event messages added in Phase 27."""
+
+    def test_script_started_message(self) -> None:
+        """Test ScriptStarted message initialization."""
+        msg = ScriptStarted("project-1", "script-1", "session-1")
+
+        assert msg.project_id == "project-1"
+        assert msg.script_id == "script-1"
+        assert msg.session_id == "session-1"
+
+    def test_script_completed_message(self) -> None:
+        """Test ScriptCompleted message initialization."""
+        msg = ScriptCompleted("project-1", "script-1", 0)
+
+        assert msg.project_id == "project-1"
+        assert msg.script_id == "script-1"
+        assert msg.exit_code == 0
+
+    def test_script_completed_with_error_exit_code(self) -> None:
+        """Test ScriptCompleted message with non-zero exit code."""
+        msg = ScriptCompleted("project-1", "script-1", 1)
+
+        assert msg.exit_code == 1
+
+    def test_orchestrator_progress_message(self) -> None:
+        """Test OrchestratorProgress message initialization."""
+        from iterm_controller.models import SessionProgress
+
+        progress = SessionProgress(
+            total_tasks=10,
+            completed_tasks=5,
+            current_task_id="task-1",
+            current_task_title="Implement feature",
+            phase_id="phase-1",
+        )
+        msg = OrchestratorProgress("project-1", "session-1", progress)
+
+        assert msg.project_id == "project-1"
+        assert msg.session_id == "session-1"
+        assert msg.progress.total_tasks == 10
+        assert msg.progress.completed_tasks == 5
+        assert msg.progress.current_task_id == "task-1"
+        assert msg.progress.current_task_title == "Implement feature"
+        assert msg.progress.phase_id == "phase-1"
+
+    def test_orchestrator_progress_with_no_current_task(self) -> None:
+        """Test OrchestratorProgress message when no task is active."""
+        from iterm_controller.models import SessionProgress
+
+        progress = SessionProgress(
+            total_tasks=10,
+            completed_tasks=10,
+            current_task_id=None,
+            current_task_title=None,
+            phase_id=None,
+        )
+        msg = OrchestratorProgress("project-1", "session-1", progress)
+
+        assert msg.progress.current_task_id is None
+        assert msg.progress.current_task_title is None

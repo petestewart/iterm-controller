@@ -966,7 +966,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Spec: specs/app.md
   - Dependencies: 27.3.1, 27.3.2
 
-- [ ] **27.3.5 Add new event messages**
+- [x] **27.3.5 Add new event messages** `[complete]`
   - Scope: Create GitStatusChanged, ReviewStarted, ReviewCompleted, ReviewFailed, ScriptStarted, ScriptCompleted, SessionOutputUpdated, OrchestratorProgress messages
   - Spec: specs/app.md
 
