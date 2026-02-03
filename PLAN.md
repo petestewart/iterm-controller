@@ -904,7 +904,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
 
 ### 27.2 Services Layer
 
-- [ ] **27.2.1 Create GitService**
+- [x] **27.2.1 Create GitService** `[complete]`
   - Scope: Implement GitService with get_status, get_diff, stage_files, commit, push, pull, fetch methods
   - Spec: specs/git-service.md
   - Acceptance:

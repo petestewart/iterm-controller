@@ -77,6 +77,27 @@ class PlanConflictError(PlanError):
     """Raised when there's a conflict with external changes."""
 
 
+# Git Errors
+class GitError(ItermControllerError):
+    """Base for git errors."""
+
+
+class GitNotARepoError(GitError):
+    """Raised when path is not a git repository."""
+
+
+class GitCommandError(GitError):
+    """Raised when a git command fails."""
+
+
+class GitPushRejectedError(GitError):
+    """Raised when push is rejected by remote."""
+
+
+class GitNetworkError(GitError):
+    """Raised when network operation fails."""
+
+
 # GitHub Errors
 class GitHubError(ItermControllerError):
     """Base for GitHub errors."""
