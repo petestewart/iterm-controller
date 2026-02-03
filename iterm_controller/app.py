@@ -67,8 +67,15 @@ class ItermControllerApp(App):
         self.state = AppState()
         self.state.connect_app(self)  # Connect state to app for message posting
 
-        # Create service container with all dependencies
-        self.services = ServiceContainer.create()
+        # Create service container with plan manager for ReviewService
+        self.services = ServiceContainer.create(
+            plan_manager=self.state._plan_manager,  # noqa: SLF001
+        )
+
+        # Wire up state managers with services from container
+        # This ensures the state managers use the same service instances
+        self.state._git_manager.git_service = self.services.git  # noqa: SLF001
+        self.state._review_manager.review_service = self.services.reviews  # noqa: SLF001
 
         # Expose commonly-used services directly for backwards compatibility
         self.iterm = self.services.iterm

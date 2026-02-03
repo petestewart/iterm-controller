@@ -961,7 +961,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
     - Preserves ANSI colors
     - Batches updates for performance
 
-- [ ] **27.3.4 Update AppState with new managers**
+- [x] **27.3.4 Update AppState with new managers** `[complete]`
   - Scope: Add git and reviews managers to AppState; update ServiceContainer with new services
   - Spec: specs/app.md
   - Dependencies: 27.3.1, 27.3.2

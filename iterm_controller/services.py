@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from textual.screen import ModalScreen, Screen
 
+from iterm_controller.git_service import GitService
 from iterm_controller.github import GitHubIntegration
 from iterm_controller.iterm import (
     ItermController,
@@ -26,6 +27,7 @@ from iterm_controller.iterm import (
 )
 from iterm_controller.models import WorkflowMode, WorkflowStage
 from iterm_controller.notifications import Notifier
+from iterm_controller.review_service import ReviewService
 from iterm_controller.script_service import ScriptService
 
 # Import all screens and modals in services.py - this is the single place where
@@ -39,6 +41,7 @@ from iterm_controller.screens.modes.work_mode import WorkModeScreen
 
 if TYPE_CHECKING:
     from iterm_controller.models import Project, WindowLayout
+    from iterm_controller.state.plan_manager import PlanStateManager
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +65,9 @@ class ServiceContainer:
         layout_spawner: Service for spawning window layouts.
         github: GitHub integration service.
         notifier: macOS notification service.
+        scripts: Script execution service.
+        git: Git operations service.
+        reviews: Review pipeline service.
     """
 
     iterm: ItermController
@@ -72,14 +78,21 @@ class ServiceContainer:
     github: GitHubIntegration
     notifier: Notifier
     scripts: ScriptService
+    git: GitService
+    reviews: ReviewService
 
     @classmethod
-    def create(cls) -> "ServiceContainer":
+    def create(cls, plan_manager: "PlanStateManager | None" = None) -> "ServiceContainer":
         """Create a new service container with all services initialized.
 
         The services are created but not yet connected. Call the async
         initialization methods (connect_iterm, initialize_github, etc.)
         to complete setup.
+
+        Args:
+            plan_manager: Optional PlanStateManager for ReviewService.
+                         If not provided, ReviewService will have limited
+                         functionality (cannot update task status).
 
         Returns:
             A new ServiceContainer with all services.
@@ -98,6 +111,18 @@ class ServiceContainer:
         notifier = Notifier()
         scripts = ScriptService(spawner)
 
+        # Create git service
+        git = GitService()
+
+        # Create review service (needs spawner, git, and plan manager)
+        # Import here to avoid circular import issues with PlanStateManager
+        reviews = ReviewService(
+            session_spawner=spawner,
+            git_service=git,
+            plan_manager=plan_manager,  # type: ignore[arg-type]
+            notifier=notifier,
+        )
+
         return cls(
             iterm=iterm,
             spawner=spawner,
@@ -107,6 +132,8 @@ class ServiceContainer:
             github=github,
             notifier=notifier,
             scripts=scripts,
+            git=git,
+            reviews=reviews,
         )
 
     async def connect_iterm(self) -> None:

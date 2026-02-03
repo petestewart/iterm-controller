@@ -147,3 +147,88 @@ class TestAppAPIWithInjectedServices:
         # After _ensure_components, they should be created
         api._ensure_components()
         assert api._spawner is not None
+
+
+class TestServiceContainerNewServices:
+    """Tests for new services (git, reviews) in ServiceContainer."""
+
+    def test_create_initializes_git_service(self) -> None:
+        """Test that create() initializes the git service."""
+        from iterm_controller.git_service import GitService
+
+        container = ServiceContainer.create()
+
+        assert container.git is not None
+        assert isinstance(container.git, GitService)
+
+    def test_create_initializes_review_service(self) -> None:
+        """Test that create() initializes the review service."""
+        from iterm_controller.review_service import ReviewService
+
+        container = ServiceContainer.create()
+
+        assert container.reviews is not None
+        assert isinstance(container.reviews, ReviewService)
+
+    def test_review_service_receives_dependencies(self) -> None:
+        """Test that review service is wired with its dependencies."""
+        container = ServiceContainer.create()
+
+        # Review service should have the same spawner
+        assert container.reviews.session_spawner is container.spawner
+
+        # Review service should have the same git service
+        assert container.reviews.git_service is container.git
+
+        # Review service should have the same notifier
+        assert container.reviews.notifier is container.notifier
+
+    def test_create_with_plan_manager(self) -> None:
+        """Test that create() can receive a plan manager."""
+        from unittest.mock import Mock
+
+        # Create a mock plan manager
+        mock_plan_manager = Mock()
+
+        container = ServiceContainer.create(plan_manager=mock_plan_manager)
+
+        # Review service should have the plan manager
+        assert container.reviews.plan_manager is mock_plan_manager
+
+    def test_create_without_plan_manager(self) -> None:
+        """Test that create() works without a plan manager."""
+        container = ServiceContainer.create()
+
+        # Review service should have None for plan manager
+        assert container.reviews.plan_manager is None
+
+
+class TestAppServiceWiring:
+    """Tests for app wiring of services to state managers."""
+
+    def test_app_wires_git_service_to_state_manager(self) -> None:
+        """Test that app wires git service from container to state manager."""
+        from iterm_controller.app import ItermControllerApp
+
+        app = ItermControllerApp()
+
+        # State manager's git service should be the container's git service
+        assert app.state._git_manager.git_service is app.services.git
+
+    def test_app_wires_review_service_to_state_manager(self) -> None:
+        """Test that app wires review service from container to state manager."""
+        from iterm_controller.app import ItermControllerApp
+
+        app = ItermControllerApp()
+
+        # State manager's review service should be the container's review service
+        assert app.state._review_manager.review_service is app.services.reviews
+
+    def test_app_passes_plan_manager_to_container(self) -> None:
+        """Test that app passes plan manager to service container."""
+        from iterm_controller.app import ItermControllerApp
+
+        app = ItermControllerApp()
+
+        # Review service should have the same plan manager as state
+        assert app.services.reviews.plan_manager is app.state._plan_manager
