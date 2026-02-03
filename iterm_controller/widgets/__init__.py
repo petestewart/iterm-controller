@@ -12,6 +12,7 @@ from iterm_controller.widgets.planning_section import PlanningSection
 from iterm_controller.widgets.health_status import HealthStatusWidget
 from iterm_controller.widgets.mode_indicator import ModeIndicatorWidget
 from iterm_controller.widgets.project_header import ProjectHeaderWidget
+from iterm_controller.widgets.script_toolbar import ScriptToolbar
 from iterm_controller.widgets.session_card import (
     OrchestratorProgress,
     OutputLog,
@@ -48,6 +49,7 @@ __all__ = [
     "OrchestratorProgress",
     "OutputLog",
     "ProjectHeaderWidget",
+    "ScriptToolbar",
     "SessionCard",
     "SessionCardHeader",
     "SessionList",

@@ -1082,7 +1082,7 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: Create section showing environment variables with edit capability
   - Spec: specs/ui.md
 
-- [ ] **27.7.6 Create ScriptToolbar widget**
+- [x] **27.7.6 Create ScriptToolbar widget** `[complete]`
   - Scope: Create toolbar with script buttons from project config
   - Spec: specs/ui.md
   - Dependencies: 27.5.1
