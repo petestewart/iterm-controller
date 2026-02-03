@@ -431,3 +431,196 @@ class EnvParser:
             return {}
         return self.parse(path.read_text())
 ```
+
+## Project Scripts Configuration
+
+Projects can define named scripts with keybindings:
+
+```json
+{
+  "projects": [{
+    "id": "my-app",
+    "scripts": [
+      {
+        "id": "server",
+        "name": "Server",
+        "command": "bin/dev",
+        "keybinding": "s",
+        "session_type": "server",
+        "show_in_toolbar": true
+      },
+      {
+        "id": "tests",
+        "name": "Tests",
+        "command": "bin/rails test",
+        "keybinding": "t",
+        "session_type": "test_runner"
+      },
+      {
+        "id": "lint",
+        "name": "Lint",
+        "command": "bin/rubocop -A",
+        "keybinding": "l",
+        "session_type": "script"
+      },
+      {
+        "id": "orchestrator",
+        "name": "Run Tasks",
+        "command": "bin/run-tasks --phase=current",
+        "keybinding": "o",
+        "session_type": "orchestrator"
+      }
+    ]
+  }]
+}
+```
+
+### Script Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | Unique identifier |
+| `name` | string | Yes | Display name |
+| `command` | string | Yes | Command to run |
+| `keybinding` | string | No | Single key for quick launch |
+| `working_dir` | string | No | Override project directory |
+| `env` | object | No | Additional environment variables |
+| `session_type` | string | No | One of: script, server, test_runner, orchestrator |
+| `show_in_toolbar` | bool | No | Show in script toolbar (default: true) |
+
+## Review Configuration
+
+Configure automatic code review for completed tasks:
+
+```json
+{
+  "projects": [{
+    "id": "my-app",
+    "review": {
+      "enabled": true,
+      "command": "/review-task",
+      "model": "opus",
+      "max_revisions": 3,
+      "trigger": "script_completion",
+      "context": {
+        "include_task_definition": true,
+        "include_git_diff": true,
+        "include_test_results": true,
+        "include_lint_results": false,
+        "include_session_log": false
+      }
+    }
+  }]
+}
+```
+
+### Review Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `enabled` | bool | true | Enable auto-review |
+| `command` | string | "/review-task" | Slash command to run |
+| `model` | string | null | Override model (opus, sonnet, haiku) |
+| `max_revisions` | int | 3 | Max revision attempts before pausing |
+| `trigger` | string | "script_completion" | When to trigger review |
+| `context` | object | see below | What context to include |
+
+### Review Triggers
+
+| Trigger | Description |
+|---------|-------------|
+| `script_completion` | Review when orchestrator script completes a task |
+| `session_idle` | Review when session goes idle after working |
+| `explicit` | Only review when manually triggered |
+
+### Review Context
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `include_task_definition` | true | Task title, scope, acceptance criteria |
+| `include_git_diff` | true | Git diff since base branch |
+| `include_test_results` | true | Test output if run |
+| `include_lint_results` | false | Lint output if run |
+| `include_session_log` | false | Session output (often verbose) |
+
+## Git Configuration
+
+Per-project git settings:
+
+```json
+{
+  "projects": [{
+    "id": "my-app",
+    "git": {
+      "auto_stage": false,
+      "default_branch": "main",
+      "remote": "origin"
+    }
+  }]
+}
+```
+
+### Git Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `auto_stage` | bool | false | Auto-stage all changes before commit |
+| `default_branch` | string | "main" | Base branch for diffs |
+| `remote` | string | "origin" | Default remote |
+
+## Updated Notification Settings
+
+```json
+{
+  "settings": {
+    "notifications": {
+      "enabled": true,
+      "sound_enabled": true,
+      "sound_name": "Ping",
+      "on_session_waiting": true,
+      "on_session_idle": false,
+      "on_review_failed": true,
+      "on_task_complete": false,
+      "on_phase_complete": true,
+      "on_orchestrator_done": true
+    }
+  }
+}
+```
+
+## Complete Example
+
+```json
+{
+  "settings": {
+    "default_ide": "cursor",
+    "polling_interval_ms": 500,
+    "notifications": {
+      "enabled": true,
+      "sound_enabled": true,
+      "on_review_failed": true,
+      "on_phase_complete": true
+    }
+  },
+  "projects": [
+    {
+      "id": "my-app",
+      "name": "My App",
+      "path": "/Users/me/src/my-app",
+      "scripts": [
+        {"id": "server", "name": "Server", "command": "bin/dev", "keybinding": "s"},
+        {"id": "tests", "name": "Tests", "command": "pytest", "keybinding": "t"}
+      ],
+      "review": {
+        "enabled": true,
+        "command": "/review-task",
+        "max_revisions": 3
+      },
+      "git": {
+        "default_branch": "main"
+      },
+      "session_templates": [...]
+    }
+  ]
+}
+```

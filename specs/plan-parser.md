@@ -446,3 +446,164 @@ class PlanWriteQueue:
         plan_path.write_text(new_content)
         self.watcher.last_mtime = plan_path.stat().st_mtime
 ```
+
+## Updated Task Format
+
+Tasks can now include review information and session assignments:
+
+```markdown
+### 2.1 Add user authentication
+- **Status:** awaiting_review
+- **Session:** iterm2-session-abc123
+- **Scope:** Implement login/logout with sessions
+- **Acceptance:**
+  - User can log in with email/password
+  - Session persists across browser refresh
+  - Logout clears session
+- **Review:**
+  - **Attempt:** 2
+  - **Last Result:** needs_revision
+  - **Issues:**
+    - Missing rate limiting on login endpoint
+    - No test for failed login attempt
+  - **Reviewed At:** 2024-01-15T10:30:00Z
+```
+
+## New Task Fields
+
+| Field | Format | Description |
+|-------|--------|-------------|
+| Session | `- **Session:** <session_id>` | iTerm2 session ID working on this task |
+| Review | Block (see below) | Review status and history |
+
+## Review Section Format
+
+```markdown
+- **Review:**
+  - **Attempt:** <number>
+  - **Last Result:** <approved|needs_revision|rejected>
+  - **Issues:**
+    - <issue 1>
+    - <issue 2>
+  - **Reviewed At:** <ISO timestamp>
+```
+
+## Parser Updates
+
+### _extract_session
+
+```python
+def _extract_session(self, content: str) -> str | None:
+    """Extract session assignment from task block"""
+    match = re.search(r'\*\*Session:\*\*\s*(\S+)', content)
+    return match.group(1) if match else None
+```
+
+### _extract_review
+
+```python
+def _extract_review(self, content: str) -> TaskReview | None:
+    """Extract review section from task block"""
+    review_match = re.search(
+        r'\*\*Review:\*\*\s*\n((?:  - .+\n)+)',
+        content
+    )
+    if not review_match:
+        return None
+
+    review_content = review_match.group(1)
+
+    attempt = self._extract_review_field(review_content, "Attempt", int)
+    result = self._extract_review_field(review_content, "Last Result", str)
+    issues = self._extract_review_issues(review_content)
+    reviewed_at = self._extract_review_field(review_content, "Reviewed At", datetime)
+
+    return TaskReview(
+        id=f"review-{task_id}-{attempt}",
+        task_id=task_id,
+        attempt=attempt or 1,
+        result=ReviewResult(result) if result else ReviewResult.PENDING,
+        issues=issues,
+        summary="",
+        blocking=False,
+        reviewed_at=reviewed_at or datetime.now(),
+        reviewer_command=""
+    )
+
+def _extract_review_issues(self, content: str) -> list[str]:
+    """Extract issues list from review section"""
+    issues_match = re.search(
+        r'\*\*Issues:\*\*\s*\n((?:    - .+\n)+)',
+        content
+    )
+    if not issues_match:
+        return []
+
+    issues_content = issues_match.group(1)
+    return [
+        line.strip().lstrip('- ')
+        for line in issues_content.split('\n')
+        if line.strip().startswith('-')
+    ]
+```
+
+## Formatter Updates
+
+### format_task
+
+```python
+def format_task(self, task: Task) -> str:
+    """Format a task back to markdown, including review info"""
+    lines = [
+        f"### {task.id} {task.title}",
+        f"- **Status:** {task.status.value}",
+    ]
+
+    if task.assigned_session_id:
+        lines.append(f"- **Session:** {task.assigned_session_id}")
+
+    if task.scope:
+        lines.append(f"- **Scope:** {task.scope}")
+
+    if task.acceptance:
+        lines.append("- **Acceptance:**")
+        for item in task.acceptance:
+            lines.append(f"  - {item}")
+
+    # ... other existing fields ...
+
+    # Add review section if applicable
+    if task.current_review and task.status in (
+        TaskStatus.AWAITING_REVIEW,
+        TaskStatus.BLOCKED
+    ):
+        lines.append("- **Review:**")
+        lines.append(f"  - **Attempt:** {task.current_review.attempt}")
+        lines.append(f"  - **Last Result:** {task.current_review.result.value}")
+        if task.current_review.issues:
+            lines.append("  - **Issues:**")
+            for issue in task.current_review.issues:
+                lines.append(f"    - {issue}")
+        lines.append(f"  - **Reviewed At:** {task.current_review.reviewed_at.isoformat()}")
+
+    return '\n'.join(lines)
+```
+
+## Updated TaskStatus Values
+
+The parser now recognizes a new status:
+
+| Status | Markdown | Description |
+|--------|----------|-------------|
+| PENDING | `pending` | Not started |
+| IN_PROGRESS | `in_progress` | Being worked on |
+| AWAITING_REVIEW | `awaiting_review` | Complete, waiting for review |
+| COMPLETE | `complete` | Done |
+| SKIPPED | `skipped` | Intentionally skipped |
+| BLOCKED | `blocked` | Cannot proceed |
+
+## Backward Compatibility
+
+- Tasks without Review section parse normally (current_review = None)
+- Tasks without Session field parse normally (assigned_session_id = None)
+- Old PLAN.md files work without modification

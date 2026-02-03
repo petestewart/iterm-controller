@@ -235,11 +235,21 @@ class SessionMonitorWithNotifications:
 ## Settings Integration
 
 ```python
+@dataclass
 class NotificationSettings:
-    """Notification-related settings."""
-
     enabled: bool = True
-    sound: str = "default"
+    sound_enabled: bool = True
+    sound_name: str = "default"  # Default sound for general notifications
+
+    # Per-event toggles
+    on_session_waiting: bool = True
+    on_session_idle: bool = False
+    on_review_failed: bool = True
+    on_task_complete: bool = False
+    on_phase_complete: bool = True
+    on_orchestrator_done: bool = True
+
+    # Quiet hours
     quiet_hours_start: str | None = None  # e.g., "22:00"
     quiet_hours_end: str | None = None    # e.g., "08:00"
 
@@ -268,3 +278,110 @@ When `terminal-notifier` is not installed:
 3. No errors shown to user
 4. App functions normally without notifications
 5. Settings screen shows "Notifications unavailable - install terminal-notifier"
+
+## Sound Support
+
+Notifications can now include sounds using macOS system sounds.
+
+### notify_with_sound Method
+
+```python
+async def notify_with_sound(
+    self,
+    title: str,
+    message: str,
+    sound: str = "default",
+    subtitle: str | None = None
+) -> None:
+    """Send a notification with sound"""
+    cmd = [
+        "terminal-notifier",
+        "-title", title,
+        "-message", message,
+        "-sound", sound
+    ]
+    if subtitle:
+        cmd.extend(["-subtitle", subtitle])
+
+    await asyncio.create_subprocess_exec(*cmd)
+```
+
+### Available macOS Sounds
+
+| Sound | Use Case |
+|-------|----------|
+| `default` | Standard notification |
+| `Basso` | Error/failure (low, serious tone) |
+| `Blow` | Warning |
+| `Bottle` | Gentle notification |
+| `Frog` | Playful alert |
+| `Funk` | Attention needed |
+| `Glass` | Success/completion |
+| `Hero` | Major achievement |
+| `Morse` | Urgent |
+| `Ping` | Quick notification |
+| `Pop` | Light notification |
+| `Purr` | Gentle reminder |
+| `Sosumi` | Classic Mac alert |
+| `Submarine` | Deep notification |
+| `Tink` | Subtle |
+
+### play_sound Method
+
+```python
+async def play_sound(self, sound: str = "default") -> None:
+    """Play just a sound without notification"""
+    sound_path = f"/System/Library/Sounds/{sound}.aiff"
+    await asyncio.create_subprocess_exec("afplay", sound_path)
+```
+
+## New Event Types
+
+### Review Events
+
+| Event | Sound | Message |
+|-------|-------|---------|
+| Review failed (max attempts) | Basso | "Task {title} needs human review after {n} attempts" |
+| Review rejected | Basso | "Task {title} was rejected: {summary}" |
+
+### Task Events
+
+| Event | Sound | Message |
+|-------|-------|---------|
+| Task complete | Glass | "Task {title} completed" |
+| Phase complete | Hero | "Phase {title} completed" |
+
+### Orchestrator Events
+
+| Event | Sound | Message |
+|-------|-------|---------|
+| Orchestrator done | Hero | "All tasks in {phase} completed" |
+| Orchestrator paused | Funk | "Orchestrator paused: {reason}" |
+
+## Configuration
+
+```json
+{
+  "settings": {
+    "notifications": {
+      "enabled": true,
+      "sound_enabled": true,
+      "sound_name": "Ping",
+      "on_session_waiting": true,
+      "on_review_failed": true,
+      "on_phase_complete": true,
+      "on_orchestrator_done": true
+    }
+  }
+}
+```
+
+## Notification Priority
+
+When multiple events happen, prioritize:
+1. Review failed (blocking)
+2. Session waiting
+3. Phase/orchestrator complete
+4. Task complete
+
+Debounce: Don't send duplicate notifications within 5 seconds.

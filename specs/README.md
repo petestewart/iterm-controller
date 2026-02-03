@@ -2,80 +2,59 @@
 
 ## Overview
 
-A Python-based TUI application that serves as a "control room" for development projects. It manages terminal sessions through iTerm2's Python API, monitors session output for attention-needed states, and provides unified visibility across multiple projects.
+A Python-based TUI application that serves as a "mission control" for development projects. It manages terminal sessions through iTerm2's Python API, streams live output from all active sessions, and provides unified visibility across multiple projects with integrated git operations, auto-review pipelines, and project scripts.
 
-**Core value proposition:** One command to open a project and have all dev environment tabs spawn, configured, and monitored.
+**Core value proposition:** One command to open a project and have all dev environment tabs spawn, configured, monitored, and reviewable from a single unified interface.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Textual TUI App                          │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐              │
-│  │ Control Room│  │  Project    │  │  Settings   │              │
-│  │   Screen    │  │  Dashboard  │  │   Screen    │              │
-│  └──────┬──────┘  └──────┬──────┘  └─────────────┘              │
-│         │                │                                       │
-│         │         ┌──────┴──────────────────────────┐           │
-│         │         │      Workflow Modes             │           │
-│         │         │  ┌────┐┌────┐┌────┐┌────┐      │           │
-│         │         │  │Plan││Docs││Work││Test│      │           │
-│         │         │  │Mode││Mode││Mode││Mode│      │           │
-│         │         │  └────┘└────┘└────┘└────┘      │           │
-│         │         └─────────────────────────────────┘           │
-│         │                │                                       │
-│         └────────┬───────┘                                       │
-│                  ▼                                               │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────┐     │
+│  │ Mission Control │  │  Project Screen │  │  Settings   │     │
+│  │   (main)        │  │  (unified view) │  │   Screen    │     │
+│  └────────┬────────┘  └────────┬────────┘  └─────────────┘     │
+│           │                    │                                │
+│           └────────┬───────────┘                                │
+│                    ▼                                            │
 │  ┌─────────────────────────────────────────────────────────────┐│
 │  │                     App State Manager                        ││
-│  │  - Projects, Sessions, Settings                              ││
-│  │  - Event dispatch                                            ││
+│  │  - Projects, Sessions, Plans, Git, Reviews                   ││
+│  │  - Event dispatch, Output streaming                          ││
 │  └─────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────┘
          │              │              │              │
          ▼              ▼              ▼              ▼
 ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
-│  iTerm2     │  │  Plan       │  │  GitHub     │  │  Notifier   │
-│  Controller │  │  Parser     │  │  (gh CLI)   │  │  (macOS)    │
+│  iTerm2     │  │    Git      │  │   Review    │  │   Script    │
+│  Controller │  │   Service   │  │   Service   │  │   Service   │
 └─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘
-         │              │
-         │              ├── PLAN.md Parser
-         │              └── TEST_PLAN.md Parser
-         ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                     iTerm2 Python API                           │
-│  - Session creation (tabs/panes)                                │
-│  - Output polling                                               │
-│  - Notifications (terminate, prompt, layout)                    │
-└─────────────────────────────────────────────────────────────────┘
+         │              │              │              │
+         ▼              ▼              ▼              ▼
+┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐
+│  Plan       │  │  GitHub     │  │  Notifier   │  │  Session    │
+│  Parser     │  │  (gh CLI)   │  │  (macOS)    │  │  Monitor    │
+└─────────────┘  └─────────────┘  └─────────────┘  └─────────────┘
 ```
 
 ## Components
 
 | Component | Spec | Description |
 |-----------|------|-------------|
-| App Entry & State | [app.md](./app.md) | Main Textual app, state management, event system |
-| Data Models | [models.md](./models.md) | Core dataclasses (Project, Session, Config, Task, etc.) |
-| iTerm2 Integration | [iterm.md](./iterm.md) | Session spawning, output monitoring, window/tab management |
-| TUI Screens | [ui.md](./ui.md) | Control Room, Project Dashboard, Settings, modals |
-| PLAN.md Parser | [plan-parser.md](./plan-parser.md) | Parsing, updating, and watching PLAN.md files |
-| GitHub Integration | [github.md](./github.md) | Branch sync, PR status via `gh` CLI, graceful degradation |
-| Notifications | [notifications.md](./notifications.md) | macOS notification center integration |
-| Configuration | [config.md](./config.md) | JSON persistence, merging, project templates |
-| Session Monitor | [session-monitor.md](./session-monitor.md) | Output polling, attention state detection patterns |
-| Health Checks | [health-checks.md](./health-checks.md) | HTTP endpoint polling, status display |
-| Auto Mode | [auto-mode.md](./auto-mode.md) | Workflow stage automation, phase completion triggers |
-
-### Workflow Modes
-
-| Component | Spec | Description |
-|-----------|------|-------------|
-| Workflow Modes | [workflow-modes.md](./workflow-modes.md) | Mode system overview, navigation, persistence |
-| Plan Mode | [plan-mode.md](./plan-mode.md) | Planning artifacts screen (PROBLEM.md, PRD.md, specs/, PLAN.md) |
-| Docs Mode | [docs-mode.md](./docs-mode.md) | Documentation tree browser, add/edit/organize docs |
-| Work Mode | [work-mode.md](./work-mode.md) | Task-centric view, claim/assign tasks, session tracking |
-| Test Mode | [test-mode.md](./test-mode.md) | QA testing (TEST_PLAN.md) and unit test runner |
-| TEST_PLAN.md Parser | [test-plan-parser.md](./test-plan-parser.md) | Parsing, updating, watching TEST_PLAN.md files |
+| App Entry & State | [app.md](./app.md) | Main app, state management, event system |
+| Data Models | [models.md](./models.md) | Core dataclasses including Review, Git, Script models |
+| iTerm2 Integration | [iterm.md](./iterm.md) | Session spawning, output monitoring |
+| TUI Screens | [ui.md](./ui.md) | Mission Control, Project Screen, Settings |
+| Mission Control | [mission-control.md](./mission-control.md) | Main screen with live session output |
+| Git Service | [git-service.md](./git-service.md) | Git operations (status, commit, push) |
+| Review Service | [review-service.md](./review-service.md) | Auto-review pipeline for tasks |
+| Project Scripts | [scripts.md](./scripts.md) | Named scripts with keybindings |
+| PLAN.md Parser | [plan-parser.md](./plan-parser.md) | Parsing with review tracking |
+| Session Monitor | [session-monitor.md](./session-monitor.md) | Output polling AND streaming |
+| Notifications | [notifications.md](./notifications.md) | macOS notifications with sound |
+| Configuration | [config.md](./config.md) | JSON config with scripts, review, git sections |
+| Health Checks | [health-checks.md](./health-checks.md) | HTTP endpoint polling |
 
 ## Technical Decisions
 
@@ -86,13 +65,222 @@ A Python-based TUI application that serves as a "control room" for development p
 | **Persistence** | JSON files | Human-readable, easy to debug, sufficient for config data |
 | **Task Tracking** | PLAN.md | Source of truth stays in repo, editable by humans/Claude |
 | **Session Monitoring** | Polling (500ms) | iTerm2 API design—no push for output, polling is responsive enough |
+| **Output Streaming** | Push to subscribers | Polling loop pushes new output to registered subscribers for live display |
 | **GitHub Integration** | `gh` CLI | Already installed/authenticated, avoids token management |
+| **Git Operations** | Direct git CLI | GitService wraps git commands for status, commit, push operations |
+| **Review Pipeline** | Configurable command + parser | Runs review command, parses output with subagent for structured feedback |
 | **Notifications** | `terminal-notifier` | Reliable macOS integration, simple CLI interface |
 | **Serialization** | `dataclasses` + `dacite` | Standard library dataclasses, dacite for JSON→dataclass |
 | **Async** | Native `asyncio` | Required by iTerm2 API, works well with Textual |
 | **Testing** | `pytest` + `pytest-asyncio` | Industry standard, good async support |
 
 ## Key Features Specification
+
+### Live Output Streaming
+
+Mission Control displays live output from all active sessions across projects.
+
+**Streaming Architecture:**
+```python
+@dataclass
+class OutputSubscriber:
+    session_id: str
+    callback: Callable[[str], None]  # Called with new output chunks
+
+class SessionMonitor:
+    subscribers: dict[str, list[OutputSubscriber]]
+
+    async def poll_loop(self):
+        while True:
+            for session_id, session in self.sessions.items():
+                new_output = await self.get_new_output(session)
+                if new_output:
+                    for subscriber in self.subscribers.get(session_id, []):
+                        subscriber.callback(new_output)
+            await asyncio.sleep(0.5)
+
+    def subscribe(self, session_id: str, callback: Callable[[str], None]) -> str:
+        """Returns subscription ID for later unsubscribe"""
+        ...
+
+    def unsubscribe(self, subscription_id: str):
+        ...
+```
+
+**Display in Mission Control:**
+- Split view showing all active sessions
+- Scrollable output pane per session
+- Visual indicators for attention state (waiting/working/idle)
+- Click session to focus and expand
+
+---
+
+### Auto-Review Workflow
+
+Completed tasks trigger automatic LLM review for quality assurance.
+
+**Review Pipeline:**
+```
+Task Complete → Trigger Review → Run Command → Parse Output → Store Review
+```
+
+**Configuration:**
+```python
+@dataclass
+class ReviewConfig:
+    enabled: bool = True
+    command: str = "claude /review"           # Command to run in session
+    trigger: str = "on_complete"              # When to trigger: "on_complete", "manual"
+    auto_advance: bool = False                # Auto-advance task status based on review
+
+@dataclass
+class Review:
+    task_id: str
+    status: ReviewStatus                      # PENDING, PASSED, NEEDS_CHANGES, FAILED
+    summary: str                              # One-line summary
+    issues: list[ReviewIssue]                 # Detailed issues found
+    timestamp: datetime
+    reviewer: str = "llm"                     # "llm" or "human"
+```
+
+**Review Status Flow:**
+```
+Task COMPLETE → Review PENDING → Run review command → Parse output → PASSED/NEEDS_CHANGES
+```
+
+**Implementation:**
+```python
+class ReviewService:
+    async def trigger_review(self, task: Task, session: ManagedSession):
+        """Run review command and parse output"""
+        review = Review(task_id=task.id, status=ReviewStatus.PENDING, ...)
+        self.state.reviews[task.id] = review
+
+        # Send review command to session
+        await session.send_text(self.config.command + "\n")
+
+        # Monitor output for review completion
+        await self.await_review_complete(session, review)
+
+    async def await_review_complete(self, session: ManagedSession, review: Review):
+        """Parse session output for review results"""
+        # Uses pattern matching to detect review completion
+        # Parses structured output or uses subagent to interpret
+        ...
+```
+
+---
+
+### Project Scripts
+
+Named scripts with keybindings for common project operations.
+
+**Configuration:**
+```python
+@dataclass
+class ProjectScript:
+    name: str                      # Display name
+    command: str                   # Command to execute
+    keybinding: str | None         # e.g., "ctrl+t" for tests
+    session: str = "default"       # Which session to run in
+    description: str = ""          # Shown in script picker
+
+# In project config:
+scripts:
+  - name: "Run Tests"
+    command: "npm test"
+    keybinding: "ctrl+t"
+    session: "tests"
+  - name: "Build"
+    command: "npm run build"
+    keybinding: "ctrl+b"
+```
+
+**Script Picker UI:**
+```
+┌────────────────────────────────────────┐
+│  Project Scripts                       │
+├────────────────────────────────────────┤
+│  > Run Tests          [ctrl+t]         │
+│    Build              [ctrl+b]         │
+│    Lint               [ctrl+l]         │
+│    Deploy Staging                      │
+│    Deploy Production                   │
+└────────────────────────────────────────┘
+```
+
+**Implementation:**
+```python
+class ScriptService:
+    def __init__(self, project: Project, session_manager: SessionManager):
+        self.scripts = project.config.scripts
+
+    async def run_script(self, script_name: str):
+        script = self.get_script(script_name)
+        session = self.get_or_create_session(script.session)
+        await session.send_text(script.command + "\n")
+
+    def get_keybindings(self) -> dict[str, str]:
+        """Returns {keybinding: script_name} for registration"""
+        return {s.keybinding: s.name for s in self.scripts if s.keybinding}
+```
+
+---
+
+### Git Operations
+
+Full git integration for status, commit, and push from the TUI.
+
+**Git Service:**
+```python
+@dataclass
+class GitStatus:
+    branch: str
+    ahead: int = 0
+    behind: int = 0
+    staged: list[str] = field(default_factory=list)
+    modified: list[str] = field(default_factory=list)
+    untracked: list[str] = field(default_factory=list)
+    has_conflicts: bool = False
+
+class GitService:
+    async def status(self, project_path: str) -> GitStatus:
+        """Run git status and parse output"""
+        result = await run_command("git", "-C", project_path, "status", "--porcelain", "-b")
+        return self.parse_status(result.stdout)
+
+    async def commit(self, project_path: str, message: str, files: list[str] | None = None):
+        """Stage and commit files"""
+        if files:
+            await run_command("git", "-C", project_path, "add", *files)
+        else:
+            await run_command("git", "-C", project_path, "add", "-A")
+        await run_command("git", "-C", project_path, "commit", "-m", message)
+
+    async def push(self, project_path: str, force: bool = False):
+        """Push to remote"""
+        args = ["git", "-C", project_path, "push"]
+        if force:
+            args.append("--force-with-lease")
+        await run_command(*args)
+```
+
+**Git Panel in Project Screen:**
+```
+┌─────────────────────────────────────┐
+│  Git: main ↑2 ↓0                    │
+├─────────────────────────────────────┤
+│  Staged (2):                        │
+│    M src/app.py                     │
+│    A src/new_file.py                │
+│  Modified (1):                      │
+│    M README.md                      │
+│                                     │
+│  [c] Commit  [p] Push  [r] Refresh  │
+└─────────────────────────────────────┘
+```
+
+---
 
 ### Health Checks
 
@@ -122,47 +310,6 @@ class HealthCheck:
 - Timeout → `UNHEALTHY`
 - Wrong status code → `UNHEALTHY`
 - All checks stop when project closes
-
----
-
-### Auto Mode Workflow
-
-Auto mode enables hands-off project lifecycle progression with stage-specific commands.
-
-**Workflow Stages:**
-```
-Planning  →  Execute  →  Review  →  PR  →  Done
-```
-
-**Stage Completion Triggers:**
-
-| Stage | Completes When |
-|-------|---------------|
-| Planning | PRD exists (or marked unneeded) AND PLAN.md has ≥1 task |
-| Execute | All tasks in PLAN.md are `Complete` or `Skipped` |
-| Review | User manually advances (or configured review criteria met) |
-| PR | PR merged on GitHub |
-| Done | Terminal state |
-
-**Auto Mode Configuration:**
-```python
-@dataclass
-class AutoModeConfig:
-    enabled: bool = False
-    stage_commands: dict[WorkflowStage, str] = field(default_factory=dict)
-    # e.g., {PLANNING: "claude /prd", EXECUTE: "claude /plan", REVIEW: "claude /review"}
-
-    auto_advance: bool = True          # Automatically advance stages
-    require_confirmation: bool = True  # Prompt before running stage command
-```
-
-**Implementation:**
-1. File watcher detects PLAN.md changes
-2. Re-evaluate `WorkflowState.infer_stage()`
-3. If stage changed and `auto_advance` enabled:
-   - If `require_confirmation`: show modal "Advance to {stage}? Run: {command}"
-   - Execute `stage_commands[new_stage]` in designated session
-4. Update workflow bar display
 
 ---
 
@@ -200,8 +347,6 @@ class SessionLayout:
    - Send command from referenced `SessionTemplate`
 3. Register all sessions in `WindowState.managed_tab_ids`
 
-**Stored in:** Global config under `window_layouts: list[WindowLayout]`
-
 ---
 
 ### Quit Confirmation
@@ -234,19 +379,6 @@ When quitting with active sessions, offer three options.
 | **Close managed only** | Close only sessions we spawned (tracked in `WindowState.managed_tab_ids`), leave pre-existing tabs |
 | **Leave running** | Detach from iTerm2 connection, sessions continue running, exit app |
 
-**Implementation:**
-```python
-async def handle_quit(action: QuitAction):
-    if action == QuitAction.CLOSE_ALL:
-        for tab in window_state.tabs:
-            await close_tab(tab.tab_id)
-    elif action == QuitAction.CLOSE_MANAGED:
-        for tab_id in window_state.managed_tab_ids:
-            await close_tab(tab_id)
-    # LEAVE_RUNNING: just exit, no cleanup
-    app.exit()
-```
-
 ---
 
 ### PLAN.md Conflict Resolution
@@ -278,24 +410,6 @@ Handle external edits to PLAN.md while dashboard is open.
 └────────────────────────────────────────┘
 ```
 
-**Conflict Cases:**
-- **No conflict**: External edit to task we're not actively viewing → auto-reload
-- **Viewing conflict**: Editing same task → prompt with diff
-- **Write conflict**: We have pending writes → queue our write, then reload
-
-**Implementation:**
-```python
-class PlanWatcher:
-    async def on_file_change(self, path: str):
-        new_plan = parse_plan_file(path)
-        if self.has_pending_writes:
-            self.queued_reload = new_plan
-        elif self.conflicts_with_current(new_plan):
-            await self.show_conflict_modal(new_plan)
-        else:
-            self.state.plan = new_plan  # Silent reload
-```
-
 ---
 
 ### Session Attention Detection
@@ -319,7 +433,6 @@ class AttentionState(Enum):
 | Claude clarification patterns | `"I have a question:"`, `"Before I proceed:"` | WAITING | High |
 | Shell prompt detected | `$`, `❯`, `%` at line start | IDLE | High |
 | Recent output (< 2s ago) | Any new content | WORKING | Medium |
-| Long pause after partial line | Incomplete sentence, no newline | WAITING | Low |
 
 **Claude-Specific Patterns:**
 ```python
@@ -335,34 +448,6 @@ CLAUDE_WAITING_PATTERNS = [
     r"\[yes/no\]",
     r"\(y/n\)",
 ]
-
-CLAUDE_WORKING_PATTERNS = [
-    r"^Reading ",
-    r"^Writing ",
-    r"^Searching ",
-    r"^Running ",
-    r"Creating .+\.\.\.",
-    r"Analyzing ",
-]
-```
-
-**State Transition Logic:**
-```python
-def determine_attention_state(session: ManagedSession, new_output: str) -> AttentionState:
-    # Check for waiting patterns first (highest priority)
-    for pattern in WAITING_PATTERNS:
-        if re.search(pattern, new_output, re.IGNORECASE):
-            return AttentionState.WAITING
-
-    # Check if at shell prompt
-    if is_shell_prompt(new_output):
-        return AttentionState.IDLE
-
-    # Recent output means working
-    if session.last_activity and (now() - session.last_activity) < timedelta(seconds=2):
-        return AttentionState.WORKING
-
-    return AttentionState.IDLE
 ```
 
 ---
@@ -396,39 +481,6 @@ def merge_configs(global_config: dict, project_config: dict) -> dict:
     return result
 ```
 
-**Example:**
-```json
-// Global: ~/.config/iterm-controller/config.json
-{
-  "settings": {
-    "default_ide": "vscode",
-    "polling_interval_ms": 500
-  }
-}
-
-// Project: ./my-project/.iterm-controller.json
-{
-  "settings": {
-    "default_ide": "cursor"  // Override
-    // polling_interval_ms inherits 500
-  },
-  "scripts": {
-    "start": {"command": "npm run dev"}  // Project-specific
-  }
-}
-
-// Result:
-{
-  "settings": {
-    "default_ide": "cursor",
-    "polling_interval_ms": 500
-  },
-  "scripts": {
-    "start": {"command": "npm run dev"}
-  }
-}
-```
-
 ---
 
 ### GitHub Integration Error Handling
@@ -458,107 +510,6 @@ async def check_gh_available() -> tuple[bool, str | None]:
 | API rate limited | Show cached data with "Rate limited" indicator |
 | Network error | Show cached data with "Offline" indicator |
 
-**Implementation:**
-```python
-class GitHubIntegration:
-    def __init__(self):
-        self.available = False
-        self.error_message: str | None = None
-        self.cached_status: GitHubStatus | None = None
-
-    async def initialize(self):
-        self.available, self.error_message = await check_gh_available()
-
-    async def get_status(self, project: Project) -> GitHubStatus | None:
-        if not self.available:
-            return None
-        try:
-            status = await fetch_github_status(project)
-            self.cached_status = status
-            return status
-        except Exception as e:
-            # Return cached on error
-            return self.cached_status
-```
-
----
-
-### Task Dependency Visualization
-
-Display blocked tasks and their dependencies.
-
-**Display Strategy: Inline with Dimming**
-
-```
-▼ Phase 2: Core Features                    0/3
-  ⧖ 2.1 Add user auth middleware    ← Claude [a]
-  ⊘ 2.2 Create login form           blocked by 2.1
-  ⊘ 2.3 Add session persistence     blocked by 2.1, 2.2
-```
-
-**Visual Indicators:**
-- `⊘` - Blocked status icon
-- Dimmed/grayed text for blocked tasks
-- "blocked by X, Y" suffix showing dependencies
-- Blocked tasks not selectable for "Start Working"
-
-**Interaction:**
-- Hover/select blocked task → show tooltip with blocker details
-- Press `v` on blocked task → show dependency chain
-- Attempting to start blocked task → show error toast
-
-**Implementation in `task_list.py`:**
-```python
-def render_task(task: Task) -> RenderResult:
-    if task.is_blocked:
-        blockers = ", ".join(task.depends)
-        return Dim(f"⊘ {task.id} {task.title}  blocked by {blockers}")
-    # ... normal rendering
-```
-
----
-
-### Spec File Validation
-
-Validate that referenced spec files exist.
-
-**Validation Points:**
-1. On project open
-2. On PLAN.md reload
-3. When displaying task details
-
-**Behavior:**
-
-| Scenario | Display |
-|----------|---------|
-| Spec file exists | `Spec: specs/auth.md` (clickable link) |
-| Spec file missing | `Spec: specs/auth.md ⚠ (not found)` |
-| Spec anchor missing | `Spec: specs/auth.md#login ⚠ (section not found)` |
-
-**Implementation:**
-```python
-def validate_spec_ref(project_path: str, spec_ref: str) -> tuple[bool, str | None]:
-    """Returns (valid, error_message)"""
-    if "#" in spec_ref:
-        file_path, anchor = spec_ref.split("#", 1)
-    else:
-        file_path, anchor = spec_ref, None
-
-    full_path = Path(project_path) / file_path
-    if not full_path.exists():
-        return (False, "File not found")
-
-    if anchor:
-        content = full_path.read_text()
-        # Check for markdown heading matching anchor
-        if f"# {anchor}" not in content.lower():
-            return (False, f"Section '{anchor}' not found")
-
-    return (True, None)
-```
-
-**No blocking**: Invalid spec refs show warning but don't prevent task operations.
-
 ## Package Structure
 
 ```
@@ -567,39 +518,45 @@ iterm_controller/
 ├── __main__.py           # Entry point: python -m iterm_controller
 ├── app.py                # Main Textual app class
 ├── state.py              # AppState, event system
-├── models.py             # All dataclasses (Project, Session, Task, etc.)
+├── models.py             # All dataclasses (Project, Session, Task, Review, Script, etc.)
 ├── config.py             # Config loading/saving, merging, paths
 ├── iterm_api.py          # iTerm2 connection, session management
-├── session_monitor.py    # Output polling, attention detection
-├── plan_parser.py        # PLAN.md parsing and updates
+├── session_monitor.py    # Output polling, streaming, attention detection
+├── plan_parser.py        # PLAN.md parsing with review tracking
 ├── plan_watcher.py       # File watching for PLAN.md changes
+├── git_service.py        # Git operations (status, commit, push)
+├── review_service.py     # Auto-review pipeline
+├── script_service.py     # Named scripts execution
 ├── github.py             # gh CLI wrapper with graceful degradation
 ├── notifications.py      # macOS notification sender
 ├── env_parser.py         # .env file parsing
 ├── health_checker.py     # HTTP health check polling
-├── auto_mode.py          # Workflow stage automation
 ├── window_layouts.py     # Predefined window/tab layout management
 ├── screens/
 │   ├── __init__.py
-│   ├── control_room.py   # Main dashboard showing all sessions
-│   ├── project_list.py   # Project browser
-│   ├── project_dashboard.py  # Single project view
-│   ├── new_project.py    # Project creation form
-│   ├── settings.py       # App settings
+│   ├── mission_control.py   # Main screen with live session output
+│   ├── project_screen.py    # Unified project view (plan/docs/work/test sections)
+│   ├── project_list.py      # Project browser
+│   ├── new_project.py       # Project creation form
+│   ├── settings.py          # App settings
 │   └── modals/
 │       ├── __init__.py
-│       ├── quit_confirm.py   # Quit options: close all/managed/leave
-│       ├── script_picker.py
+│       ├── quit_confirm.py      # Quit options: close all/managed/leave
+│       ├── script_picker.py     # Script selection
 │       ├── docs_picker.py
 │       ├── github_actions.py
-│       └── plan_conflict.py  # PLAN.md external edit resolution
+│       ├── commit_modal.py      # Git commit message entry
+│       └── plan_conflict.py     # PLAN.md external edit resolution
 └── widgets/
     ├── __init__.py
-    ├── session_list.py   # Session rows with status indicators
-    ├── task_list.py      # PLAN.md task display with dependencies
-    ├── workflow_bar.py   # Planning → Execute → Review → PR → Done
-    ├── health_status.py  # Health check indicators
-    └── github_panel.py   # PR/branch status with degradation
+    ├── session_output.py    # Live session output display
+    ├── session_list.py      # Session rows with status indicators
+    ├── task_list.py         # PLAN.md task display with review status
+    ├── git_panel.py         # Git status and operations
+    ├── review_panel.py      # Review status display
+    ├── script_buttons.py    # Quick-access script buttons
+    ├── health_status.py     # Health check indicators
+    └── github_panel.py      # PR/branch status with degradation
 ```
 
 ## Constraints
@@ -619,6 +576,7 @@ iterm_controller/
 - **Notification latency**: <5 seconds from session entering WAITING state
 - **Health check interval**: 10 seconds default (configurable)
 - **GitHub refresh**: 60 seconds default (configurable)
+- **Live output streaming**: Near real-time display of session output
 
 ## Dependencies
 
@@ -650,20 +608,20 @@ iterm_controller/
 
 - [x] **Claude thinking detection**: Use pattern matching with confidence levels. See [Session Attention Detection](#session-attention-detection).
 - [x] **PLAN.md conflict handling**: Detect-and-prompt strategy with reload modal. See [PLAN.md Conflict Resolution](#planmd-conflict-resolution).
-- [x] **Spec file validation**: Validate on load, show warning indicator for missing files. See [Spec File Validation](#spec-file-validation).
-- [x] **Task dependency visualization**: Inline with dimming and "blocked by" suffix. See [Task Dependency Visualization](#task-dependency-visualization).
-- [x] **Auto mode triggers**: Stage-specific completion criteria defined. See [Auto Mode Workflow](#auto-mode-workflow).
+- [x] **Output streaming architecture**: Push model with subscribers. See [Live Output Streaming](#live-output-streaming).
+- [x] **Review automation**: Configurable command with parsing. See [Auto-Review Workflow](#auto-review-workflow).
 
 ### Still Open
 
 - [ ] **Multi-window support**: Should projects span multiple iTerm2 windows? Current spec assumes single window per project.
+- [ ] **Review parser strategy**: Use structured output format vs. subagent interpretation?
 
 ## Security Considerations
 
 - **No secrets in config**: Sensitive env vars are masked in UI display
 - **gh CLI auth**: Leverages existing `gh auth` - no token storage
+- **git credentials**: Uses system git credential helper
 - **Local only**: No network access except health checks and GitHub API via `gh`
 
 ---
-*Generated from PRD.md on 2026-01-31*
-*Updated with feature specifications on 2026-01-31*
+*Updated with Mission Control architecture on 2026-02-02*

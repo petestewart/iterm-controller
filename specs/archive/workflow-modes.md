@@ -1,3 +1,14 @@
+# DEPRECATED - Workflow Modes
+
+> **DEPRECATION NOTICE**: This spec was deprecated on 2026-02-02.
+>
+> Workflow modes (Plan, Docs, Work, Test) have been replaced by a unified Project Screen
+> with collapsible sections. See [ui.md](../ui.md) for the new architecture.
+>
+> This file is kept for historical reference only.
+
+---
+
 # Workflow Modes
 
 ## Overview

@@ -4,6 +4,10 @@
 
 Output polling and attention state detection for terminal sessions.
 
+The session monitor performs two key functions:
+1. **Attention state detection** - Classifies sessions as WAITING, WORKING, or IDLE based on output patterns
+2. **Output streaming** - Streams terminal output to TUI subscribers in real-time
+
 ## Polling Architecture
 
 ```python
@@ -469,3 +473,106 @@ class SessionMonitorService:
                 if project:
                     await self.notifier.notify_session_waiting(session, project)
 ```
+
+## Output Streaming
+
+The session monitor now streams output to subscribers in real-time, not just for attention detection.
+
+### SessionOutputStream
+
+```python
+class SessionOutputStream:
+    """Manages output streaming for a single session"""
+
+    def __init__(self, session_id: str, max_buffer: int = 100):
+        self.session_id = session_id
+        self.output_buffer: deque[str] = deque(maxlen=max_buffer)
+        self.subscribers: list[Callable[[str], Awaitable[None]]] = []
+
+    async def push_output(self, chunk: str) -> None:
+        """Push new output to buffer and notify subscribers"""
+        lines = chunk.split('\n')
+        self.output_buffer.extend(lines)
+
+        for subscriber in self.subscribers:
+            await subscriber(chunk)
+
+    def subscribe(self, callback: Callable[[str], Awaitable[None]]) -> None:
+        """Add a subscriber for output updates"""
+        self.subscribers.append(callback)
+
+    def unsubscribe(self, callback: Callable[[str], Awaitable[None]]) -> None:
+        """Remove a subscriber"""
+        self.subscribers.remove(callback)
+
+    def get_recent_output(self, lines: int = 10) -> list[str]:
+        """Get the most recent N lines from buffer"""
+        return list(self.output_buffer)[-lines:]
+```
+
+### Integration with Polling Loop
+
+The existing polling loop now also streams output:
+
+```python
+async def _poll_session(self, session: ManagedSession):
+    output = await self._get_session_output(session)
+
+    # Existing: classify attention state
+    state = self._classify_attention_state(output)
+    if state != session.attention_state:
+        session.attention_state = state
+        self.post_message(SessionStatusChanged(session.id, state))
+
+    # NEW: stream output to subscribers
+    if output and output != session.last_output:
+        new_content = self._extract_new_content(output, session.last_output)
+        if new_content:
+            stream = self._get_output_stream(session.id)
+            await stream.push_output(new_content)
+            self.post_message(SessionOutputUpdated(session.id, new_content))
+
+    session.last_output = output
+```
+
+### SessionOutputUpdated Event
+
+```python
+class SessionOutputUpdated(Message):
+    """Posted when new output is available for a session"""
+    session_id: str
+    output: str  # The new content (not full buffer)
+```
+
+### Buffer Management
+
+- Default buffer: 100 lines per session
+- ANSI escape codes preserved for color
+- Truncation: oldest lines dropped when buffer full
+- Clear on session close
+
+### TUI Subscription
+
+Mission Control subscribes to output updates:
+
+```python
+class MissionControlScreen(Screen):
+    async def on_mount(self):
+        # Subscribe to output updates
+        for session in self.app.state.sessions.values():
+            self.app.session_monitor.subscribe_output(
+                session.id,
+                self._on_session_output
+            )
+
+    async def _on_session_output(self, session_id: str, output: str):
+        # Update the session card
+        card = self.query_one(f"#session-{session_id}", SessionCard)
+        card.update_output(output)
+```
+
+### Performance Considerations
+
+- Batch small updates (< 100ms apart) to reduce UI refreshes
+- Throttle updates for very fast output (e.g., build logs)
+- Only send to subscribed screens (don't stream if no one's watching)

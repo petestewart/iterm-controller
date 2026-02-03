@@ -1,3 +1,14 @@
+# DEPRECATED - Plan Mode Screen
+
+> **DEPRECATION NOTICE**: This spec was deprecated on 2026-02-02.
+>
+> Plan Mode has been replaced by the "Planning Section" in the unified Project Screen.
+> See [ui.md](../ui.md) for the new architecture.
+>
+> This file is kept for historical reference only.
+
+---
+
 # Plan Mode Screen
 
 ## Overview
@@ -72,97 +83,3 @@ ARTIFACT_COMMANDS = {
     "PLAN.md": "claude /plan",
 }
 ```
-
-## Artifact Existence Check
-
-```python
-def check_artifact_status(project: Project) -> dict[str, ArtifactStatus]:
-    """Check existence and status of planning artifacts."""
-    path = Path(project.path)
-
-    return {
-        "PROBLEM.md": check_file(path / "PROBLEM.md"),
-        "PRD.md": check_file(path / "PRD.md"),
-        "specs/": check_specs_dir(path / "specs"),
-        "PLAN.md": check_plan_file(path / "PLAN.md"),
-    }
-
-@dataclass
-class ArtifactStatus:
-    exists: bool
-    description: str = ""  # e.g., "4 spec files" or "12 tasks"
-```
-
-## Integration with Auto Mode
-
-Plan Mode monitors artifact existence for stage transitions:
-
-- When PRD.md exists (or marked unneeded) AND PLAN.md has ≥1 task → Planning stage complete
-- Can trigger `stage_commands.planning` from Auto Mode config
-
-```python
-async def check_planning_complete(self) -> bool:
-    """Check if planning stage is complete."""
-    status = check_artifact_status(self.project)
-
-    prd_ready = status["PRD.md"].exists or self.project.prd_unneeded
-    plan_ready = status["PLAN.md"].exists and self._has_tasks()
-
-    return prd_ready and plan_ready
-```
-
-## Inline Preview
-
-When viewing an artifact with `Enter`, show inline preview:
-
-```
-┌────────────────────────────────────────────────────────────────┐
-│ PRD.md Preview                                      [e] Edit   │
-├────────────────────────────────────────────────────────────────┤
-│ # PRD: My Project                                              │
-│                                                                │
-│ ## Problem Statement                                           │
-│ Users need a way to manage their terminal sessions...          │
-│                                                                │
-│ ## Proposed Solution                                           │
-│ Build a TUI application that...                                │
-│                                                                │
-│ [Press Esc to close, e to edit in external editor]             │
-└────────────────────────────────────────────────────────────────┘
-```
-
-## Widget Implementation
-
-```python
-class PlanModeScreen(ModeScreen):
-    """Plan Mode - planning artifacts management."""
-
-    BINDINGS = [
-        *ModeScreen.BINDINGS,
-        ("c", "create_artifact", "Create"),
-        ("e", "edit_artifact", "Edit"),
-        ("s", "spawn_planning", "Spawn"),
-        ("enter", "view_artifact", "View"),
-    ]
-
-    def compose(self) -> ComposeResult:
-        yield Header()
-        yield Container(
-            ArtifactListWidget(id="artifacts"),
-            WorkflowBarWidget(id="workflow"),
-            id="main"
-        )
-        yield Footer()
-
-    async def on_mount(self):
-        """Load artifact status."""
-        status = check_artifact_status(self.project)
-        widget = self.query_one("#artifacts", ArtifactListWidget)
-        await widget.refresh(status)
-```
-
-## Related Specs
-
-- [workflow-modes.md](./workflow-modes.md) - Mode system overview
-- [auto-mode.md](./auto-mode.md) - Stage automation
-- [plan-parser.md](./plan-parser.md) - PLAN.md parsing

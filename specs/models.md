@@ -10,6 +10,7 @@ Core dataclasses representing all domain entities. All models are designed for J
 from dataclasses import dataclass, field
 from pathlib import Path
 from enum import Enum
+from typing import Callable
 
 @dataclass
 class Project:
@@ -21,7 +22,11 @@ class Project:
     test_plan_path: str = "TEST_PLAN.md" # Relative path to test plan file
     config_path: str | None = None       # Project-local config override
     template_id: str | None = None       # Template used to create project
-    last_mode: "WorkflowMode | None" = None  # Last active workflow mode (persisted)
+
+    # Project configuration
+    scripts: list["ProjectScript"] | None = None      # Named scripts for toolbar/hotkeys
+    review_config: "ReviewConfig" | None = None       # Auto-review settings
+    git_config: "GitConfig" | None = None             # Git integration settings
 
     # Runtime state (not persisted)
     is_open: bool = field(default=False, repr=False)
@@ -49,11 +54,30 @@ class ProjectTemplate:
 ## Session Models
 
 ```python
+class SessionType(Enum):
+    """What kind of work this session is doing."""
+    CLAUDE_TASK = "claude_task"          # Working on specific task
+    ORCHESTRATOR = "orchestrator"        # Running task loop script
+    REVIEW = "review"                    # Running review command
+    TEST_RUNNER = "test_runner"          # Running tests
+    SCRIPT = "script"                    # Custom project script
+    SERVER = "server"                    # Dev server
+    SHELL = "shell"                      # Interactive shell
+
 class AttentionState(Enum):
     """Session attention state for user notification."""
     WAITING = "waiting"   # Needs user input (highest priority)
     WORKING = "working"   # Actively producing output
     IDLE = "idle"         # At prompt, not doing anything
+
+@dataclass
+class SessionProgress:
+    """Progress tracking for orchestrator sessions."""
+    total_tasks: int
+    completed_tasks: int
+    current_task_id: str | None
+    current_task_title: str | None
+    phase_id: str | None
 
 @dataclass
 class SessionTemplate:
@@ -71,6 +95,12 @@ class ManagedSession:
     template_id: str                     # Which template spawned this
     project_id: str                      # Parent project
     tab_id: str                          # iTerm2 tab ID
+
+    # Session type and context
+    session_type: SessionType = SessionType.SHELL
+    task_id: str | None = None           # If working on a specific task
+    display_name: str | None = None      # Custom display name override
+    progress: SessionProgress | None = None  # For orchestrator sessions
 
     # Runtime state
     attention_state: AttentionState = AttentionState.IDLE
@@ -90,6 +120,7 @@ class TaskStatus(Enum):
     """Status of a task in PLAN.md."""
     PENDING = "pending"
     IN_PROGRESS = "in_progress"
+    AWAITING_REVIEW = "awaiting_review"
     COMPLETE = "complete"
     SKIPPED = "skipped"
     BLOCKED = "blocked"
@@ -99,17 +130,25 @@ class Task:
     """A task parsed from PLAN.md."""
     id: str                              # Task identifier (e.g., "2.1")
     title: str                           # Task title
+
+    # Status
     status: TaskStatus = TaskStatus.PENDING
+    revision_count: int = 0              # Number of review revisions
 
     # Metadata
     spec_ref: str | None = None          # Reference to spec file/section
     session_id: str | None = None        # Assigned session
+    assigned_session_id: str | None = None  # Session actively working on this
     depends: list[str] = field(default_factory=list)  # Task IDs this blocks on
 
     # Content
     scope: str = ""                      # What's in scope
     acceptance: str = ""                 # Acceptance criteria
     notes: list[str] = field(default_factory=list)    # Additional notes
+
+    # Review state
+    current_review: "TaskReview | None" = None
+    review_history: list["TaskReview"] | None = None
 
     @property
     def is_blocked(self) -> bool:
@@ -168,15 +207,113 @@ class Plan:
         return completed / len(tasks) * 100
 ```
 
-## Workflow Mode Models
+## Review Models
 
 ```python
-class WorkflowMode(Enum):
-    """Project workflow modes for focused views."""
-    PLAN = "plan"      # Planning artifacts
-    DOCS = "docs"      # Documentation management
-    WORK = "work"      # Task execution
-    TEST = "test"      # QA and unit testing
+class ReviewResult(Enum):
+    """Result of a task review."""
+    PENDING = "pending"
+    APPROVED = "approved"
+    NEEDS_REVISION = "needs_revision"
+    REJECTED = "rejected"                # Blocking, needs human
+
+@dataclass
+class TaskReview:
+    """A single review attempt for a task."""
+    id: str
+    task_id: str
+    attempt: int
+    result: ReviewResult
+    issues: list[str]
+    summary: str
+    blocking: bool
+    reviewed_at: datetime
+    reviewer_command: str
+    raw_output: str | None = None
+
+@dataclass
+class ReviewContextConfig:
+    """What context to provide to the reviewer."""
+    include_task_definition: bool = True
+    include_git_diff: bool = True
+    include_test_results: bool = True
+    include_lint_results: bool = False
+    include_session_log: bool = False
+
+@dataclass
+class ReviewConfig:
+    """Review settings for a project."""
+    enabled: bool = True
+    command: str = "/review-task"
+    model: str | None = None
+    max_revisions: int = 3
+    trigger: str = "script_completion"
+    context: ReviewContextConfig | None = None
+```
+
+## Git Models
+
+```python
+@dataclass
+class GitFileStatus:
+    """Status of a single file in git."""
+    path: str
+    status: str                          # "M", "A", "D", "?", etc.
+    staged: bool
+
+@dataclass
+class GitStatus:
+    """Current git status for a project."""
+    branch: str
+    ahead: int = 0
+    behind: int = 0
+    staged: list[GitFileStatus] | None = None
+    unstaged: list[GitFileStatus] | None = None
+    untracked: list[GitFileStatus] | None = None
+    has_conflicts: bool = False
+    last_commit_sha: str | None = None
+    last_commit_message: str | None = None
+    fetched_at: datetime | None = None
+
+@dataclass
+class GitCommit:
+    """A git commit."""
+    sha: str
+    short_sha: str
+    message: str
+    author: str
+    date: datetime
+
+@dataclass
+class GitConfig:
+    """Git settings for a project."""
+    auto_stage: bool = False
+    default_branch: str = "main"
+    remote: str = "origin"
+```
+
+## Script Models
+
+```python
+@dataclass
+class ProjectScript:
+    """A named script that can be run from the project screen."""
+    id: str
+    name: str
+    command: str
+    keybinding: str | None = None
+    working_dir: str | None = None
+    env: dict[str, str] | None = None
+    session_type: SessionType = SessionType.SCRIPT
+    show_in_toolbar: bool = True
+
+@dataclass
+class RunningScript:
+    """A script currently executing in a session."""
+    script: ProjectScript
+    session_id: str
+    started_at: datetime
+    on_complete: Callable[[int], None] | None = None
 ```
 
 ## Test Plan Models
@@ -327,6 +464,19 @@ class AutoModeConfig:
     require_confirmation: bool = True
 
 @dataclass
+class NotificationSettings:
+    """Notification settings for the application."""
+    enabled: bool = True
+    sound_enabled: bool = True
+    sound_name: str = "default"
+    on_session_waiting: bool = True
+    on_session_idle: bool = False
+    on_review_failed: bool = True
+    on_task_complete: bool = False
+    on_phase_complete: bool = True
+    on_orchestrator_done: bool = True
+
+@dataclass
 class AppSettings:
     """Global application settings."""
     default_ide: str = "vscode"
@@ -335,6 +485,7 @@ class AppSettings:
     notification_enabled: bool = True
     github_refresh_seconds: int = 60
     health_check_interval_seconds: float = 10.0
+    notifications: NotificationSettings = field(default_factory=NotificationSettings)
 
 @dataclass
 class AppConfig:

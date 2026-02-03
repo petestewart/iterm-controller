@@ -7,21 +7,14 @@ Textual-based screens that form the user interface. Each screen is a self-contai
 ## Screen Hierarchy
 
 ```
-ControlRoomScreen (main)
+MissionControlScreen (main)
 ├── ProjectListScreen
-│   └── ProjectDashboardScreen
-│       ├── PlanModeScreen          # Workflow mode
-│       │   └── ArtifactPreviewModal
-│       ├── DocsModeScreen          # Workflow mode
-│       │   ├── AddDocumentModal
-│       │   └── DocPreviewModal
-│       ├── WorkModeScreen          # Workflow mode
-│       │   └── DependencyChainModal
-│       ├── TestModeScreen          # Workflow mode
-│       │   └── TestStepDetailModal
-│       ├── ScriptPickerModal
-│       ├── DocsPickerModal
-│       └── PlanConflictModal
+│   └── ProjectScreen (unified)
+│       ├── CommitModal
+│       ├── ReviewDetailModal
+│       ├── TaskDetailModal
+│       ├── EnvEditModal
+│       └── ... other modals
 ├── NewProjectScreen
 └── SettingsScreen
 
@@ -30,47 +23,43 @@ Modals (can appear from any screen):
 └── GitHubActionsModal
 ```
 
-## Workflow Modes
+## Mission Control Screen
 
-From Project Dashboard, users can enter focused workflow modes:
-
-| Key | Mode | Spec |
-|-----|------|------|
-| `1` | Plan Mode | [plan-mode.md](./plan-mode.md) |
-| `2` | Docs Mode | [docs-mode.md](./docs-mode.md) |
-| `3` | Work Mode | [work-mode.md](./work-mode.md) |
-| `4` | Test Mode | [test-mode.md](./test-mode.md) |
-
-See [workflow-modes.md](./workflow-modes.md) for mode system overview.
-
-## Control Room Screen
-
-The main dashboard showing all sessions across all projects.
+The main dashboard showing live output from all active sessions across ALL projects.
 
 ```python
 from textual.screen import Screen
 from textual.widgets import Header, Footer, Static
 from textual.containers import Container, Vertical, Horizontal
 
-class ControlRoomScreen(Screen):
-    """Main control room showing all active sessions."""
+class MissionControlScreen(Screen):
+    """Main mission control showing all active sessions across projects."""
 
     BINDINGS = [
         ("n", "new_session", "New Session"),
         ("k", "kill_session", "Kill Session"),
-        ("enter", "focus_session", "Focus"),
+        ("enter", "open_project", "Open Project"),
+        ("1", "focus_session_1", "Focus 1"),
+        ("2", "focus_session_2", "Focus 2"),
+        ("3", "focus_session_3", "Focus 3"),
+        ("4", "focus_session_4", "Focus 4"),
+        ("5", "focus_session_5", "Focus 5"),
+        ("6", "focus_session_6", "Focus 6"),
+        ("7", "focus_session_7", "Focus 7"),
+        ("8", "focus_session_8", "Focus 8"),
+        ("9", "focus_session_9", "Focus 9"),
+        ("x", "expand_collapse", "Expand/Collapse"),
         ("p", "app.push_screen('project_list')", "Projects"),
+        ("?", "show_help", "Help"),
+        ("q", "quit", "Quit"),
     ]
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield Container(
-            SessionListWidget(id="sessions"),
-            Horizontal(
-                WorkflowBarWidget(id="workflow"),
-                HealthStatusWidget(id="health"),
-                id="status-bar"
-            ),
+            Static("MISSION CONTROL", id="title"),
+            Static(id="session-count"),
+            Vertical(id="session-cards"),
             id="main"
         )
         yield Footer()
@@ -80,51 +69,63 @@ class ControlRoomScreen(Screen):
         await self.refresh_sessions()
 
     async def refresh_sessions(self):
-        """Refresh session list from state."""
-        widget = self.query_one("#sessions", SessionListWidget)
-        await widget.refresh(self.app.state.sessions.values())
+        """Refresh session cards from state."""
+        container = self.query_one("#session-cards", Vertical)
+        container.remove_children()
+
+        active_sessions = [s for s in self.app.state.sessions.values() if s.is_active]
+        self.query_one("#session-count").update(f"{len(active_sessions)} active sessions")
+
+        for i, session in enumerate(active_sessions, 1):
+            card = SessionCard(session=session, index=i)
+            container.mount(card)
 ```
 
-### Control Room Layout
+### Mission Control Layout
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│ iTerm Controller                                    [?] Help   │
-├────────────────────────────────────────────────────────────────┤
-│ Sessions                                                       │
-│ ┌────────────────────────────────────────────────────────────┐ │
-│ │ ● my-project/API Server         Working   [a]             │ │
-│ │ ⧖ my-project/Claude             Waiting   [c]             │ │
-│ │ ○ my-project/Tests              Idle      [t]             │ │
-│ │ ● other-project/Dev Server      Working   [d]             │ │
-│ └────────────────────────────────────────────────────────────┘ │
-│                                                                │
-│ ┌─────────────────────────────┬──────────────────────────────┐ │
-│ │ Planning → Execute → Review │  API ● Web ● DB ○            │ │
-│ └─────────────────────────────┴──────────────────────────────┘ │
-├────────────────────────────────────────────────────────────────┤
-│ n New  k Kill  Enter Focus  p Projects  q Quit                 │
-└────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  MISSION CONTROL                                           4 active sessions│
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌─ 1. Project A ─────────────────────────────────────────────── WORKING ──┐│
+│  │  Claude: Creating PLAN.md                                    00:03:42   ││
+│  │  ───────────────────────────────────────────────────────────────────────││
+│  │  > Analyzing the PRD structure...                                       ││
+│  │  > Creating Phase 1: Project Setup                                      ││
+│  │  > Adding task 1.1: Initialize repository█                              ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│  ┌─ 2. Project B ─────────────────────────────────────────────── WORKING ──┐│
+│  │  Orchestrator: Phase 2 (Task 2.3 of 6)                       00:12:07   ││
+│  │  Progress: ████████░░░░░░░░ 3/6 tasks                                   ││
+│  │  ───────────────────────────────────────────────────────────────────────││
+│  │  [2.3] Adding user authentication                                       ││
+│  │  > Creating app/models/user.rb                                          ││
+│  │  > Running rails db:migrate█                                            ││
+│  └─────────────────────────────────────────────────────────────────────────┘│
+│  [1-9] Focus  [Enter] Open project  [n] New session  [?] Help  [p] Projects │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Project Dashboard Screen
+## Project Screen
 
-Single project view with tasks, sessions, and GitHub panel.
+Unified view with all sections visible. Replaces the old Project Dashboard + Mode Screens.
 
 ```python
-class ProjectDashboardScreen(Screen):
-    """Dashboard for a single project."""
+class ProjectScreen(Screen):
+    """Unified project view with collapsible sections."""
 
     BINDINGS = [
-        ("t", "toggle_task", "Toggle Task"),
-        ("s", "spawn_session", "Spawn"),
-        ("r", "run_script", "Run Script"),
-        ("d", "open_docs", "Docs"),
-        ("g", "github_actions", "GitHub"),
-        ("1", "enter_mode('plan')", "Plan Mode"),
-        ("2", "enter_mode('docs')", "Docs Mode"),
-        ("3", "enter_mode('work')", "Work Mode"),
-        ("4", "enter_mode('test')", "Test Mode"),
+        ("e", "edit_artifact", "Edit"),
+        ("c", "commit", "Commit"),
+        ("p", "push", "Push"),
+        ("s", "run_server", "Server"),
+        ("t", "run_tests", "Tests"),
+        ("l", "run_lint", "Lint"),
+        ("b", "run_build", "Build"),
+        ("o", "run_orchestrator", "Orchestrator"),
+        ("r", "review_task", "Review"),
+        ("tab", "next_section", "Next Section"),
+        ("shift+tab", "prev_section", "Prev Section"),
         ("escape", "app.pop_screen", "Back"),
     ]
 
@@ -135,53 +136,76 @@ class ProjectDashboardScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield Container(
+            # Project header with name and branch
             Horizontal(
-                Vertical(
-                    TaskListWidget(id="tasks"),
-                    SessionListWidget(id="sessions"),
-                    id="left-panel"
-                ),
-                Vertical(
-                    GitHubPanelWidget(id="github"),
-                    HealthStatusWidget(id="health"),
-                    id="right-panel"
-                ),
+                Static(id="project-name"),
+                Static(id="branch-info"),
+                id="project-header"
             ),
-            WorkflowBarWidget(id="workflow"),
+            # Main content grid
+            Horizontal(
+                # Left column
+                Vertical(
+                    PlanningSection(id="planning"),
+                    TasksSection(id="tasks"),
+                    id="left-column"
+                ),
+                # Right column
+                Vertical(
+                    DocsSection(id="docs"),
+                    GitSection(id="git"),
+                    EnvSection(id="env"),
+                    id="right-column"
+                ),
+                id="content-grid"
+            ),
+            # Scripts toolbar
+            ScriptToolbar(id="scripts"),
+            # Active sessions panel
+            SessionsPanel(id="sessions"),
             id="main"
         )
         yield Footer()
+
+    async def on_mount(self):
+        """Load project data when screen mounts."""
+        project = self.app.state.projects.get(self.project_id)
+        if project:
+            self.query_one("#project-name").update(f"PROJECT: {project.name}")
+            self.query_one("#branch-info").update(f"[branch: {project.branch}]")
 ```
 
-### Project Dashboard Layout
+### Project Screen Layout
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│ my-project                                         [?] Help    │
-├────────────────────────────────────────────────────────────────┤
-│ ┌─────────────────────────────┬──────────────────────────────┐ │
-│ │ Tasks              Progress │ GitHub                       │ │
-│ │ ▼ Phase 1           3/4     │ Branch: feature/auth         │ │
-│ │   ✓ 1.1 Setup          Done │ ↑2 ↓0 from main              │ │
-│ │   ✓ 1.2 Models         Done │                              │ │
-│ │   ● 1.3 API      In Progress│ PR #42: Add auth             │ │
-│ │   ○ 1.4 Tests       Pending │ ● Checks passing             │ │
-│ │ ▼ Phase 2           0/3     │ 2 reviews pending            │ │
-│ │   ⊘ 2.1 Auth      blocked   │                              │ │
-│ │   ⊘ 2.2 Login     blocked   │                              │ │
-│ ├─────────────────────────────┼──────────────────────────────┤ │
-│ │ Sessions                    │ Health                       │ │
-│ │ ● API Server       Working  │ API ● Web ● DB ○             │ │
-│ │ ⧖ Claude           Waiting  │                              │ │
-│ │ ○ Tests            Idle     │                              │ │
-│ └─────────────────────────────┴──────────────────────────────┘ │
-│                                                                │
-│ ┌────────────────────────────────────────────────────────────┐ │
-│ │ Planning ✓ → [Execute] → Review → PR → Done                │ │
-│ └────────────────────────────────────────────────────────────┘ │
-├────────────────────────────────────────────────────────────────┤
-│ t Toggle  s Spawn  r Script  d Docs  g GitHub  1-4 Modes  Esc  │
-└────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  PROJECT: My App                                              [branch: main]│
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌─ Planning ────────────┐  ┌─ Docs ─────────────────┐                      │
+│  │ ○ PROBLEM.md          │  │ • docs/architecture.md │                      │
+│  │ ● PRD.md        [e]   │  │ • docs/api-design.md   │                      │
+│  │ ○ specs/              │  │ + Add doc...           │                      │
+│  │ ● PLAN.md       [e]   │  └────────────────────────┘                      │
+│  │ [c] Create missing    │                                                  │
+│  └───────────────────────┘  ┌─ Git Status ───────────┐                      │
+│                             │ M  src/auth.py         │                      │
+│  ┌─ Tasks ──────────────────│ A  src/users.py        │                      │
+│  │ ▼ Phase 1: Setup [2/3] │  │ [c] Commit  [p] Push   │                      │
+│  │   ✓ 1.1 Create project │  └────────────────────────┘                      │
+│  │   ✓ 1.2 Setup deps     │                                                  │
+│  │   ○ 1.3 Configure DB   │  ┌─ Env Variables ───────┐                      │
+│  │ ▼ Phase 2: Core [0/4]  │  │ DATABASE_URL: ...      │                      │
+│  │   ⏳ 2.1 User model ←REVIEW│ API_KEY: ****          │                      │
+│  │   ○ 2.2 Auth service   │  │ [e] Edit               │                      │
+│  └────────────────────────┘  └────────────────────────┘                      │
+│  ┌─ Scripts ────────────────────────────────────────────────────────────────┐│
+│  │ [s] Server  [t] Tests  [l] Lint  [b] Build  [o] Orchestrator            ││
+│  └──────────────────────────────────────────────────────────────────────────┘│
+│  ┌─ Active Sessions ────────────────────────────────────────────────────────┐│
+│  │ 1. Claude: Task 2.1    │ > Creating User model...                        ││
+│  │ 2. Tests: pytest       │ > test_auth.py::test_login PASSED               ││
+│  └──────────────────────────────────────────────────────────────────────────┘│
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Project List Screen
@@ -325,128 +349,530 @@ class SettingsScreen(Screen):
 
 ## Widgets
 
-### Session List Widget
+### SessionCard
+
+Shows a single session with header and live output log.
 
 ```python
-class SessionListWidget(Static):
-    """Displays list of sessions with status indicators."""
+class SessionCard(Static):
+    """Card displaying a session with header and live output."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, session: ManagedSession, index: int, **kwargs):
         super().__init__(**kwargs)
-        self.sessions: list[ManagedSession] = []
+        self.session = session
+        self.index = index
 
-    async def refresh(self, sessions: Iterable[ManagedSession]):
-        """Update displayed sessions."""
-        self.sessions = list(sessions)
-        self.update(self.render_sessions())
+    def compose(self) -> ComposeResult:
+        yield Horizontal(
+            Static(f"{self.index}. {self.session.project_name}", classes="card-title"),
+            Static(self.session.attention_state.value.upper(), classes="card-status"),
+            classes="card-header"
+        )
+        yield Static(self.get_session_info(), classes="card-info")
+        if self.is_orchestrator:
+            yield OrchestratorProgress(session=self.session)
+        yield Static("─" * 70, classes="card-separator")
+        yield OutputLog(session=self.session, lines=3)
 
-    def render_sessions(self) -> str:
-        lines = []
-        for session in self.sessions:
-            icon = self.get_status_icon(session.attention_state)
-            status = session.attention_state.value.title()
-            lines.append(f"{icon} {session.template_id:<20} {status}")
-        return "\n".join(lines) or "No active sessions"
+    def get_session_info(self) -> str:
+        """Get session type and current activity."""
+        elapsed = format_duration(self.session.elapsed_time)
+        return f"{self.session.template_id}: {self.session.current_activity}  {elapsed}"
 
-    def get_status_icon(self, state: AttentionState) -> str:
-        return {
-            AttentionState.WAITING: "⧖",
-            AttentionState.WORKING: "●",
-            AttentionState.IDLE: "○",
-        }[state]
+    @property
+    def is_orchestrator(self) -> bool:
+        return self.session.template_id == "orchestrator"
 ```
 
-### Task List Widget
+### OutputLog
+
+Scrollable output display showing last N lines with ANSI color support.
 
 ```python
-class TaskListWidget(Static):
-    """Displays tasks with phases and dependencies."""
+class OutputLog(Static):
+    """Displays scrollable output with ANSI color support."""
 
-    def render_task(self, task: Task) -> str:
-        icon = self.get_status_icon(task.status)
+    def __init__(self, session: ManagedSession, lines: int = 5, **kwargs):
+        super().__init__(**kwargs)
+        self.session = session
+        self.max_lines = lines
 
-        if task.is_blocked:
-            blockers = ", ".join(task.depends)
-            return f"  [dim]⊘ {task.id} {task.title}  blocked by {blockers}[/dim]"
+    def render(self) -> str:
+        """Render the last N lines of output."""
+        output_lines = self.session.output_buffer.get_last_lines(self.max_lines)
+        return "\n".join(f"> {line}" for line in output_lines)
 
-        return f"  {icon} {task.id} {task.title}"
+    async def on_mount(self):
+        """Subscribe to output updates."""
+        self.session.on_output += self.refresh
+```
 
-    def get_status_icon(self, status: TaskStatus) -> str:
+### OrchestratorProgress
+
+Progress bar for orchestrator sessions showing completed/total tasks.
+
+```python
+class OrchestratorProgress(Static):
+    """Progress bar for orchestrator sessions."""
+
+    def __init__(self, session: ManagedSession, **kwargs):
+        super().__init__(**kwargs)
+        self.session = session
+
+    def render(self) -> str:
+        """Render progress bar with task counts."""
+        completed = self.session.orchestrator_state.completed_tasks
+        total = self.session.orchestrator_state.total_tasks
+        phase = self.session.orchestrator_state.current_phase
+
+        # Calculate progress bar
+        if total > 0:
+            filled = int((completed / total) * 16)
+            bar = "█" * filled + "░" * (16 - filled)
+        else:
+            bar = "░" * 16
+
+        return f"Progress: {bar} {completed}/{total} tasks"
+```
+
+### GitSection
+
+Git status display with staged/unstaged/untracked files and action buttons.
+
+```python
+class GitSection(Static):
+    """Git status section with file list and actions."""
+
+    def __init__(self, project: Project, **kwargs):
+        super().__init__(**kwargs)
+        self.project = project
+
+    def compose(self) -> ComposeResult:
+        yield Static("─ Git Status ─", classes="section-header")
+        yield Vertical(id="git-files")
+        yield Horizontal(
+            Button("[c] Commit", id="commit-btn"),
+            Button("[p] Push", id="push-btn"),
+            classes="git-actions"
+        )
+
+    async def refresh_status(self):
+        """Refresh git status from project."""
+        container = self.query_one("#git-files", Vertical)
+        container.remove_children()
+
+        status = await self.project.get_git_status()
+        for file_status in status.files:
+            indicator = self.get_status_indicator(file_status.status)
+            container.mount(Static(f"{indicator}  {file_status.path}"))
+
+    def get_status_indicator(self, status: str) -> str:
+        """Get status indicator character."""
+        return {
+            "modified": "M",
+            "added": "A",
+            "deleted": "D",
+            "untracked": "?",
+            "renamed": "R",
+        }.get(status, " ")
+```
+
+### ScriptToolbar
+
+Row of script buttons with keybindings from project config.
+
+```python
+class ScriptToolbar(Static):
+    """Toolbar with script buttons from project config."""
+
+    DEFAULT_SCRIPTS = [
+        ("s", "server", "Server"),
+        ("t", "tests", "Tests"),
+        ("l", "lint", "Lint"),
+        ("b", "build", "Build"),
+        ("o", "orchestrator", "Orchestrator"),
+    ]
+
+    def __init__(self, project: Project = None, **kwargs):
+        super().__init__(**kwargs)
+        self.project = project
+
+    def compose(self) -> ComposeResult:
+        yield Static("─ Scripts ─", classes="section-header")
+        yield Horizontal(
+            *[
+                Button(f"[{key}] {label}", id=f"script-{script_id}")
+                for key, script_id, label in self.get_scripts()
+            ],
+            classes="script-buttons"
+        )
+
+    def get_scripts(self) -> list[tuple[str, str, str]]:
+        """Get scripts from project config or use defaults."""
+        if self.project and self.project.config.scripts:
+            return [
+                (s.keybinding, s.id, s.label)
+                for s in self.project.config.scripts
+            ]
+        return self.DEFAULT_SCRIPTS
+```
+
+### TaskRow
+
+Task display with review status indicator.
+
+```python
+class TaskRow(Static):
+    """Single task row with status and review indicators."""
+
+    def __init__(self, task: Task, **kwargs):
+        super().__init__(**kwargs)
+        self.task = task
+
+    def render(self) -> str:
+        """Render task with appropriate status icon."""
+        icon = self.get_status_icon()
+        review_indicator = self.get_review_indicator()
+
+        if self.task.is_blocked:
+            blockers = ", ".join(self.task.depends)
+            return f"  [dim]⊘ {self.task.id} {self.task.title}  blocked by {blockers}[/dim]"
+
+        return f"  {icon} {self.task.id} {self.task.title}{review_indicator}"
+
+    def get_status_icon(self) -> str:
+        """Get status icon based on task state."""
+        if self.task.status == TaskStatus.AWAITING_REVIEW:
+            return "⏳"
         return {
             TaskStatus.PENDING: "○",
             TaskStatus.IN_PROGRESS: "●",
             TaskStatus.COMPLETE: "✓",
             TaskStatus.SKIPPED: "⊖",
             TaskStatus.BLOCKED: "⊘",
-        }[status]
+        }.get(self.task.status, "○")
+
+    def get_review_indicator(self) -> str:
+        """Get review indicator if task is awaiting review."""
+        if self.task.status == TaskStatus.AWAITING_REVIEW:
+            return " ←REVIEW"
+        return ""
 ```
 
-### Workflow Bar Widget
+### MiniSessionCard
+
+Compact session display for the Sessions Panel in Project Screen.
 
 ```python
-class WorkflowBarWidget(Static):
-    """Displays workflow stage progression."""
+class MiniSessionCard(Static):
+    """Compact session card for project screen sessions panel."""
 
-    STAGES = ["Planning", "Execute", "Review", "PR", "Done"]
+    def __init__(self, session: ManagedSession, index: int, **kwargs):
+        super().__init__(**kwargs)
+        self.session = session
+        self.index = index
 
-    def render_bar(self, current: WorkflowStage) -> str:
-        parts = []
-        for stage_name in self.STAGES:
-            stage = WorkflowStage[stage_name.upper()]
-            if stage == current:
-                parts.append(f"[bold][{stage_name}][/bold]")
-            elif stage.value < current.value:
-                parts.append(f"[green]{stage_name} ✓[/green]")
-            else:
-                parts.append(f"[dim]{stage_name}[/dim]")
-        return " → ".join(parts)
+    def compose(self) -> ComposeResult:
+        yield Horizontal(
+            Static(f"{self.index}. {self.session.template_id}: {self.session.current_activity}"),
+            Static("│", classes="divider"),
+            Static(self.get_last_output(), classes="mini-output"),
+            classes="mini-session"
+        )
+
+    def get_last_output(self) -> str:
+        """Get last line of output."""
+        lines = self.session.output_buffer.get_last_lines(1)
+        if lines:
+            return f"> {lines[0][:50]}..."
+        return ""
 ```
 
-### Health Status Widget
+### PlanningSection
+
+Section showing planning artifacts with existence status.
 
 ```python
-class HealthStatusWidget(Static):
-    """Displays health check status indicators."""
+class PlanningSection(Static):
+    """Planning artifacts section with existence indicators."""
 
-    def render_health(self, checks: list[tuple[str, HealthStatus]]) -> str:
-        parts = []
-        for name, status in checks:
-            icon = "●" if status == HealthStatus.HEALTHY else "✗"
-            color = "green" if status == HealthStatus.HEALTHY else "red"
-            parts.append(f"[{color}]{name} {icon}[/{color}]")
-        return " ".join(parts)
+    ARTIFACTS = [
+        ("PROBLEM.md", "problem"),
+        ("PRD.md", "prd"),
+        ("specs/", "specs"),
+        ("PLAN.md", "plan"),
+    ]
+
+    def __init__(self, project: Project, **kwargs):
+        super().__init__(**kwargs)
+        self.project = project
+
+    def compose(self) -> ComposeResult:
+        yield Static("─ Planning ─", classes="section-header")
+        yield Vertical(id="artifacts")
+        yield Button("[c] Create missing", id="create-missing-btn")
+
+    async def refresh_artifacts(self):
+        """Refresh artifact list with existence status."""
+        container = self.query_one("#artifacts", Vertical)
+        container.remove_children()
+
+        for name, artifact_id in self.ARTIFACTS:
+            exists = await self.project.artifact_exists(artifact_id)
+            icon = "●" if exists else "○"
+            edit_btn = " [e]" if exists else ""
+            container.mount(Static(f"{icon} {name}{edit_btn}"))
 ```
 
-### GitHub Panel Widget
+### DocsSection
+
+Section for project documentation files.
 
 ```python
-class GitHubPanelWidget(Static):
-    """Displays GitHub status and PR information."""
+class DocsSection(Static):
+    """Documentation section with file list."""
 
-    def render(self) -> str:
-        status = self.app.state.github_status
+    def __init__(self, project: Project, **kwargs):
+        super().__init__(**kwargs)
+        self.project = project
 
-        if not status or not status.available:
-            if status and status.error_message:
-                return f"[dim]GitHub: {status.error_message}[/dim]"
-            return ""
+    def compose(self) -> ComposeResult:
+        yield Static("─ Docs ─", classes="section-header")
+        yield Vertical(id="doc-list")
+        yield Button("+ Add doc...", id="add-doc-btn")
 
-        lines = [
-            f"Branch: {status.current_branch}",
-            f"↑{status.ahead} ↓{status.behind} from {status.default_branch}"
-        ]
+    async def refresh_docs(self):
+        """Refresh documentation file list."""
+        container = self.query_one("#doc-list", Vertical)
+        container.remove_children()
 
-        if status.pr:
-            lines.append("")
-            lines.append(f"PR #{status.pr.number}: {status.pr.title}")
+        for doc in self.project.docs:
+            container.mount(Static(f"• {doc.path}"))
+```
 
-            if status.pr.checks_passing:
-                lines.append("[green]● Checks passing[/green]")
-            elif status.pr.checks_passing is False:
-                lines.append("[red]✗ Checks failing[/red]")
+### EnvSection
 
-            if status.pr.reviews_pending:
-                lines.append(f"{status.pr.reviews_pending} reviews pending")
+Environment variables section with masked values.
 
-        return "\n".join(lines)
+```python
+class EnvSection(Static):
+    """Environment variables section with edit button."""
+
+    def __init__(self, project: Project, **kwargs):
+        super().__init__(**kwargs)
+        self.project = project
+
+    def compose(self) -> ComposeResult:
+        yield Static("─ Env Variables ─", classes="section-header")
+        yield Vertical(id="env-list")
+        yield Button("[e] Edit", id="edit-env-btn")
+
+    async def refresh_env(self):
+        """Refresh environment variable list."""
+        container = self.query_one("#env-list", Vertical)
+        container.remove_children()
+
+        for key, value in self.project.env_vars.items():
+            # Mask sensitive values
+            display_value = "****" if self.is_sensitive(key) else value[:20] + "..."
+            container.mount(Static(f"{key}: {display_value}"))
+
+    def is_sensitive(self, key: str) -> bool:
+        """Check if key is sensitive and should be masked."""
+        sensitive_patterns = ["KEY", "SECRET", "PASSWORD", "TOKEN"]
+        return any(pattern in key.upper() for pattern in sensitive_patterns)
+```
+
+### TasksSection
+
+Collapsible task list organized by phases.
+
+```python
+class TasksSection(Static):
+    """Tasks section with collapsible phases."""
+
+    def __init__(self, project: Project, **kwargs):
+        super().__init__(**kwargs)
+        self.project = project
+        self.collapsed_phases: set[str] = set()
+
+    def compose(self) -> ComposeResult:
+        yield Static("─ Tasks ─", classes="section-header")
+        yield Vertical(id="task-list")
+
+    async def refresh_tasks(self):
+        """Refresh task list organized by phases."""
+        container = self.query_one("#task-list", Vertical)
+        container.remove_children()
+
+        plan = self.project.plan
+        if not plan:
+            container.mount(Static("[dim]No plan loaded[/dim]"))
+            return
+
+        for phase in plan.phases:
+            completed = sum(1 for t in phase.tasks if t.status == TaskStatus.COMPLETE)
+            total = len(phase.tasks)
+
+            # Phase header with collapse indicator
+            collapse_icon = "▶" if phase.id in self.collapsed_phases else "▼"
+            container.mount(
+                Static(f"{collapse_icon} {phase.name} [{completed}/{total}]",
+                       classes="phase-header",
+                       id=f"phase-{phase.id}")
+            )
+
+            # Tasks (if not collapsed)
+            if phase.id not in self.collapsed_phases:
+                for task in phase.tasks:
+                    container.mount(TaskRow(task=task))
+
+    def toggle_phase(self, phase_id: str):
+        """Toggle phase collapse state."""
+        if phase_id in self.collapsed_phases:
+            self.collapsed_phases.remove(phase_id)
+        else:
+            self.collapsed_phases.add(phase_id)
+        self.refresh_tasks()
+```
+
+### SessionsPanel
+
+Panel showing active sessions for the current project.
+
+```python
+class SessionsPanel(Static):
+    """Active sessions panel for project screen."""
+
+    def __init__(self, project: Project, **kwargs):
+        super().__init__(**kwargs)
+        self.project = project
+
+    def compose(self) -> ComposeResult:
+        yield Static("─ Active Sessions ─", classes="section-header")
+        yield Vertical(id="session-list")
+
+    async def refresh_sessions(self):
+        """Refresh session list for this project."""
+        container = self.query_one("#session-list", Vertical)
+        container.remove_children()
+
+        sessions = [s for s in self.project.sessions if s.is_active]
+        if not sessions:
+            container.mount(Static("[dim]No active sessions[/dim]"))
+            return
+
+        for i, session in enumerate(sessions, 1):
+            container.mount(MiniSessionCard(session=session, index=i))
+```
+
+## Modals
+
+### CommitModal
+
+Modal for staging and committing changes.
+
+```python
+class CommitModal(ModalScreen):
+    """Modal for committing git changes."""
+
+    BINDINGS = [
+        ("escape", "dismiss", "Cancel"),
+        ("ctrl+enter", "commit", "Commit"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Static("Commit Changes", classes="modal-title"),
+            Vertical(id="staged-files"),
+            Input(id="commit-message", placeholder="Commit message..."),
+            Horizontal(
+                Button("Cancel", variant="default", id="cancel"),
+                Button("Commit", variant="primary", id="commit"),
+            ),
+            classes="modal-content"
+        )
+```
+
+### ReviewDetailModal
+
+Modal for reviewing task completion.
+
+```python
+class ReviewDetailModal(ModalScreen):
+    """Modal for reviewing completed task."""
+
+    def __init__(self, task: Task, **kwargs):
+        super().__init__(**kwargs)
+        self.task = task
+
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Static(f"Review: {self.task.id} {self.task.title}", classes="modal-title"),
+            Static(self.task.description, classes="task-description"),
+            Vertical(id="changes-list"),
+            Horizontal(
+                Button("Reject", variant="error", id="reject"),
+                Button("Request Changes", variant="warning", id="request-changes"),
+                Button("Approve", variant="success", id="approve"),
+            ),
+            classes="modal-content"
+        )
+```
+
+### TaskDetailModal
+
+Modal showing full task details.
+
+```python
+class TaskDetailModal(ModalScreen):
+    """Modal showing task details."""
+
+    def __init__(self, task: Task, **kwargs):
+        super().__init__(**kwargs)
+        self.task = task
+
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Static(f"Task: {self.task.id}", classes="modal-title"),
+            Static(self.task.title, classes="task-title"),
+            Static(self.task.description, classes="task-description"),
+            Static(f"Status: {self.task.status.value}", classes="task-status"),
+            Static(f"Dependencies: {', '.join(self.task.depends) or 'None'}", classes="task-deps"),
+            Button("Close", variant="default", id="close"),
+            classes="modal-content"
+        )
+```
+
+### EnvEditModal
+
+Modal for editing environment variables.
+
+```python
+class EnvEditModal(ModalScreen):
+    """Modal for editing environment variables."""
+
+    def __init__(self, project: Project, **kwargs):
+        super().__init__(**kwargs)
+        self.project = project
+
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Static("Edit Environment Variables", classes="modal-title"),
+            TextArea(id="env-editor"),
+            Horizontal(
+                Button("Cancel", variant="default", id="cancel"),
+                Button("Save", variant="primary", id="save"),
+            ),
+            classes="modal-content"
+        )
+
+    async def on_mount(self):
+        """Load current env vars into editor."""
+        editor = self.query_one("#env-editor", TextArea)
+        env_content = "\n".join(
+            f"{key}={value}"
+            for key, value in self.project.env_vars.items()
+        )
+        editor.load_text(env_content)
 ```

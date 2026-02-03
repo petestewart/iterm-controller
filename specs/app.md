@@ -257,3 +257,202 @@ Screen {
     color: $error;
 }
 ```
+
+## New State Managers
+
+### GitStateManager
+
+```python
+class GitStateManager:
+    """Manages git status for all open projects"""
+
+    def __init__(self, git_service: GitService):
+        self.git_service = git_service
+        self.statuses: dict[str, GitStatus] = {}  # project_id -> GitStatus
+
+    async def refresh(self, project_id: str) -> GitStatus:
+        """Refresh git status for a project"""
+        project = self.app.state.projects.get(project_id)
+        status = await self.git_service.get_status(Path(project.path))
+        self.statuses[project_id] = status
+        self.post_message(GitStatusChanged(project_id, status))
+        return status
+
+    async def stage_files(self, project_id: str, files: list[str]) -> None:
+        """Stage files and refresh status"""
+        project = self.app.state.projects.get(project_id)
+        await self.git_service.stage_files(Path(project.path), files)
+        await self.refresh(project_id)
+
+    async def commit(self, project_id: str, message: str) -> str:
+        """Create commit and refresh status"""
+        project = self.app.state.projects.get(project_id)
+        sha = await self.git_service.commit(Path(project.path), message)
+        await self.refresh(project_id)
+        return sha
+
+    async def push(self, project_id: str) -> None:
+        """Push to remote and refresh status"""
+        project = self.app.state.projects.get(project_id)
+        await self.git_service.push(Path(project.path))
+        await self.refresh(project_id)
+
+    async def pull(self, project_id: str) -> None:
+        """Pull from remote and refresh status"""
+        project = self.app.state.projects.get(project_id)
+        await self.git_service.pull(Path(project.path))
+        await self.refresh(project_id)
+
+    def get(self, project_id: str) -> GitStatus | None:
+        """Get cached status for a project"""
+        return self.statuses.get(project_id)
+```
+
+### ReviewStateManager
+
+```python
+class ReviewStateManager:
+    """Manages review state for tasks"""
+
+    def __init__(self, review_service: ReviewService):
+        self.review_service = review_service
+        self.active_reviews: dict[str, TaskReview] = {}  # task_id -> current review
+
+    async def start_review(
+        self,
+        project_id: str,
+        task_id: str
+    ) -> TaskReview:
+        """Start a review for a task"""
+        project = self.app.state.projects.get(project_id)
+        task = self.app.state.plans.get_task(project_id, task_id)
+
+        context = await self.review_service.build_review_context(project, task)
+        review = await self.review_service.run_review(project, task, context)
+
+        self.active_reviews[task_id] = review
+        self.post_message(ReviewCompleted(task_id, review.result, review))
+
+        return review
+
+    def get_active_review(self, task_id: str) -> TaskReview | None:
+        """Get active review for a task"""
+        return self.active_reviews.get(task_id)
+```
+
+## Updated AppState
+
+```python
+@dataclass
+class AppState:
+    """Master application state"""
+
+    # Existing managers
+    projects: ProjectStateManager
+    sessions: SessionStateManager
+    plans: PlanStateManager
+    health: HealthStateManager
+
+    # NEW managers
+    git: GitStateManager
+    reviews: ReviewStateManager
+```
+
+## New Services
+
+### Service Registration
+
+```python
+class ServiceContainer:
+    """Dependency injection container for services"""
+
+    def __init__(self):
+        # Existing services
+        self.iterm_controller: ItermController
+        self.session_spawner: SessionSpawner
+        self.session_terminator: SessionTerminator
+        self.session_monitor: SessionMonitor
+        self.window_layout_manager: WindowLayoutManager
+        self.github_integration: GitHubIntegration
+        self.notifier: Notifier
+
+        # NEW services
+        self.git_service: GitService
+        self.review_service: ReviewService
+        self.script_service: ScriptService
+```
+
+### Service Initialization
+
+```python
+async def initialize_services(self):
+    """Initialize all services"""
+    # Existing...
+
+    # NEW
+    self.git_service = GitService(notifier=self.notifier)
+
+    self.review_service = ReviewService(
+        session_spawner=self.session_spawner,
+        git_service=self.git_service,
+        plan_manager=self.state.plans,
+        notifier=self.notifier
+    )
+
+    self.script_service = ScriptService(
+        session_spawner=self.session_spawner,
+        session_monitor=self.session_monitor
+    )
+
+    # Initialize state managers with services
+    self.state.git = GitStateManager(self.git_service)
+    self.state.reviews = ReviewStateManager(self.review_service)
+```
+
+## New Events/Messages
+
+```python
+class GitStatusChanged(Message):
+    """Posted when git status changes for a project"""
+    project_id: str
+    status: GitStatus
+
+class ReviewStarted(Message):
+    """Posted when a review begins"""
+    task_id: str
+    project_id: str
+
+class ReviewCompleted(Message):
+    """Posted when a review finishes"""
+    task_id: str
+    result: ReviewResult
+    review: TaskReview
+
+class ReviewFailed(Message):
+    """Posted when review fails max times and needs human"""
+    task_id: str
+    review: TaskReview
+
+class ScriptStarted(Message):
+    """Posted when a script starts running"""
+    project_id: str
+    script_id: str
+    session_id: str
+
+class ScriptCompleted(Message):
+    """Posted when a script finishes"""
+    project_id: str
+    script_id: str
+    exit_code: int
+
+class SessionOutputUpdated(Message):
+    """Posted when new output is available for a session"""
+    session_id: str
+    output: str
+
+class OrchestratorProgress(Message):
+    """Posted when orchestrator makes progress"""
+    project_id: str
+    session_id: str
+    progress: SessionProgress
+```

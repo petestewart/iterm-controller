@@ -836,10 +836,322 @@ See [specs/README.md](./specs/README.md) for full technical specification includ
   - Scope: When adding a file, provide a file browser/picker instead of requiring typed paths
   - Acceptance: User can browse and select files visually when adding documents
 
+---
+
+## Phase 27: Application Overhaul - Mission Control & Unified Project Screen
+
+> **Overview**: Major architectural overhaul to support live output streaming, unified Project Screen, auto-review pipeline, git integration, and project scripts.
+>
+> **Specs updated**: models.md, README.md, ui.md, session-monitor.md, notifications.md, config.md, plan-parser.md, app.md
+> **New specs**: git-service.md, review-service.md, scripts.md, mission-control.md
+> **Archived specs**: workflow-modes.md, plan-mode.md, docs-mode.md, work-mode.md → specs/archive/
+
+### 27.1 Data Models & Foundation
+
+- [ ] **27.1.1 Update TaskStatus enum**
+  - Scope: Add AWAITING_REVIEW status to TaskStatus enum
+  - Spec: specs/models.md
+
+- [ ] **27.1.2 Add SessionType enum and SessionProgress**
+  - Scope: Create SessionType enum (CLAUDE_TASK, ORCHESTRATOR, REVIEW, TEST_RUNNER, SCRIPT, SERVER, SHELL) and SessionProgress dataclass
+  - Spec: specs/models.md
+
+- [ ] **27.1.3 Update ManagedSession model**
+  - Scope: Add session_type, task_id, display_name, progress fields to ManagedSession
+  - Spec: specs/models.md
+  - Dependencies: 27.1.2
+
+- [ ] **27.1.4 Add Review models**
+  - Scope: Create ReviewResult enum, TaskReview, ReviewConfig, ReviewContextConfig dataclasses
+  - Spec: specs/models.md
+
+- [ ] **27.1.5 Update Task model**
+  - Scope: Add revision_count, current_review, review_history, assigned_session_id fields
+  - Spec: specs/models.md
+  - Dependencies: 27.1.1, 27.1.4
+
+- [ ] **27.1.6 Add Git models**
+  - Scope: Create GitFileStatus, GitStatus, GitCommit, GitConfig dataclasses
+  - Spec: specs/models.md
+
+- [ ] **27.1.7 Add ProjectScript model**
+  - Scope: Create ProjectScript and RunningScript dataclasses
+  - Spec: specs/models.md
+  - Dependencies: 27.1.2
+
+- [ ] **27.1.8 Update Project model**
+  - Scope: Add scripts, review_config, git_config fields to Project; remove last_mode
+  - Spec: specs/models.md
+  - Dependencies: 27.1.4, 27.1.6, 27.1.7
+
+- [ ] **27.1.9 Add NotificationSettings model**
+  - Scope: Create NotificationSettings with sound support and event toggles
+  - Spec: specs/models.md
+
+### 27.2 Services Layer
+
+- [ ] **27.2.1 Create GitService**
+  - Scope: Implement GitService with get_status, get_diff, stage_files, commit, push, pull, fetch methods
+  - Spec: specs/git-service.md
+  - Acceptance:
+    - Parses git status --porcelain=v2 --branch output
+    - Caches status with 5s TTL
+    - Handles errors gracefully (not a repo, conflicts, push rejected)
+  - Dependencies: 27.1.6
+
+- [ ] **27.2.2 Create ScriptService**
+  - Scope: Implement ScriptService with run_script, get_running_scripts, stop_script methods
+  - Spec: specs/scripts.md
+  - Acceptance:
+    - Converts ProjectScript to SessionTemplate for spawning
+    - Tracks running scripts
+    - Handles completion callbacks
+  - Dependencies: 27.1.7
+
+- [ ] **27.2.3 Create ReviewService**
+  - Scope: Implement ReviewService with build_review_context, run_review, handle_review_result methods
+  - Spec: specs/review-service.md
+  - Acceptance:
+    - Builds context (task def, git diff, test results)
+    - Runs configurable slash command
+    - Parses output via subagent
+    - Updates task status based on result
+  - Dependencies: 27.1.4, 27.1.5, 27.2.1
+
+- [ ] **27.2.4 Update Notifier with sound support**
+  - Scope: Add notify_with_sound and play_sound methods to Notifier
+  - Spec: specs/notifications.md
+  - Acceptance:
+    - Uses terminal-notifier -sound flag
+    - Supports all macOS system sounds
+  - Dependencies: 27.1.9
+
+### 27.3 State Management
+
+- [ ] **27.3.1 Create GitStateManager**
+  - Scope: Implement GitStateManager with refresh, stage_files, commit, push, pull methods; posts GitStatusChanged events
+  - Spec: specs/app.md
+  - Dependencies: 27.2.1
+
+- [ ] **27.3.2 Create ReviewStateManager**
+  - Scope: Implement ReviewStateManager with start_review, get_active_review methods; posts ReviewStarted, ReviewCompleted, ReviewFailed events
+  - Spec: specs/app.md
+  - Dependencies: 27.2.3
+
+- [ ] **27.3.3 Add output streaming to SessionMonitor**
+  - Scope: Add SessionOutputStream class, subscriber pattern, and SessionOutputUpdated events
+  - Spec: specs/session-monitor.md
+  - Acceptance:
+    - Streams output to subscribers in real-time
+    - Maintains rolling buffer (100 lines)
+    - Preserves ANSI colors
+    - Batches updates for performance
+
+- [ ] **27.3.4 Update AppState with new managers**
+  - Scope: Add git and reviews managers to AppState; update ServiceContainer with new services
+  - Spec: specs/app.md
+  - Dependencies: 27.3.1, 27.3.2
+
+- [ ] **27.3.5 Add new event messages**
+  - Scope: Create GitStatusChanged, ReviewStarted, ReviewCompleted, ReviewFailed, ScriptStarted, ScriptCompleted, SessionOutputUpdated, OrchestratorProgress messages
+  - Spec: specs/app.md
+
+### 27.4 PLAN.md Parser Updates
+
+- [ ] **27.4.1 Add session field parsing**
+  - Scope: Add _extract_session method to parse Session field from task blocks
+  - Spec: specs/plan-parser.md
+
+- [ ] **27.4.2 Add review section parsing**
+  - Scope: Add _extract_review and _extract_review_issues methods to parse Review section
+  - Spec: specs/plan-parser.md
+  - Dependencies: 27.1.4
+
+- [ ] **27.4.3 Update task formatter with review section**
+  - Scope: Update format_task to output session and review fields
+  - Spec: specs/plan-parser.md
+  - Dependencies: 27.4.1, 27.4.2
+
+- [ ] **27.4.4 Add awaiting_review status handling**
+  - Scope: Update status parsing/formatting to handle awaiting_review status
+  - Spec: specs/plan-parser.md
+  - Dependencies: 27.1.1
+
+### 27.5 Configuration Updates
+
+- [ ] **27.5.1 Add scripts config schema**
+  - Scope: Update config loading to parse scripts array from project config
+  - Spec: specs/config.md
+  - Dependencies: 27.1.7
+
+- [ ] **27.5.2 Add review config schema**
+  - Scope: Update config loading to parse review block from project config
+  - Spec: specs/config.md
+  - Dependencies: 27.1.4
+
+- [ ] **27.5.3 Add git config schema**
+  - Scope: Update config loading to parse git block from project config
+  - Spec: specs/config.md
+  - Dependencies: 27.1.6
+
+- [ ] **27.5.4 Update notification settings schema**
+  - Scope: Add sound_enabled, sound_name, and new event toggles to notification settings config
+  - Spec: specs/config.md
+  - Dependencies: 27.1.9
+
+### 27.6 Mission Control Screen
+
+- [ ] **27.6.1 Create SessionCard widget**
+  - Scope: Create SessionCard widget with header, optional progress bar, and output log
+  - Spec: specs/mission-control.md
+  - Dependencies: 27.3.3
+
+- [ ] **27.6.2 Create OutputLog widget**
+  - Scope: Create OutputLog widget with collapsed/expanded modes, ANSI support, auto-scroll
+  - Spec: specs/mission-control.md
+
+- [ ] **27.6.3 Create OrchestratorProgress widget**
+  - Scope: Create progress bar widget for orchestrator sessions showing completed/total tasks
+  - Spec: specs/mission-control.md
+
+- [ ] **27.6.4 Create SessionList container**
+  - Scope: Create scrollable container for SessionCards with expand/collapse support
+  - Spec: specs/mission-control.md
+  - Dependencies: 27.6.1
+
+- [ ] **27.6.5 Create MissionControlScreen**
+  - Scope: Create main screen with session list, keybindings, empty state
+  - Spec: specs/mission-control.md
+  - Acceptance:
+    - Shows live output from all sessions
+    - 1-9 focuses session in iTerm
+    - Enter opens project
+    - x expands/collapses session
+    - n spawns new session
+    - k kills session
+  - Dependencies: 27.6.4, 27.3.3
+
+- [ ] **27.6.6 Subscribe to output updates**
+  - Scope: Wire MissionControlScreen to SessionOutputUpdated events
+  - Spec: specs/mission-control.md
+  - Dependencies: 27.6.5, 27.3.3
+
+### 27.7 Project Screen
+
+- [ ] **27.7.1 Create PlanningSection widget**
+  - Scope: Create collapsible section showing planning artifacts (PROBLEM, PRD, specs, PLAN)
+  - Spec: specs/ui.md
+
+- [ ] **27.7.2 Create TasksSection widget**
+  - Scope: Create collapsible section with PhaseGroup and TaskRow widgets; show review status
+  - Spec: specs/ui.md
+  - Dependencies: 27.1.5
+
+- [ ] **27.7.3 Create DocsSection widget**
+  - Scope: Create collapsible section showing documentation files
+  - Spec: specs/ui.md
+
+- [ ] **27.7.4 Create GitSection widget**
+  - Scope: Create section with branch info, file list, commit/push buttons
+  - Spec: specs/ui.md
+  - Dependencies: 27.3.1
+
+- [ ] **27.7.5 Create EnvSection widget**
+  - Scope: Create section showing environment variables with edit capability
+  - Spec: specs/ui.md
+
+- [ ] **27.7.6 Create ScriptToolbar widget**
+  - Scope: Create toolbar with script buttons from project config
+  - Spec: specs/ui.md
+  - Dependencies: 27.5.1
+
+- [ ] **27.7.7 Create SessionsPanel widget**
+  - Scope: Create bottom panel showing project's active sessions with MiniSessionCard
+  - Spec: specs/ui.md
+
+- [ ] **27.7.8 Create ProjectScreen**
+  - Scope: Create unified project screen with all sections, dynamic keybindings for scripts
+  - Spec: specs/ui.md
+  - Acceptance:
+    - All sections visible and collapsible
+    - Git actions work (stage, commit, push)
+    - Scripts launchable via keybindings
+    - Sessions clickable to focus
+  - Dependencies: 27.7.1, 27.7.2, 27.7.3, 27.7.4, 27.7.5, 27.7.6, 27.7.7
+
+### 27.8 Modals
+
+- [ ] **27.8.1 Create CommitModal**
+  - Scope: Modal for entering commit message with staged file preview
+  - Spec: specs/ui.md
+  - Dependencies: 27.3.1
+
+- [ ] **27.8.2 Create ReviewDetailModal**
+  - Scope: Modal showing full review output with approve/reject/revise actions
+  - Spec: specs/ui.md
+  - Dependencies: 27.1.4
+
+- [ ] **27.8.3 Create TaskDetailModal**
+  - Scope: Modal showing full task details including review history
+  - Spec: specs/ui.md
+  - Dependencies: 27.1.5
+
+- [ ] **27.8.4 Create EnvEditModal**
+  - Scope: Modal for editing environment variables
+  - Spec: specs/ui.md
+
+### 27.9 Screen Navigation & Integration
+
+- [ ] **27.9.1 Replace ControlRoom with MissionControl**
+  - Scope: Update app.py to use MissionControlScreen as main screen
+  - Dependencies: 27.6.5
+
+- [ ] **27.9.2 Replace ProjectDashboard with ProjectScreen**
+  - Scope: Update navigation to use new ProjectScreen; remove mode screens
+  - Dependencies: 27.7.8
+
+- [ ] **27.9.3 Remove deprecated mode screens**
+  - Scope: Delete PlanModeScreen, DocsModeScreen, WorkModeScreen code (keep TestModeScreen)
+  - Dependencies: 27.9.2
+
+- [ ] **27.9.4 Update screen registration**
+  - Scope: Update SCREENS dict and navigation bindings
+  - Dependencies: 27.9.1, 27.9.2, 27.9.3
+
+### 27.10 Testing & Polish
+
+- [ ] **27.10.1 Add unit tests for GitService**
+  - Scope: Test status parsing, caching, error handling
+  - Dependencies: 27.2.1
+
+- [ ] **27.10.2 Add unit tests for ReviewService**
+  - Scope: Test context building, result handling, notification triggers
+  - Dependencies: 27.2.3
+
+- [ ] **27.10.3 Add unit tests for ScriptService**
+  - Scope: Test script running, completion callbacks
+  - Dependencies: 27.2.2
+
+- [ ] **27.10.4 Add integration tests for output streaming**
+  - Scope: Test subscriber pattern, buffer management
+  - Dependencies: 27.3.3
+
+- [ ] **27.10.5 Add UI tests for new screens**
+  - Scope: Test MissionControl and ProjectScreen rendering and interactions
+  - Dependencies: 27.6.5, 27.7.8
+
+- [ ] **27.10.6 Update README and documentation**
+  - Scope: Update README with new features, configuration examples
+  - Dependencies: 27.9.4
+
+---
+
 ## Open Questions
 
 - [~] **Multi-window support**: Should projects span multiple iTerm2 windows? Current design assumes single window per project.
+- [ ] **Review parser strategy**: Should the parser be a separate slash command or built into the app?
 
 ---
 *Generated from PRD.md and specs/README.md on 2026-01-31*
 *Code review findings added on 2026-02-01*
+*Phase 27 (Application Overhaul) added on 2026-02-02*
