@@ -209,7 +209,11 @@ class EnvSection(Static):
         yield Static(f"{collapse_icon} Env Variables", classes=header_class, id="section-header")
 
         if not self._collapsed:
-            yield Vertical(id="env-container")
+            # Pre-create the content Static to avoid remove/mount cycles
+            yield Vertical(
+                Static("", id="env-content"),
+                id="env-container",
+            )
             yield Button("[e] Edit", id="edit-env-btn")
 
     def on_mount(self) -> None:
@@ -290,17 +294,13 @@ class EnvSection(Static):
 
         return text
 
-    def _update_env_display(self, container: Vertical) -> None:
-        """Update the env container with current items."""
-        container.remove_children()
-
+    def _build_env_content(self) -> Text:
+        """Build the env vars content text."""
         if not self._project:
-            container.mount(Static("[dim]No project selected[/dim]"))
-            return
+            return Text("[dim]No project selected[/dim]")
 
         if not self._env_vars:
-            container.mount(Static("[dim]No .env file found[/dim]"))
-            return
+            return Text("[dim]No .env file found[/dim]")
 
         # Build content
         lines: list[Text] = []
@@ -317,7 +317,15 @@ class EnvSection(Static):
                 content.append("\n")
             content.append_text(line)
 
-        container.mount(Static(content, id="env-content"))
+        return content
+
+    def _update_env_display(self) -> None:
+        """Update the env content using update() to avoid DOM thrashing."""
+        try:
+            content_widget = self.query_one("#env-content", Static)
+            content_widget.update(self._build_env_content())
+        except Exception:
+            pass
 
     def refresh(self, *args: Any, **kwargs: Any) -> None:
         """Override refresh to update env display."""
@@ -333,11 +341,7 @@ class EnvSection(Static):
 
         # Update env vars if not collapsed
         if not self._collapsed:
-            try:
-                container = self.query_one("#env-container", Vertical)
-                self._update_env_display(container)
-            except Exception:
-                pass
+            self._update_env_display()
 
         super().refresh(*args, **kwargs)
 

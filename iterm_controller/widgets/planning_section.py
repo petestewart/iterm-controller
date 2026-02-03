@@ -263,7 +263,11 @@ class PlanningSection(Static):
         yield Static(f"{collapse_icon} Planning", classes=header_class, id="section-header")
 
         if not self._collapsed:
-            yield Vertical(id="artifacts-container")
+            # Pre-create the content Static to avoid remove/mount cycles
+            yield Vertical(
+                Static("", id="artifacts-content"),
+                id="artifacts-container",
+            )
             yield Button("[c] Create missing", id="create-missing-btn")
 
     def on_mount(self) -> None:
@@ -353,17 +357,13 @@ class PlanningSection(Static):
 
         return text
 
-    def _update_artifacts_display(self, container: Vertical) -> None:
-        """Update the artifacts container with current status."""
-        container.remove_children()
-
+    def _build_artifacts_content(self) -> Text:
+        """Build the artifacts content text."""
         if not self._project:
-            container.mount(Static("[dim]No project selected[/dim]"))
-            return
+            return Text("[dim]No project selected[/dim]")
 
         # Build content
         lines: list[Text] = []
-        selectable_items = self._get_selectable_items()
         item_index = 0
 
         for artifact_name, _, description in self.ARTIFACTS:
@@ -391,7 +391,15 @@ class PlanningSection(Static):
                 content.append("\n")
             content.append_text(line)
 
-        container.mount(Static(content, id="artifacts-content"))
+        return content
+
+    def _update_artifacts_display(self) -> None:
+        """Update the artifacts content using update() to avoid DOM thrashing."""
+        try:
+            content_widget = self.query_one("#artifacts-content", Static)
+            content_widget.update(self._build_artifacts_content())
+        except Exception:
+            pass
 
         # Update button visibility based on missing artifacts
         try:
@@ -415,10 +423,6 @@ class PlanningSection(Static):
 
         # Update artifacts if not collapsed
         if not self._collapsed:
-            try:
-                container = self.query_one("#artifacts-container", Vertical)
-                self._update_artifacts_display(container)
-            except Exception:
-                pass
+            self._update_artifacts_display()
 
         super().refresh(*args, **kwargs)

@@ -281,7 +281,11 @@ class DocsSection(Static):
         yield Static(f"{collapse_icon} Docs", classes=header_class, id="section-header")
 
         if not self._collapsed:
-            yield Vertical(id="docs-container")
+            # Pre-create the content Static to avoid remove/mount cycles
+            yield Vertical(
+                Static("", id="docs-content"),
+                id="docs-container",
+            )
             yield Button("[+] Add doc...", id="add-doc-btn")
 
     def on_mount(self) -> None:
@@ -336,18 +340,14 @@ class DocsSection(Static):
 
         return text
 
-    def _update_docs_display(self, container: Vertical) -> None:
-        """Update the docs container with current items."""
-        container.remove_children()
-
+    def _build_docs_content(self) -> Text:
+        """Build the docs content text."""
         if not self._project:
-            container.mount(Static("[dim]No project selected[/dim]"))
-            return
+            return Text("[dim]No project selected[/dim]")
 
         items = self._get_all_items()
         if not items:
-            container.mount(Static("[dim]No documentation files[/dim]"))
-            return
+            return Text("[dim]No documentation files[/dim]")
 
         # Build content
         lines: list[Text] = []
@@ -362,7 +362,15 @@ class DocsSection(Static):
                 content.append("\n")
             content.append_text(line)
 
-        container.mount(Static(content, id="docs-content"))
+        return content
+
+    def _update_docs_display(self) -> None:
+        """Update the docs content using update() to avoid DOM thrashing."""
+        try:
+            content_widget = self.query_one("#docs-content", Static)
+            content_widget.update(self._build_docs_content())
+        except Exception:
+            pass
 
     def refresh(self, *args: Any, **kwargs: Any) -> None:
         """Override refresh to update docs display."""
@@ -378,11 +386,7 @@ class DocsSection(Static):
 
         # Update docs if not collapsed
         if not self._collapsed:
-            try:
-                container = self.query_one("#docs-container", Vertical)
-                self._update_docs_display(container)
-            except Exception:
-                pass
+            self._update_docs_display()
 
         super().refresh(*args, **kwargs)
 

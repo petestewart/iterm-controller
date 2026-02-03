@@ -305,9 +305,20 @@ class ScriptToolbar(Static):
 
     def _update_scripts_display(self, container: Vertical) -> None:
         """Update the script container with current scripts."""
+        scripts = self.scripts
+
+        # Check if scripts button row already exists
+        try:
+            existing_buttons = self.query_one("#script-buttons", Horizontal)
+            # If we have buttons and scripts match, no need to update
+            if existing_buttons and scripts:
+                return
+        except Exception:
+            pass
+
+        # Only rebuild if needed
         container.remove_children()
 
-        scripts = self.scripts
         if not scripts:
             container.mount(Static("[dim]No scripts configured[/dim]", classes="no-scripts"))
             return

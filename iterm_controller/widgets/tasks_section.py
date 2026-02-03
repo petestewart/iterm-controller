@@ -350,7 +350,11 @@ class TasksSection(Static):
         yield Static(f"{collapse_icon} Tasks", classes=header_class, id="section-header")
 
         if not self._collapsed:
-            yield Vertical(id="task-list-container")
+            # Pre-create the content Static to avoid remove/mount cycles
+            yield Vertical(
+                Static("", id="task-content"),
+                id="task-list-container",
+            )
 
     def on_mount(self) -> None:
         """Initialize when mounted."""
@@ -444,17 +448,13 @@ class TasksSection(Static):
 
         return text
 
-    def _update_task_display(self, container: Vertical) -> None:
-        """Update the task container with current status."""
-        container.remove_children()
-
+    def _build_task_content(self) -> Text:
+        """Build the task list content text."""
         if not self._plan:
-            container.mount(Static("[dim]No plan loaded[/dim]"))
-            return
+            return Text("[dim]No plan loaded[/dim]")
 
         if not self._plan.phases:
-            container.mount(Static("[dim]No tasks[/dim]"))
-            return
+            return Text("[dim]No tasks[/dim]")
 
         # Build content
         lines: list[Text] = []
@@ -474,7 +474,15 @@ class TasksSection(Static):
                 content.append("\n")
             content.append_text(line)
 
-        container.mount(Static(content, id="task-content"))
+        return content
+
+    def _update_task_display(self) -> None:
+        """Update the task content using update() to avoid DOM thrashing."""
+        try:
+            content_widget = self.query_one("#task-content", Static)
+            content_widget.update(self._build_task_content())
+        except Exception:
+            pass
 
     def refresh(self, *args: Any, **kwargs: Any) -> None:
         """Override refresh to update task display."""
@@ -490,11 +498,7 @@ class TasksSection(Static):
 
         # Update tasks if not collapsed
         if not self._collapsed:
-            try:
-                container = self.query_one("#task-list-container", Vertical)
-                self._update_task_display(container)
-            except Exception:
-                pass
+            self._update_task_display()
 
         super().refresh(*args, **kwargs)
 

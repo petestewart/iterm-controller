@@ -348,7 +348,11 @@ class GitSection(Static):
         )
 
         if not self._collapsed:
-            yield Vertical(id="git-container")
+            # Pre-create the content Static to avoid remove/mount cycles
+            yield Vertical(
+                Static("", id="git-content"),
+                id="git-container",
+            )
             yield Horizontal(
                 Button("[c] Commit", id="commit-btn"),
                 Button("[p] Push", id="push-btn"),
@@ -449,19 +453,13 @@ class GitSection(Static):
 
         return text
 
-    def _update_git_display(self, container: Vertical) -> None:
-        """Update the git container with current status."""
-        container.remove_children()
-
+    def _build_git_content(self) -> Text:
+        """Build the git status content text."""
         if not self._project:
-            container.mount(Static("[dim]No project selected[/dim]"))
-            self._update_button_states()
-            return
+            return Text("[dim]No project selected[/dim]")
 
         if not self._git_status:
-            container.mount(Static("[dim]Loading git status...[/dim]"))
-            self._update_button_states()
-            return
+            return Text("[dim]Loading git status...[/dim]")
 
         # Build content
         lines: list[Text] = []
@@ -511,7 +509,15 @@ class GitSection(Static):
                 content.append("\n")
             content.append_text(line)
 
-        container.mount(Static(content, id="git-content"))
+        return content
+
+    def _update_git_display(self) -> None:
+        """Update the git content using update() to avoid DOM thrashing."""
+        try:
+            content_widget = self.query_one("#git-content", Static)
+            content_widget.update(self._build_git_content())
+        except Exception:
+            pass
         self._update_button_states()
 
     def _update_button_states(self) -> None:
@@ -542,11 +548,7 @@ class GitSection(Static):
 
         # Update git status if not collapsed
         if not self._collapsed:
-            try:
-                container = self.query_one("#git-container", Vertical)
-                self._update_git_display(container)
-            except Exception:
-                pass
+            self._update_git_display()
 
         super().refresh(*args, **kwargs)
 
